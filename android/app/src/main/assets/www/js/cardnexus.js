@@ -543,16 +543,105 @@ function allocationOrder(deckLocations) {
 }
 
 /**
+ * Ordre dans lequel on propose de sortir les exemplaires en trop d'un deck :
+ * d'abord ce qui n'a rien a y faire (une carte en vente), puis le plus abime,
+ * puis les petites lignes — le deck garde ses meilleurs exemplaires.
+ */
+function removalOrder(a, b) {
+  return (
+    Number(b.forSale) - Number(a.forSale) ||
+    (CONDITION_RANK[b.condition] ?? 9) - (CONDITION_RANK[a.condition] ?? 9) ||
+    a.quantity - b.quantity
+  );
+}
+
+/**
+ * Ce que la location contient en plus de la liste : cartes absentes de la
+ * liste, ou presentes en plus grand nombre. C'est l'autre moitie d'une
+ * comparaison — le plan dit quoi faire entrer, ceci dit quoi faire sortir.
+ */
+async function surplusInLocation(wanted, destination) {
+  const lines = await fetchAllInventory({ location: destination });
+  const products = await resolveProducts(lines.map((l) => l.productId));
+
+  const wantedByKey = new Map(wanted.map((card) => [fabKey(card.name, card.pitch), card.quantity]));
+
+  const groups = new Map();
+  for (const line of lines) {
+    const product = products.get(line.productId);
+    if (!product) continue;
+
+    const key = mergeKey(product);
+    if (!groups.has(key)) groups.set(key, { product, lines: [] });
+    groups.get(key).lines.push(describeLine(line, product));
+  }
+
+  const rows = [];
+  for (const [key, { product, lines: held }] of groups) {
+    const have = held.reduce((sum, line) => sum + line.quantity, 0);
+    const want = wantedByKey.get(key) || 0;
+    const extra = have - want;
+    if (extra <= 0) continue;
+
+    const sorted = held.slice().sort(removalOrder);
+    const picks = [];
+    let remaining = extra;
+    for (const line of sorted) {
+      if (remaining === 0) break;
+      const take = Math.min(remaining, line.quantity);
+      picks.push({ ...line, take });
+      remaining -= take;
+    }
+
+    const pitch = product.attributes?.pitch ?? null;
+    rows.push({
+      key,
+      name: cleanName(product.name),
+      pitch,
+      pitchName: pitch ? PITCH_NAMES[pitch] : null,
+      types: product.attributes?.types || [],
+      imageUrl: product.imageUrl || cardImageUrl(product.printNumber),
+      have,
+      wanted: want,
+      extra,
+      lines: sorted,
+      picks,
+    });
+  }
+
+  return rows.sort(byNameThenPitch);
+}
+
+/**
+ * Une meme carte peut figurer deux fois dans une liste (deck et reserve). Le
+ * plan raisonne par carte : on additionne, sinon deux lignes du plan se
+ * disputeraient les memes exemplaires.
+ */
+function mergeWanted(wanted) {
+  const byKey = new Map();
+  for (const card of wanted) {
+    const key = fabKey(card.name, card.pitch);
+    const hit = byKey.get(key);
+    if (hit) hit.quantity += card.quantity;
+    else byKey.set(key, { ...card });
+  }
+  return [...byKey.values()];
+}
+
+/**
  * Construit le plan de montage : pour chaque carte voulue, ce qui est deja sur
- * place, ce qu'on propose de deplacer, et ce qui manque.
+ * place, ce qu'on propose de deplacer, et ce qui manque. Avec `existing`, la
+ * destination est un deck deja monte : le plan liste aussi ce qu'il contient en
+ * trop par rapport a la liste (`surplus`), pour qu'il devienne exactement elle.
  *
  * `wanted` : [{ name, pitch, quantity, imageUrl, types }] — issu d'une liste
  * FaBrary. `destination` : la location ou le deck doit finir.
  */
-export async function planDeckBuild(wanted, destination) {
-  if (!Array.isArray(wanted) || !wanted.length) {
+export async function planDeckBuild(rawWanted, destination, { existing = false } = {}) {
+  if (!Array.isArray(rawWanted) || !rawWanted.length) {
     throw new CardnexusError('Liste de cartes vide.', 400);
   }
+  const wanted = mergeWanted(rawWanted);
 
   const slugs = [...new Set(wanted.map((card) => slugifyName(card.name)))];
   const pages = await mapWithConcurrency(slugs, 3, linesForSlug);
@@ -611,11 +700,15 @@ export async function planDeckBuild(wanted, destination) {
     };
   });
 
+  const surplus = existing ? await surplusInLocation(wanted, destination) : [];
+
   const sum = (field) => rows.reduce((total, row) => total + row[field], 0);
   return {
     destination,
     rows,
+    surplus,
     totals: {
+      extra: surplus.reduce((total, row) => total + row.extra, 0),
       needed: sum('needed'),
       already: sum('already'),
       toMove: sum('picked'),

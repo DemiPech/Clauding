@@ -75,6 +75,7 @@
               <a id="fabrary-link" href="#" target="_blank" rel="noopener">Voir sur FaBrary ↗</a>
               <button class="link-btn" id="copy-btn">Copier la decklist</button>
               <button class="link-btn" id="build-btn" hidden>Monter dans CardNexus</button>
+              <button class="link-btn" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
             </div>
           </div>
         </section>
@@ -105,7 +106,7 @@
         <button class="link-btn" id="build-back">← Retour à la liste</button>
 
         <header class="build-head">
-          <p class="eyebrow">Monter ce deck dans CardNexus</p>
+          <p class="eyebrow" id="build-eyebrow">Monter ce deck dans CardNexus</p>
           <h1 id="build-title"></h1>
           <p class="byline" id="build-subtitle"></p>
         </header>
@@ -151,7 +152,30 @@
               <span class="build-hint" id="build-hint"></span>
             </div>
           </div>
-          <ul class="build-rows" id="build-rows"></ul>
+
+          <div class="build-section-head">
+            <h2>Cartes de la liste</h2>
+            <label class="check-row" id="build-hide-settled-row">
+              <input type="checkbox" id="build-hide-settled" checked />
+              <span id="build-hide-settled-label">Masquer celles déjà en place</span>
+            </label>
+          </div>
+          <ul class="build-rows hide-settled" id="build-rows"></ul>
+
+          <section id="build-surplus" hidden>
+            <div class="build-section-head">
+              <h2>En trop dans le deck</h2>
+              <span class="section-count" id="build-surplus-count"></span>
+            </div>
+            <p class="move-note">
+              Ces cartes sont dans le deck mais pas dans la liste (ou en plus grand nombre).
+            </p>
+            <label class="build-out">
+              <span>Les ranger dans</span>
+              <select id="build-out" aria-label="Où ranger les cartes en trop"></select>
+            </label>
+            <ul class="build-rows" id="build-surplus-rows"></ul>
+          </section>
         </div>
       </section>
     </main>
@@ -244,6 +268,36 @@
         <div class="sheet-actions">
           <button type="button" class="link-btn" id="settings-clear">Effacer</button>
           <button type="submit" class="primary-btn">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="sheet-backdrop" id="compare" hidden>
+      <form class="sheet" id="compare-form" autocomplete="off">
+        <div class="sheet-head">
+          <h2>Comparer à une liste FaBrary</h2>
+          <button type="button" class="icon-btn" id="compare-close" aria-label="Fermer">×</button>
+        </div>
+
+        <label class="field">
+          <span>URL ou identifiant du deck FaBrary</span>
+          <input
+            id="compare-input"
+            type="text"
+            inputmode="url"
+            placeholder="https://fabrary.net/decks/…"
+            spellcheck="false"
+            autocapitalize="off"
+          />
+        </label>
+
+        <p class="move-note" id="compare-note">
+          Vous verrez ce qu'il faut faire entrer dans « <span id="compare-target"></span> », ce qui
+          manque, et ce qui est en trop.
+        </p>
+
+        <div class="sheet-actions">
+          <button type="submit" class="primary-btn" id="compare-submit">Comparer</button>
         </div>
       </form>
     </div>

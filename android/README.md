@@ -18,6 +18,25 @@ fichier de la release. Toutes les versions sont signées avec la même clé
 (`app/decklist.keystore`), donc une mise à jour s'installe par-dessus l'ancienne sans
 perdre la clé d'API.
 
+## Comparer un deck à une liste FaBrary
+
+Sur un deck CardNexus, « Comparer à une liste FaBrary » demande l'URL d'une liste, puis ouvre
+l'écran de montage avec ce deck pour destination. Il montre les deux sens :
+
+- **Cartes de la liste** : ce qu'il faut faire entrer, pris ailleurs dans la collection
+  (mêmes règles d'allocation que le montage), et ce qui manque. Les cartes déjà en place
+  sont masquées par défaut, pour ne voir que les écarts.
+- **En trop dans le deck** : les cartes absentes de la liste, ou en plus grand nombre. Les
+  exemplaires proposés à la sortie sont d'abord ceux en vente, puis les plus abîmés : le deck
+  garde ses meilleurs exemplaires. On choisit où les ranger (« Les ranger dans »).
+
+Chaque ligne se déplie sur ses exemplaires, avec un compteur. « Déplacer les cartes » applique
+les sorties puis les entrées. Le bandeau de confirmation propose d'annuler, et chaque carte
+retourne alors d'où elle venait.
+
+Le même calcul s'applique quand on monte une liste FaBrary dans un **deck existant** depuis
+l'écran « Monter dans CardNexus ».
+
 ## Comment c'est fait
 
 Pas de serveur Node sur le téléphone : l'app est une WebView qui embarque l'interface web.

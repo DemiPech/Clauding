@@ -1395,6 +1395,59 @@ body.has-movebar .toast {
   font-size: 13px;
 }
 
+.build-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 24px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.build-section-head h2 {
+  font-size: 16px;
+}
+
+.build-section-head .check-row {
+  font-size: 13px;
+}
+
+.hide-settled .is-settled {
+  display: none;
+}
+
+.build-row-want {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+#build-surplus {
+  margin-top: 12px;
+}
+
+.build-out {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 12px 0 4px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.build-out select {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 15px;
+}
+
 .line-row.is-deck .line-row-sub {
   color: var(--pitch-2);
 }

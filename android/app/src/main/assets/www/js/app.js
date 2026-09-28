@@ -77,6 +77,23 @@ const els = {
   buildApply: $('#build-apply'),
   buildHint: $('#build-hint'),
   buildRows: $('#build-rows'),
+  buildEyebrow: $('#build-eyebrow'),
+  buildHideSettled: $('#build-hide-settled'),
+  buildHideSettledRow: $('#build-hide-settled-row'),
+  buildHideSettledLabel: $('#build-hide-settled-label'),
+  buildSurplus: $('#build-surplus'),
+  buildSurplusCount: $('#build-surplus-count'),
+  buildSurplusRows: $('#build-surplus-rows'),
+  buildOut: $('#build-out'),
+
+  compareBtn: $('#compare-btn'),
+  compare: $('#compare'),
+  compareForm: $('#compare-form'),
+  compareInput: $('#compare-input'),
+  compareNote: $('#compare-note'),
+  compareTarget: $('#compare-target'),
+  compareSubmit: $('#compare-submit'),
+  compareClose: $('#compare-close'),
 
   settingsBtn: $('#settings-btn'),
   settings: $('#settings'),
@@ -320,6 +337,7 @@ function renderHeader(deck) {
   if (deck.url) els.fabraryLink.href = deck.url;
 
   updateBuildButton();
+  els.compareBtn.hidden = deck.source !== 'cardnexus';
 
   els.stats.replaceChildren();
   if (hero?.intellect != null) els.stats.append(statItem('intellect', hero.intellect));
@@ -1124,11 +1142,18 @@ async function loadLocations() {
 // une allocation modifiable (carte → ligne d'inventaire → quantité), initialisée
 // avec la proposition du plan, et les compteurs l'éditent.
 
+//
+// Sur un deck déjà monté, le plan liste aussi ce qu'il contient en trop : la
+// même mécanique de compteurs règle alors ce qui sort (`removal`). Entrées et
+// sorties ensemble transforment le deck en la liste — c'est la comparaison.
+
 const build = {
   deckId: null,
   plan: null,
   /** Map(clé de carte → Map(inventoryId → quantité prise)) */
   allocation: new Map(),
+  /** Map(clé de carte → Map(inventoryId → quantité sortie du deck)) */
+  removal: new Map(),
   deckLocationNames: new Set(),
 };
 
@@ -1141,6 +1166,13 @@ function allocationFor(key) {
 
 const takenFor = (key) => [...allocationFor(key).values()].reduce((sum, n) => sum + n, 0);
 
+function removalFor(key) {
+  if (!build.removal.has(key)) build.removal.set(key, new Map());
+  return build.removal.get(key);
+}
+
+const removedFor = (key) => [...removalFor(key).values()].reduce((sum, n) => sum + n, 0);
+
 /** Totaux recalculés à partir de l'allocation courante, pas de celle du plan. */
 function buildTotals() {
   const rows = build.plan?.rows || [];
@@ -1150,6 +1182,14 @@ function buildTotals() {
   let missing = 0;
   let cardsMissing = 0;
   let fromDecks = 0;
+  let toRemove = 0;
+  let extraLeft = 0;
+
+  for (const row of build.plan?.surplus || []) {
+    const removed = removedFor(row.key);
+    toRemove += removed;
+    extraLeft += Math.max(0, row.extra - removed);
+  }
 
   for (const row of rows) {
     const taken = takenFor(row.key);
@@ -1166,7 +1206,7 @@ function buildTotals() {
     }
   }
 
-  return { needed, already, toMove, missing, cardsMissing, fromDecks };
+  return { needed, already, toMove, missing, cardsMissing, fromDecks, toRemove, extraLeft };
 }
 
 function buildStatus(row) {
@@ -1181,6 +1221,8 @@ function buildStatus(row) {
 function buildRowNode(row) {
   const li = document.createElement('li');
   li.className = 'build-row';
+  // Rien à faire pour cette carte : masquable, pour ne voir que les écarts.
+  if (row.already >= row.needed) li.classList.add('is-settled');
 
   const head = document.createElement('button');
   head.type = 'button';
@@ -1279,6 +1321,84 @@ function buildRowNode(row) {
   return li;
 }
 
+function surplusStatus(row) {
+  const removed = removedFor(row.key);
+  const left = row.extra - removed;
+  if (left > 0) return { label: `${left} en trop`, className: 'is-partial' };
+  return { label: `${removed} à sortir`, className: 'is-ok' };
+}
+
+/** Une carte en trop dans le deck : ses lignes, avec combien en sortir. */
+function surplusRowNode(row) {
+  const li = document.createElement('li');
+  li.className = 'build-row';
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'build-row-head';
+
+  const art = document.createElement('img');
+  art.className = 'build-row-art';
+  art.alt = '';
+  art.loading = 'lazy';
+  if (row.imageUrl) art.src = row.imageUrl;
+
+  const qty = document.createElement('span');
+  qty.className = 'build-row-qty';
+  qty.textContent = `${row.have}×`;
+
+  const name = document.createElement('span');
+  name.className = 'build-row-name';
+  name.innerHTML = `
+    <i class="row-pitch" style="--dot:${PITCH_COLORS[row.pitch] || 'var(--pitch-0)'}"></i>
+    <span>${escapeHtml(row.name)}</span>
+    <span class="build-row-want">${row.wanted ? `liste : ${row.wanted}` : 'hors liste'}</span>
+  `;
+
+  const badge = document.createElement('span');
+  const caret = document.createElement('span');
+  caret.className = 'build-row-caret';
+  caret.textContent = '▸';
+
+  const paint = () => {
+    const status = surplusStatus(row);
+    badge.className = `badge ${status.className}`;
+    badge.textContent = status.label;
+  };
+
+  head.append(art, qty, name, badge, caret);
+
+  const lines = document.createElement('ul');
+  lines.className = 'build-row-lines';
+  lines.hidden = true;
+  for (const line of row.lines) {
+    lines.append(
+      lineRowNode(line, row, {
+        store: {
+          max: line.quantity,
+          get: () => removalFor(row.key).get(line.inventoryId) || 0,
+          set: (count) => {
+            const removal = removalFor(row.key);
+            if (count > 0) removal.set(line.inventoryId, count);
+            else removal.delete(line.inventoryId);
+            paint();
+            renderBuildSummary();
+          },
+        },
+      }),
+    );
+  }
+
+  head.addEventListener('click', () => {
+    lines.hidden = !lines.hidden;
+    caret.textContent = lines.hidden ? '▸' : '▾';
+  });
+
+  paint();
+  li.append(head, lines);
+  return li;
+}
+
 function renderBuildSummary() {
   const totals = buildTotals();
   const stat = (label, value, className) => {
@@ -1287,9 +1407,12 @@ function renderBuildSummary() {
     li.innerHTML = `<b>${value}</b> ${label}`;
     return li;
   };
+  const hasSurplus = Boolean(build.plan?.surplus?.length);
 
   els.buildStats.replaceChildren(
-    stat('à déplacer', totals.toMove),
+    stat('à faire entrer', totals.toMove),
+    ...(hasSurplus ? [stat('à sortir', totals.toRemove)] : []),
+    ...(totals.extraLeft ? [stat('encore en trop', totals.extraLeft, 'is-warn')] : []),
     ...(totals.already ? [stat('déjà en place', totals.already)] : []),
     ...(totals.missing
       ? [
@@ -1303,14 +1426,52 @@ function renderBuildSummary() {
     ...(totals.fromDecks ? [stat("prises à d'autres decks", totals.fromDecks, 'is-warn')] : []),
   );
 
-  els.buildApply.disabled = totals.toMove === 0;
-  if (totals.toMove) els.buildHint.textContent = `vers « ${build.plan.destination} »`;
-  else if (totals.missing) els.buildHint.textContent = 'aucun exemplaire sélectionné';
-  else els.buildHint.textContent = 'tout est déjà en place';
+  const moves = totals.toMove + totals.toRemove;
+  els.buildApply.disabled = moves === 0;
+  if (moves) {
+    els.buildHint.textContent = [
+      totals.toMove ? `${totals.toMove} vers « ${build.plan.destination} »` : null,
+      totals.toRemove ? `${totals.toRemove} hors du deck` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+  } else if (totals.missing || totals.extraLeft) {
+    els.buildHint.textContent = 'aucun exemplaire sélectionné';
+  } else {
+    els.buildHint.textContent = 'le deck correspond déjà à la liste';
+  }
+}
+
+/** Où ranger les cartes en trop : toute location sauf le deck lui-même. */
+function renderBuildOutOptions() {
+  const current = els.buildOut.value;
+  els.buildOut.innerHTML = [
+    '<option value="">— choisir —</option>',
+    ...locations
+      .filter((loc) => loc.name !== build.plan.destination)
+      .map((loc) => `<option value="${escapeHtml(loc.name)}">${escapeHtml(loc.name)}</option>`),
+    `<option value="${NO_LOCATION}">(aucune location)</option>`,
+  ].join('');
+  if (current) els.buildOut.value = current;
 }
 
 function renderBuild() {
   els.buildRows.replaceChildren(...build.plan.rows.map(buildRowNode));
+
+  const settled = build.plan.rows.filter((row) => row.already >= row.needed).length;
+  els.buildHideSettledRow.hidden = settled === 0;
+  els.buildHideSettledLabel.textContent = `Masquer celles déjà en place (${settled})`;
+  els.buildRows.classList.toggle('hide-settled', els.buildHideSettled.checked);
+
+  const surplus = build.plan.surplus || [];
+  els.buildSurplus.hidden = surplus.length === 0;
+  if (surplus.length) {
+    const extra = surplus.reduce((sum, row) => sum + row.extra, 0);
+    els.buildSurplusCount.textContent = `${extra} carte${extra > 1 ? 's' : ''}`;
+    els.buildSurplusRows.replaceChildren(...surplus.map(surplusRowNode));
+    renderBuildOutOptions();
+  }
+
   renderBuildSummary();
   els.buildResult.hidden = false;
 }
@@ -1332,12 +1493,20 @@ function syncBuildMode() {
   els.buildExisting.disabled = mode !== 'existing';
 }
 
-function openBuild(deck) {
+/**
+ * Ouvre l'écran de montage pour une liste FaBrary. Avec `existing`, on vient
+ * d'un deck d'inventaire à comparer : il est présélectionné comme destination.
+ */
+function openBuild(deck, { existing = null } = {}) {
   build.deckId = deck.deckId;
   build.plan = null;
   build.allocation = new Map();
+  build.removal = new Map();
   build.deckLocationNames = new Set(deckLocations.map((l) => l.name));
 
+  els.buildEyebrow.textContent = existing
+    ? `Comparer « ${existing} » à cette liste`
+    : 'Monter ce deck dans CardNexus';
   els.buildTitle.textContent = deck.name;
   els.buildSubtitle.textContent = [deck.hero?.name, deck.format].filter(Boolean).join(' · ');
   els.buildNewName.value = deck.hero?.name ? `Deck - ${deck.hero.name}` : deck.name;
@@ -1347,10 +1516,15 @@ function openBuild(deck) {
   els.buildSideboard.disabled = !deck.counts.sideboard;
   els.buildSideboard.checked = false;
 
+  // Le deck comparé peut ne pas porter l'icône deck (ouvert par lien direct).
+  const choices = deckLocations.map((l) => l.name);
+  if (existing && !choices.includes(existing)) choices.unshift(existing);
   els.buildExisting.innerHTML = [
     '<option value="">— choisir —</option>',
-    ...deckLocations.map((l) => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`),
+    ...choices.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
   ].join('');
+  els.buildExisting.value = existing || '';
+  els.buildSetup.querySelector(`input[name="build-mode"][value="${existing ? 'existing' : 'new'}"]`).checked = true;
 
   els.buildNote.textContent = '';
   els.buildResult.hidden = true;
@@ -1377,6 +1551,7 @@ async function computePlan() {
         deckId: build.deckId,
         destination: destination.name,
         includeSideboard: els.buildSideboard.checked,
+        existing: !destination.create,
       }),
     });
     const plan = await res.json();
@@ -1385,6 +1560,9 @@ async function computePlan() {
     build.plan = plan;
     build.allocation = new Map(
       plan.rows.map((row) => [row.key, new Map(row.picks.map((p) => [p.inventoryId, p.take]))]),
+    );
+    build.removal = new Map(
+      (plan.surplus || []).map((row) => [row.key, new Map(row.picks.map((p) => [p.inventoryId, p.take]))]),
     );
     build.pendingCreate = destination.create ? destination.name : null;
 
@@ -1397,15 +1575,64 @@ async function computePlan() {
   }
 }
 
-async function applyBuild() {
-  const moves = [];
-  for (const row of build.plan.rows) {
-    for (const [inventoryId, count] of allocationFor(row.key)) {
-      if (count > 0) moves.push({ inventoryId, count });
+/** Envoie des déplacements par lots de 200 (plafond de l'API) et cumule les résultats. */
+async function postMovesInBatches(moves, destination, origins) {
+  let moved = 0;
+  const failed = [];
+  const undo = [];
+
+  for (let i = 0; i < moves.length; i += 200) {
+    const result = await postMoves(moves.slice(i, i + 200), destination);
+    moved += result.applied.reduce((sum, m) => sum + m.count, 0);
+    failed.push(...result.failed);
+    for (const applied of result.applied) {
+      undo.push({
+        inventoryId: applied.survivingId,
+        count: applied.count,
+        back: origins.get(applied.inventoryId) ?? null,
+      });
     }
   }
-  if (!moves.length) return;
+  return { moved, failed, undo };
+}
 
+async function applyBuild() {
+  const destination = build.plan.destination;
+
+  // D'où vient chaque ligne : de quoi annuler en renvoyant tout à sa place.
+  const origins = new Map();
+  const incoming = [];
+  for (const row of build.plan.rows) {
+    for (const line of row.candidates) origins.set(line.inventoryId, line.location);
+    for (const [inventoryId, count] of allocationFor(row.key)) {
+      if (count > 0) incoming.push({ inventoryId, count });
+    }
+  }
+
+  const outgoing = [];
+  for (const row of build.plan.surplus || []) {
+    for (const line of row.lines) origins.set(line.inventoryId, destination);
+    for (const [inventoryId, count] of removalFor(row.key)) {
+      if (count > 0) outgoing.push({ inventoryId, count });
+    }
+  }
+
+  if (!incoming.length && !outgoing.length) return;
+
+  let outTarget = null;
+  if (outgoing.length) {
+    const raw = els.buildOut.value;
+    if (!raw) {
+      els.buildNote.textContent =
+        'Choisissez où ranger les cartes en trop, ou remettez leurs compteurs à 0.';
+      els.buildOut.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      els.buildOut.focus();
+      return;
+    }
+    outTarget = raw === NO_LOCATION ? null : raw;
+  }
+
+  els.buildNote.textContent = '';
   els.buildApply.disabled = true;
   els.buildApply.textContent = 'Déplacement…';
 
@@ -1424,27 +1651,36 @@ async function applyBuild() {
       await loadLocations();
     }
 
-    // L'API plafonne à 200 lignes par envoi.
-    let moved = 0;
-    const failures = [];
-    for (let i = 0; i < moves.length; i += 200) {
-      const result = await postMoves(moves.slice(i, i + 200), build.plan.destination);
-      moved += result.applied.reduce((sum, m) => sum + m.count, 0);
-      failures.push(...result.failed);
-    }
+    // Les sorties d'abord : elles ne touchent que des lignes du deck, que les
+    // entrées pourraient sinon fusionner (et renuméroter) à leur arrivée.
+    const out = outgoing.length
+      ? await postMovesInBatches(outgoing, outTarget, origins)
+      : { moved: 0, failed: [], undo: [] };
+    const into = incoming.length
+      ? await postMovesInBatches(incoming, destination, origins)
+      : { moved: 0, failed: [], undo: [] };
+
+    const failures = [...out.failed, ...into.failed];
+    const undo = [...out.undo, ...into.undo];
+    const plural = (n) => (n > 1 ? 's' : '');
 
     showToast(
-      `${moved} carte${moved > 1 ? 's' : ''} rangée${moved > 1 ? 's' : ''} dans « ${build.plan.destination} »` +
+      [
+        into.moved ? `${into.moved} carte${plural(into.moved)} rangée${plural(into.moved)} dans « ${destination} »` : null,
+        out.moved ? `${out.moved} sortie${plural(out.moved)} vers ${outTarget ? `« ${outTarget} »` : 'aucune location'}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') +
         (failures.length ? ` (${failures.length} refusée(s) : ${failures[0].reason})` : ''),
-      { error: Boolean(failures.length) },
+      { error: Boolean(failures.length), undo: undo.length ? undo : null },
     );
 
     // On ouvre le deck monté, mais sans perdre le plan si la lecture échoue
     // (rien n'a pu être déplacé, par exemple).
     try {
-      const check = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(build.plan.destination)}`);
-      if (check.ok) loadCardnexusDeck(build.plan.destination);
-      else els.buildNote.textContent = `Deck « ${build.plan.destination} » pas encore lisible : ${(await check.json()).error}`;
+      const check = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(destination)}`);
+      if (check.ok) loadCardnexusDeck(destination);
+      else els.buildNote.textContent = `Deck « ${destination} » pas encore lisible : ${(await check.json()).error}`;
     } catch {
       els.buildNote.textContent = 'Déplacements appliqués, mais la relecture du deck a échoué.';
     }
@@ -1554,6 +1790,46 @@ function saveApiKey(value) {
   location.replace(location.pathname);
 }
 
+// --- Comparer un deck d'inventaire à une liste FaBrary ---------------------
+
+const COMPARE_HINT = els.compareNote.innerHTML;
+
+function openCompare() {
+  if (state.deck?.source !== 'cardnexus') return;
+  els.compareNote.innerHTML = COMPARE_HINT;
+  els.compareNote.querySelector('#compare-target').textContent = state.deck.deckId;
+  els.compareSubmit.disabled = false;
+  els.compare.hidden = false;
+  els.compareInput.focus();
+}
+
+function closeCompare() {
+  els.compare.hidden = true;
+}
+
+/** Charge la liste FaBrary, puis ouvre le plan avec le deck ouvert pour destination. */
+async function runCompare() {
+  const value = els.compareInput.value.trim();
+  if (!value) return;
+  const target = state.deck.deckId;
+
+  els.compareSubmit.disabled = true;
+  els.compareNote.textContent = 'Récupération de la liste FaBrary…';
+  try {
+    const res = await fetch(`/api/deck?id=${encodeURIComponent(value)}`);
+    const list = await res.json();
+    if (!res.ok) throw new Error(list.error || `Erreur ${res.status}`);
+
+    closeCompare();
+    openBuild(list, { existing: target });
+    computePlan();
+  } catch (err) {
+    els.compareNote.textContent = err.message;
+  } finally {
+    els.compareSubmit.disabled = false;
+  }
+}
+
 // --- Retour Android --------------------------------------------------------
 
 /**
@@ -1562,6 +1838,7 @@ function saveApiKey(value) {
  */
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
+  if (!els.compare.hidden) return closeCompare(), true;
   if (!els.lightbox.hidden) return closeLightbox(), true;
   if (!els.linePicker.hidden) return closeLinePicker(), true;
   if (movePanel !== 'none') return setMovePanel('none'), true;
@@ -1684,6 +1961,7 @@ document.addEventListener('keydown', (event) => {
   closeLinePicker();
   closeLightbox();
   closeSettings();
+  closeCompare();
 });
 
 els.heroArt.addEventListener('click', () => {
@@ -1728,6 +2006,20 @@ els.buildSetup.addEventListener('submit', (event) => {
   computePlan();
 });
 els.buildApply.addEventListener('click', applyBuild);
+els.buildHideSettled.addEventListener('change', () => {
+  els.buildRows.classList.toggle('hide-settled', els.buildHideSettled.checked);
+});
+
+els.compareBtn.addEventListener('click', openCompare);
+els.compareClose.addEventListener('click', closeCompare);
+els.compare.addEventListener('click', (event) => {
+  if (event.target === els.compare) closeCompare();
+});
+els.compareForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  els.compareInput.blur();
+  runCompare();
+});
 
 els.settingsBtn.addEventListener('click', openSettings);
 els.settingsClose.addEventListener('click', closeSettings);
