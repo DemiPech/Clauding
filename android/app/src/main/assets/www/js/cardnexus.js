@@ -1,0 +1,642 @@
+/**
+ * Client CardNexus (https://docs.cardnexus.com).
+ *
+ * Un "deck" ici est une location d'inventaire dont l'icone est `deck`.
+ * On lit ses lignes (GET /inventory?location=...), on resout les produits en
+ * lot (POST /products/search avec productIds), puis on normalise le tout dans
+ * la meme forme que fabrary.js pour que l'interface affiche les deux sources
+ * avec le meme rendu.
+ *
+ * Portage navigateur de lib/cardnexus.js : la cle d'API vient des reglages de
+ * l'app (localStorage) au lieu de api_key.txt.
+ */
+import { cardImageUrl } from './fabrary.js';
+import { httpFetch, uuid } from './http.js';
+
+const BASE = 'https://public-api.cardnexus.com/v1';
+const DECK_ICON = 'deck';
+const PRODUCT_BATCH = 200;
+const KEY_STORAGE = 'cardnexus_api_key';
+
+export class CardnexusError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'CardnexusError';
+    this.status = status;
+  }
+}
+
+// --- Cle d'API -------------------------------------------------------------
+
+export function getApiKey() {
+  try {
+    return localStorage.getItem(KEY_STORAGE)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setApiKey(value) {
+  const key = String(value || '').trim();
+  if (key) localStorage.setItem(KEY_STORAGE, key);
+  else localStorage.removeItem(KEY_STORAGE);
+}
+
+export const isConfigured = () => Boolean(getApiKey());
+
+// --- Appels ----------------------------------------------------------------
+
+// CardNexus autorise 60 requetes/minute et par compte. Monter un deck en
+// consomme une par nom de carte : sans regulation on prend un 429 en plein
+// milieu d'un plan. On s'auto-limite un cran en dessous et on attend plutot que
+// d'echouer.
+const RATE_LIMIT = 55;
+const RATE_WINDOW_MS = 60_000;
+const recentCalls = [];
+
+async function throttle() {
+  for (;;) {
+    const now = Date.now();
+    while (recentCalls.length && now - recentCalls[0] > RATE_WINDOW_MS) recentCalls.shift();
+    if (recentCalls.length < RATE_LIMIT) {
+      recentCalls.push(now);
+      return;
+    }
+    const waitMs = RATE_WINDOW_MS - (now - recentCalls[0]) + 50;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
+async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
+  const key = getApiKey();
+  if (!key) {
+    throw new CardnexusError("Aucune clé d'API CardNexus : ajoutez-la dans les réglages (⚙).", 503);
+  }
+
+  await throttle();
+  const res = await httpFetch(`${BASE}${endpoint}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${key}`,
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (res.status === 401) throw new CardnexusError("Clé d'API CardNexus refusée (401).", 401);
+  if (res.status === 429) {
+    const retry = res.headers.get('Retry-After');
+    throw new CardnexusError(
+      `Quota CardNexus atteint. Reessayez dans ${retry || 'quelques'} secondes.`,
+      429,
+    );
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new CardnexusError(`CardNexus a repondu ${res.status}. ${text.slice(0, 200)}`, 502);
+  }
+  return res.json();
+}
+
+/** Suit les curseurs jusqu'a epuisement (garde-fou a 50 pages). */
+async function fetchAllInventory(params) {
+  const lines = [];
+  let cursor = null;
+
+  for (let page = 0; page < 50; page += 1) {
+    const qs = new URLSearchParams({ ...params, limit: '100' });
+    if (cursor) qs.set('cursor', cursor);
+    const res = await api(`/inventory?${qs}`);
+    lines.push(...(res.data || []));
+    cursor = res.pagination?.nextCursor;
+    if (!cursor) break;
+  }
+  return lines;
+}
+
+// Le catalogue ne bouge quasiment jamais et les decks partagent des cartes :
+// on garde les produits en memoire pour le temps de vie de l'app.
+const productCache = new Map();
+
+async function resolveProducts(productIds) {
+  const missing = [...new Set(productIds)].filter((id) => !productCache.has(id));
+
+  for (let i = 0; i < missing.length; i += PRODUCT_BATCH) {
+    const res = await api('/products/search', {
+      method: 'POST',
+      body: { productIds: missing.slice(i, i + PRODUCT_BATCH), limit: PRODUCT_BATCH },
+    });
+    for (const product of res.data || []) productCache.set(product.id, product);
+  }
+
+  return new Map(productIds.map((id) => [id, productCache.get(id)]).filter(([, p]) => p));
+}
+
+// --- Locations -------------------------------------------------------------
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'fr');
+
+/** Toutes les locations, avec leur icone — les destinations possibles d'un deplacement. */
+export async function listLocations() {
+  const locations = await api('/inventory/locations');
+  return locations.map(({ name, color, icon }) => ({ name, color, icon })).sort(byName);
+}
+
+export async function listDeckLocations() {
+  const locations = await listLocations();
+  return locations.filter((loc) => loc.icon === DECK_ICON).map(({ name, color }) => ({ name, color }));
+}
+
+// --- Normalisation ---------------------------------------------------------
+
+const PITCH_NAMES = { 1: 'Red', 2: 'Yellow', 3: 'Blue' };
+
+/**
+ * Cle de regroupement d'une carte : `fabId` (slug + pitch) rassemble les
+ * reimpressions et les finitions d'une meme carte, ce qu'attend une decklist.
+ */
+const mergeKey = (product) =>
+  product.attributes?.fabId ||
+  [product.nameSlug, product.attributes?.pitch].filter(Boolean).join('-') ||
+  String(product.id);
+
+/** Nom de carte sans le suffixe de pitch que CardNexus ajoute, ex. "Buckwild (Blue)". */
+const cleanName = (name) => name.replace(/\s*\((Red|Yellow|Blue)\)\s*$/i, '');
+
+/**
+ * Une ligne d'inventaire telle que l'interface la manipule. `inventoryId` est
+ * ce qui identifie la ligne a deplacer : c'est la vraie granularite de l'API,
+ * plus fine que la carte affichee.
+ */
+function describeLine(line, product) {
+  return {
+    inventoryId: line.id,
+    printNumber: product.printNumber || null,
+    expansion: product.expansion?.name || null,
+    finish: line.finish,
+    condition: line.condition,
+    language: line.language,
+    quantity: line.quantity,
+    location: line.location || null,
+    forSale: Boolean(line.forSale),
+  };
+}
+
+function zoneOf(types) {
+  if (types.includes('Hero')) return 'hero';
+  if (types.includes('Weapon')) return 'weapons';
+  if (types.includes('Equipment')) return 'equipment';
+  return 'deck';
+}
+
+function buildCard(group) {
+  const { product, quantity, printings } = group;
+  const attrs = product.attributes || {};
+
+  // CardNexus renvoie 0 la ou la carte n'imprime simplement aucune valeur.
+  // Heros, armes et equipements n'ont jamais de cout, et n'affichent attaque ou
+  // defense que si la valeur est non nulle ; les cartes de deck, elles, peuvent
+  // vraiment couter 0 ou defendre 0, on ne touche donc qu'a leur attaque.
+  const types = attrs.types || [];
+  const permanent = ['Hero', 'Weapon', 'Equipment'].some((t) => types.includes(t));
+  const isAttack = (attrs.subTypes || []).includes('Attack') || types.includes('Weapon');
+
+  const drop = (value, whenZero) => (value === 0 && whenZero ? null : value ?? null);
+  const cost = drop(attrs.cost, permanent);
+  const power = drop(attrs.attack, permanent || !isAttack);
+  const defense = drop(attrs.defense, permanent);
+
+  return {
+    id: mergeKey(product),
+    name: cleanName(product.name),
+    quantity,
+    image: product.printNumber || null,
+    // Quelques produits n'ont pas d'illustration chez CardNexus ; les codes
+    // d'impression sont les memes que ceux de FaBrary, qui sert de repli.
+    imageUrl: product.imageUrl || cardImageUrl(product.printNumber),
+    pitch: attrs.pitch ?? null,
+    pitchName: attrs.pitch ? PITCH_NAMES[attrs.pitch] : null,
+    cost,
+    power,
+    defense,
+    types: attrs.types || [],
+    subtypes: attrs.subTypes || [],
+    talents: attrs.talents || [],
+    classes: attrs.classes || [],
+    keywords: [],
+    rarity: product.rarity || attrs.rarity || null,
+    typeText: [(attrs.classes || []).join(' '), (attrs.types || []).join(' ')]
+      .filter(Boolean)
+      .join(' '),
+    text: attrs.description || '',
+    intellect: attrs.intellect ?? null,
+    life: attrs.life ?? null,
+    printings,
+    foil: printings.some((p) => p.finish && p.finish !== 'Standard'),
+  };
+}
+
+const byNameThenPitch = (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0) - (b.pitch ?? 0);
+
+export async function fetchDeckFromLocation(locationName) {
+  const lines = await fetchAllInventory({ location: locationName });
+  if (!lines.length) {
+    throw new CardnexusError(`Aucune carte dans la location "${locationName}".`, 404);
+  }
+
+  const products = await resolveProducts(lines.map((l) => l.productId));
+
+  // Une carte = plusieurs lignes possibles (finitions, editions, etats).
+  const groups = new Map();
+  for (const line of lines) {
+    const product = products.get(line.productId);
+    if (!product) continue;
+
+    const key = mergeKey(product);
+    if (!groups.has(key)) groups.set(key, { product, quantity: 0, printings: [] });
+    const group = groups.get(key);
+    group.quantity += line.quantity;
+    group.printings.push(describeLine(line, product));
+    // On affiche l'illustration de l'edition la plus representee.
+    if (line.quantity > (group.topQuantity || 0)) {
+      group.topQuantity = line.quantity;
+      group.product = product;
+    }
+  }
+
+  const unresolved = lines.filter((l) => !products.has(l.productId)).length;
+
+  const zones = { hero: [], weapons: [], equipment: [], deck: [] };
+  for (const group of groups.values()) {
+    const card = buildCard(group);
+    zones[zoneOf(card.types)].push(card);
+  }
+
+  [zones.weapons, zones.equipment, zones.deck].forEach((list) => list.sort(byNameThenPitch));
+
+  // Une location ne contient normalement qu'un heros ; s'il y en a plusieurs on
+  // prend le premier et on laisse les autres dans le deck.
+  const [heroCard, ...extraHeroes] = zones.hero.sort(byNameThenPitch);
+  zones.deck.push(...extraHeroes);
+  zones.deck.sort(byNameThenPitch);
+
+  const hero = heroCard
+    ? {
+        id: heroCard.id,
+        name: heroCard.name,
+        image: heroCard.image,
+        imageUrl: heroCard.imageUrl,
+        intellect: heroCard.intellect,
+        life: heroCard.life,
+        classes: heroCard.classes,
+        talents: heroCard.talents,
+        typeText: heroCard.typeText,
+        text: heroCard.text,
+        // Le heros est une carte comme une autre cote inventaire : il porte ses
+        // lignes, sinon "tout prendre" le laisserait derriere.
+        pitch: heroCard.pitch,
+        quantity: heroCard.quantity,
+        printings: heroCard.printings,
+      }
+    : null;
+
+  const total = (list) => list.reduce((sum, c) => sum + c.quantity, 0);
+
+  return {
+    source: 'cardnexus',
+    deckId: locationName,
+    url: null,
+    name: locationName,
+    format: 'Inventaire CardNexus',
+    notes: unresolved
+      ? `${unresolved} ligne(s) d'inventaire n'ont pas pu etre resolues dans le catalogue CardNexus.`
+      : null,
+    tags: [],
+    tournament: null,
+    createdAt: null,
+    updatedAt: lines.reduce((latest, l) => (l.updatedAt > latest ? l.updatedAt : latest), ''),
+    author: null,
+    hero,
+    weapons: zones.weapons,
+    equipment: zones.equipment,
+    deck: zones.deck,
+    sideboard: [],
+    counts: {
+      deck: total(zones.deck),
+      weapons: total(zones.weapons),
+      equipment: total(zones.equipment),
+      sideboard: 0,
+      unique: zones.deck.length,
+    },
+  };
+}
+
+// --- Recherche dans l'inventaire ------------------------------------------
+
+const SEARCH_LIMIT = 60;
+
+/**
+ * Cherche des lignes d'inventaire par nom de carte, toutes locations confondues.
+ * C'est le sens "ramener une carte dans le deck" : on voit ou sont les
+ * exemplaires avant d'en prendre.
+ */
+export async function searchInventoryLines(query, { game = 'fab' } = {}) {
+  const term = String(query || '').trim();
+  if (term.length < 2) {
+    throw new CardnexusError('Tapez au moins deux caracteres.', 400);
+  }
+
+  const res = await api('/inventory/search', {
+    method: 'POST',
+    body: { name: term, limit: SEARCH_LIMIT, gameFilters: { game } },
+  });
+
+  const lines = res.data || [];
+  const products = await resolveProducts(lines.map((l) => l.productId));
+
+  // Une entree par carte, ses lignes en dessous : meme lecture que dans un deck.
+  const groups = new Map();
+  for (const line of lines) {
+    const product = products.get(line.productId);
+    if (!product) continue;
+
+    const key = mergeKey(product);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        name: cleanName(product.name),
+        pitch: product.attributes?.pitch ?? null,
+        pitchName: product.attributes?.pitch ? PITCH_NAMES[product.attributes.pitch] : null,
+        imageUrl: product.imageUrl || cardImageUrl(product.printNumber),
+        types: product.attributes?.types || [],
+        lines: [],
+      });
+    }
+    groups.get(key).lines.push(describeLine(line, product));
+  }
+
+  for (const group of groups.values()) {
+    group.lines.sort((a, b) => (a.location || '').localeCompare(b.location || '', 'fr'));
+    group.quantity = group.lines.reduce((sum, l) => sum + l.quantity, 0);
+  }
+
+  return {
+    total: res.pagination?.total ?? lines.length,
+    truncated: Boolean(res.pagination?.hasMore),
+    // L'API classe par pertinence : la carte cherchee arrive en premier. On
+    // garde cet ordre (les Map preservent l'insertion) au lieu de re-trier.
+    cards: [...groups.values()],
+  };
+}
+
+// --- Deplacements ----------------------------------------------------------
+
+const MOVE_BATCH = 200;
+
+const ERROR_LABELS = {
+  NOT_FOUND: "cette ligne d'inventaire n'existe plus",
+  INSUFFICIENT_QUANTITY: 'quantite insuffisante sur la ligne',
+  INVALID_COUNT: 'quantite demandee superieure a la ligne',
+  INVALID_ITEM: 'la ligne est citee deux fois dans le meme envoi',
+  LOCATION_NOT_FOUND: 'cette location n existe pas',
+  TAG_NOT_FOUND: 'tag inconnu',
+};
+
+/**
+ * Deplace des fractions de lignes vers une location.
+ *
+ * `moves` : [{ inventoryId, count }]. `destination` est un nom de location
+ * existante, ou null pour retirer les cartes de toute location. L'API decoupe
+ * la ligne toute seule quand `count` est inferieur a sa quantite, et fusionne
+ * a l'arrivee avec une ligne identique s'il y en a une.
+ */
+export async function moveLines(moves, destination) {
+  if (!Array.isArray(moves) || !moves.length) {
+    throw new CardnexusError('Aucun deplacement a appliquer.', 400);
+  }
+  if (moves.length > MOVE_BATCH) {
+    throw new CardnexusError(`Maximum ${MOVE_BATCH} deplacements par envoi.`, 400);
+  }
+
+  // L'API rejette l'envoi entier si une ligne y figure deux fois.
+  const seen = new Set();
+  const items = moves.map(({ inventoryId, count }) => {
+    if (!inventoryId || !Number.isInteger(count) || count < 1) {
+      throw new CardnexusError('Deplacement invalide : inventoryId et count requis.', 400);
+    }
+    if (seen.has(inventoryId)) {
+      throw new CardnexusError('La meme ligne apparait deux fois dans la selection.', 400);
+    }
+    seen.add(inventoryId);
+    return { inventoryId, count, location: destination };
+  });
+
+  const res = await api('/inventory/bulk/update', {
+    method: 'POST',
+    body: { items },
+    idempotencyKey: uuid(),
+  });
+
+  // Le stock a bouge : les recherches memorisees ne valent plus rien.
+  forgetInventorySearches();
+
+  const results = res.results || [];
+  const applied = [];
+  const failed = [];
+
+  for (const result of results) {
+    const move = moves[result.index];
+    if (result.status === 'ok') {
+      applied.push({ ...move, survivingId: result.inventoryId });
+    } else {
+      failed.push({ ...move, code: result.code, reason: ERROR_LABELS[result.code] || result.code });
+    }
+  }
+
+  return { applied, failed, destination };
+}
+
+// --- Montage d'un deck a partir d'une liste ---------------------------------
+
+/**
+ * Cle de jointure entre une carte FaBrary et un produit CardNexus.
+ *
+ * CardNexus expose `attributes.fabId` = slug du nom + numero de pitch
+ * ("buckwild-1"). FaBrary donne le nom et le pitch : on reconstruit donc la
+ * meme cle des deux cotes, sans dependre du format d'identifiant de FaBrary.
+ */
+export const slugifyName = (name) =>
+  String(name)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+export const fabKey = (name, pitch) =>
+  pitch ? `${slugifyName(name)}-${pitch}` : slugifyName(name);
+
+const SEARCH_PAGE = 200;
+const SLUG_CACHE_TTL_MS = 2 * 60 * 1000;
+
+// Un plan coute une requete par nom de carte, et deux decks partagent beaucoup
+// de cartes. On garde les resultats un court moment — assez pour replanifier ou
+// enchainer deux decks, assez peu pour ne pas travailler sur un stock perime.
+const slugCache = new Map();
+
+/** Vide le cache des recherches : l'inventaire vient de changer. */
+export function forgetInventorySearches() {
+  slugCache.clear();
+}
+
+/** Toutes les lignes de l'inventaire pour ce slug, pitchs confondus. */
+async function linesForSlug(nameSlug) {
+  const hit = slugCache.get(nameSlug);
+  if (hit && hit.expiresAt > Date.now()) return hit.lines;
+
+  const lines = [];
+  for (let offset = 0; offset < 2000; offset += SEARCH_PAGE) {
+    const res = await api('/inventory/search', {
+      method: 'POST',
+      body: { nameSlug, limit: SEARCH_PAGE, offset, gameFilters: { game: 'fab' } },
+    });
+    lines.push(...(res.data || []));
+    if (!res.pagination?.hasMore) break;
+  }
+
+  slugCache.set(nameSlug, { lines, expiresAt: Date.now() + SLUG_CACHE_TTL_MS });
+  return lines;
+}
+
+/** Execute `task` sur chaque element, `size` en parallele au plus. */
+async function mapWithConcurrency(items, size, task) {
+  const results = new Array(items.length);
+  const queue = items.map((item, index) => ({ item, index }));
+
+  const worker = async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      results[next.index] = await task(next.item);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+  return results;
+}
+
+const CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
+
+/**
+ * Ordre dans lequel on pioche automatiquement les exemplaires. On evite
+ * d'abord ce qui couterait cher a deplacer : une carte en vente (elle porte une
+ * annonce), puis une carte prise a un autre deck (on le demonterait).
+ */
+function allocationOrder(deckLocations) {
+  return (a, b) =>
+    Number(a.forSale) - Number(b.forSale) ||
+    Number(deckLocations.has(a.location)) - Number(deckLocations.has(b.location)) ||
+    Number(a.finish !== 'Standard') - Number(b.finish !== 'Standard') ||
+    (CONDITION_RANK[a.condition] ?? 9) - (CONDITION_RANK[b.condition] ?? 9) ||
+    b.quantity - a.quantity;
+}
+
+/**
+ * Construit le plan de montage : pour chaque carte voulue, ce qui est deja sur
+ * place, ce qu'on propose de deplacer, et ce qui manque.
+ *
+ * `wanted` : [{ name, pitch, quantity, imageUrl, types }] — issu d'une liste
+ * FaBrary. `destination` : la location ou le deck doit finir.
+ */
+export async function planDeckBuild(wanted, destination) {
+  if (!Array.isArray(wanted) || !wanted.length) {
+    throw new CardnexusError('Liste de cartes vide.', 400);
+  }
+
+  const slugs = [...new Set(wanted.map((card) => slugifyName(card.name)))];
+  const pages = await mapWithConcurrency(slugs, 3, linesForSlug);
+  const allLines = pages.flat();
+
+  const products = await resolveProducts(allLines.map((l) => l.productId));
+  const deckLocations = new Set((await listDeckLocations()).map((l) => l.name));
+
+  // Lignes disponibles, rangees par cle de carte.
+  const byKey = new Map();
+  for (const line of allLines) {
+    const product = products.get(line.productId);
+    if (!product) continue;
+
+    const key = mergeKey(product);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push({ ...describeLine(line, product), imageUrl: product.imageUrl });
+  }
+
+  const sortForAllocation = allocationOrder(deckLocations);
+  const rows = wanted.map((card) => {
+    const key = fabKey(card.name, card.pitch);
+    const candidates = (byKey.get(key) || []).slice().sort(sortForAllocation);
+
+    const onSite = candidates.filter((line) => line.location === destination);
+    const elsewhere = candidates.filter((line) => line.location !== destination);
+
+    const already = onSite.reduce((sum, line) => sum + line.quantity, 0);
+    let remaining = Math.max(0, card.quantity - already);
+
+    // Repartition proposee : on pioche dans l'ordre jusqu'a completer.
+    const picks = [];
+    for (const line of elsewhere) {
+      if (remaining === 0) break;
+      const take = Math.min(remaining, line.quantity);
+      picks.push({ ...line, take });
+      remaining -= take;
+    }
+
+    const available = elsewhere.reduce((sum, line) => sum + line.quantity, 0);
+    return {
+      key,
+      name: card.name,
+      pitch: card.pitch ?? null,
+      pitchName: card.pitch ? PITCH_NAMES[card.pitch] : null,
+      types: card.types || [],
+      imageUrl: card.imageUrl || candidates[0]?.imageUrl || null,
+      needed: card.quantity,
+      already,
+      picked: card.quantity - already - remaining,
+      missing: remaining,
+      available,
+      candidates: elsewhere,
+      onSite,
+      picks,
+    };
+  });
+
+  const sum = (field) => rows.reduce((total, row) => total + row[field], 0);
+  return {
+    destination,
+    rows,
+    totals: {
+      needed: sum('needed'),
+      already: sum('already'),
+      toMove: sum('picked'),
+      missing: sum('missing'),
+      cardsMissing: rows.filter((row) => row.missing > 0).length,
+      fromDecks: rows
+        .flatMap((row) => row.picks)
+        .filter((pick) => deckLocations.has(pick.location)).length,
+    },
+  };
+}
+
+/** Cree la location (ou la renvoie telle quelle si elle existe deja). */
+export async function ensureLocation(name, { color = 'blue', icon = DECK_ICON } = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new CardnexusError('Nom de location manquant.', 400);
+  if (trimmed.length > 100) throw new CardnexusError('Nom de location trop long (100 max).', 400);
+
+  return api('/inventory/locations', {
+    method: 'POST',
+    body: { name: trimmed, color, icon, upsert: true },
+    idempotencyKey: uuid(),
+  });
+}

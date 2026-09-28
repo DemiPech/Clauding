@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'net.demipech.decklist'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'net.demipech.decklist'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    // Cle de signature versionnee : chaque APK compile par la CI porte la meme
+    // signature, donc une nouvelle version s'installe par-dessus l'ancienne
+    // sans perdre les reglages (cle d'API). C'est une cle "debug" sans valeur,
+    // uniquement pour l'installation manuelle (pas de Play Store).
+    signingConfigs {
+        shared {
+            storeFile file('decklist.keystore')
+            storePassword 'android'
+            keyAlias 'decklist'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deux cartes en eventail, dans la zone sure de 66dp au centre. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-12">
+        <path
+            android:fillColor="#F0EBE4"
+            android:fillAlpha="0.55"
+            android:pathData="M40,33 h22 a3,3 0 0 1 3,3 v36 a3,3 0 0 1 -3,3 h-22 a3,3 0 0 1 -3,-3 v-36 a3,3 0 0 1 3,-3 z" />
+    </group>
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="10">
+        <path
+            android:fillColor="#F0EBE4"
+            android:pathData="M46,33 h22 a3,3 0 0 1 3,3 v36 a3,3 0 0 1 -3,3 h-22 a3,3 0 0 1 -3,-3 v-36 a3,3 0 0 1 3,-3 z" />
+        <path
+            android:fillColor="#B8492F"
+            android:pathData="M57,44 l6,10 l-6,10 l-6,-10 z" />
+    </group>
+</vector>

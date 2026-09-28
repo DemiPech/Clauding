@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12100f" />
+    <title>Decklist Viewer — Flesh and Blood</title>
+    <link rel="preconnect" href="https://content.fabrary.net" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">FaB</span>
+        <span class="brand-name">Decklist Viewer</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="link-btn" id="my-decks-btn" hidden>Mes decks</button>
+        <button class="icon-btn settings-btn" id="settings-btn" aria-label="Réglages" title="Réglages">⚙</button>
+      </div>
+      <form class="search" id="search-form" autocomplete="off">
+        <input
+          id="deck-input"
+          type="text"
+          inputmode="url"
+          placeholder="https://fabrary.net/decks/… ou un ID de deck"
+          aria-label="URL ou identifiant du deck FaBrary"
+          spellcheck="false"
+        />
+        <button type="submit" id="load-btn">Charger</button>
+      </form>
+    </header>
+
+    <main id="main">
+      <section id="state-idle">
+        <div class="intro">
+          <h1>Vos decks, d'où qu'ils viennent</h1>
+          <p>
+            Collez l'URL d'un deck public FaBrary, ou ouvrez un deck de votre inventaire CardNexus.
+            <button class="link-btn link-btn-inline" data-example="01M3266BQFH7Y98S5E859NZK4Z">
+              Voir un exemple FaBrary
+            </button>
+          </p>
+        </div>
+
+        <section class="picker" id="picker">
+          <div class="section-head">
+            <h2>Mes decks CardNexus</h2>
+            <span class="section-count" id="picker-count"></span>
+          </div>
+          <p class="picker-note" id="picker-note">Chargement de l'inventaire…</p>
+          <ul class="deck-cards" id="picker-list"></ul>
+        </section>
+      </section>
+
+      <section class="state" id="state-loading" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Récupération du deck…</p>
+      </section>
+
+      <section class="state state-error" id="state-error" hidden>
+        <h2>Deck indisponible</h2>
+        <p id="error-message"></p>
+      </section>
+
+      <article id="deck" hidden>
+        <section class="deck-head">
+          <img class="hero-art" id="hero-art" alt="" />
+          <div class="deck-meta">
+            <p class="eyebrow" id="deck-hero-line"></p>
+            <h1 id="deck-name"></h1>
+            <p class="byline" id="deck-byline"></p>
+            <ul class="stat-row" id="deck-stats"></ul>
+            <div class="deck-links">
+              <a id="fabrary-link" href="#" target="_blank" rel="noopener">Voir sur FaBrary ↗</a>
+              <button class="link-btn" id="copy-btn">Copier la decklist</button>
+              <button class="link-btn" id="build-btn" hidden>Monter dans CardNexus</button>
+            </div>
+          </div>
+        </section>
+
+        <nav class="toolbar">
+          <div class="toolbar-group" role="group" aria-label="Affichage">
+            <span class="toolbar-label">Vue</span>
+            <button class="chip is-active" data-view="grid">Grille</button>
+            <button class="chip" data-view="list">Liste</button>
+          </div>
+          <div class="toolbar-group" role="group" aria-label="Regroupement">
+            <span class="toolbar-label">Grouper par</span>
+            <button class="chip is-active" data-group="pitch">Pitch</button>
+            <button class="chip" data-group="type">Type</button>
+            <button class="chip" data-group="none">Rien</button>
+          </div>
+        </nav>
+
+        <div id="sections"></div>
+
+        <section class="notes" id="deck-notes" hidden>
+          <h2>Notes</h2>
+          <div id="notes-body"></div>
+        </section>
+      </article>
+
+      <section id="build" hidden>
+        <button class="link-btn" id="build-back">← Retour à la liste</button>
+
+        <header class="build-head">
+          <p class="eyebrow">Monter ce deck dans CardNexus</p>
+          <h1 id="build-title"></h1>
+          <p class="byline" id="build-subtitle"></p>
+        </header>
+
+        <form class="build-setup" id="build-setup">
+          <fieldset class="build-dest">
+            <legend>Où ranger le deck</legend>
+
+            <label class="radio-row">
+              <input type="radio" name="build-mode" value="new" checked />
+              <span>Nouveau deck</span>
+              <input
+                type="text"
+                id="build-new-name"
+                placeholder="Boulder - Dorinthea"
+                maxlength="100"
+                aria-label="Nom du nouveau deck"
+              />
+            </label>
+
+            <label class="radio-row">
+              <input type="radio" name="build-mode" value="existing" />
+              <span>Deck existant</span>
+              <select id="build-existing" disabled aria-label="Deck existant"></select>
+            </label>
+          </fieldset>
+
+          <label class="check-row">
+            <input type="checkbox" id="build-sideboard" />
+            <span id="build-sideboard-label">Inclure la réserve</span>
+          </label>
+
+          <button type="submit" class="primary-btn" id="build-compute">Calculer le plan</button>
+        </form>
+
+        <p class="move-note" id="build-note"></p>
+
+        <div id="build-result" hidden>
+          <div class="build-summary">
+            <ul class="stat-row" id="build-stats"></ul>
+            <div class="build-actions">
+              <button class="primary-btn" id="build-apply">Déplacer les cartes</button>
+              <span class="build-hint" id="build-hint"></span>
+            </div>
+          </div>
+          <ul class="build-rows" id="build-rows"></ul>
+        </div>
+      </section>
+    </main>
+
+    <div class="preview" id="preview" hidden aria-hidden="true">
+      <img id="preview-img" alt="" />
+    </div>
+
+    <!-- Plein écran d'une carte : remplace l'ouverture de l'image dans un onglet. -->
+    <div class="lightbox" id="lightbox" hidden>
+      <img id="lightbox-img" alt="" />
+    </div>
+
+    <div class="line-picker" id="line-picker" hidden>
+      <div class="line-picker-head">
+        <span id="line-picker-title"></span>
+        <button class="icon-btn" id="line-picker-close" aria-label="Fermer">×</button>
+      </div>
+      <ul class="line-list" id="line-picker-list"></ul>
+      <p class="line-picker-hint">Réglez combien d'exemplaires prendre sur chaque ligne.</p>
+    </div>
+
+    <div class="movebar" id="movebar" hidden>
+      <div class="movebar-panel" id="movebar-panel" hidden>
+        <section class="move-search" id="move-search" hidden>
+          <form class="move-search-form" id="move-search-form" autocomplete="off">
+            <input
+              id="move-search-input"
+              type="search"
+              placeholder="Nom de carte à chercher dans tout l'inventaire…"
+              aria-label="Chercher une carte dans l'inventaire"
+            />
+            <button type="submit">Chercher</button>
+          </form>
+          <p class="move-note" id="move-search-note"></p>
+          <div id="move-search-results"></div>
+        </section>
+
+        <section class="move-basket" id="move-basket" hidden>
+          <ul class="basket-list" id="basket-list"></ul>
+          <p class="move-note" id="basket-note"></p>
+        </section>
+      </div>
+
+      <div class="movebar-row">
+        <button class="chip" id="select-all">Tout prendre</button>
+        <button class="chip" id="search-toggle">Ajouter depuis l'inventaire</button>
+        <button class="chip" id="basket-toggle">En main : <b id="basket-count">0</b></button>
+        <span class="movebar-spacer"></span>
+        <label class="movebar-dest">
+          <span id="destination-label">Sortir vers</span>
+          <select id="destination" aria-label="Destination des cartes sorties du deck"></select>
+        </label>
+        <button class="primary-btn" id="apply-move" disabled>Déplacer</button>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" hidden>
+      <span id="toast-message"></span>
+      <button class="link-btn" id="toast-undo" hidden>Annuler</button>
+      <button class="icon-btn" id="toast-close" aria-label="Fermer">×</button>
+    </div>
+
+    <div class="sheet-backdrop" id="settings" hidden>
+      <form class="sheet" id="settings-form" autocomplete="off">
+        <div class="sheet-head">
+          <h2>Réglages</h2>
+          <button type="button" class="icon-btn" id="settings-close" aria-label="Fermer">×</button>
+        </div>
+
+        <label class="field">
+          <span>Clé d'API CardNexus</span>
+          <input
+            id="settings-key"
+            type="password"
+            placeholder="cnk_live_…"
+            spellcheck="false"
+            autocapitalize="off"
+          />
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="settings-show" />
+          <span>Afficher la clé</span>
+        </label>
+
+        <p class="move-note" id="settings-note">
+          La clé reste sur ce téléphone. Elle se crée dans les paramètres de votre compte CardNexus.
+        </p>
+
+        <div class="sheet-actions">
+          <button type="button" class="link-btn" id="settings-clear">Effacer</button>
+          <button type="submit" class="primary-btn">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+
+    <script type="module" src="js/api.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# Cle d'API : jamais dans le depot. Dans l'app, elle se saisit dans les reglages.
+api_key.txt
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/fab-decks.apk
+*.iml
+.idea/
