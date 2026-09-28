@@ -18,6 +18,26 @@ fichier de la release. Toutes les versions sont signées avec la même clé
 (`app/decklist.keystore`), donc une mise à jour s'installe par-dessus l'ancienne sans
 perdre la clé d'API.
 
+## Monter un deck : où chercher les cartes
+
+La répartition proposée cherche à **visiter le moins d'endroits possible** :
+
+1. d'abord dans la collection hors decks et hors cartes en vente, avec le plus petit ensemble
+   d'endroits qui fournit tout ce qu'elle peut fournir ;
+2. puis, seulement pour ce qui manque encore, dans d'autres decks ;
+3. enfin dans les cartes en vente.
+
+À chaque étape, les endroits déjà retenus sont gratuits : on n'en ajoute un que pour ce qu'ils
+ne couvrent pas. La recherche est exacte jusqu'à 16 endroits candidats (les endroits
+indispensables, seuls à avoir une carte, sont retenus d'office), puis gloutonne au-delà.
+Dans un endroit retenu, on prend d'abord les exemplaires Standard et en meilleur état.
+
+Le récap **Où chercher** regroupe la sélection par endroit, le plus fourni en premier, avec
+pour chaque carte le code d'impression, la finition, l'état et la langue. Il signale les
+endroits qui sont d'autres decks, et liste à part les cartes **manquantes**. Il suit les
+compteurs en direct. « Copier le récap » le met en texte dans le presse-papiers, et
+« Revenir à la répartition optimisée » annule les retouches manuelles.
+
 ## Comparer un deck à une liste FaBrary
 
 Sur un deck CardNexus, « Comparer à une liste FaBrary » demande l'URL d'une liste, puis ouvre

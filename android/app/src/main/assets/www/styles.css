@@ -1414,6 +1414,88 @@ body.has-movebar .toast {
   font-size: 13px;
 }
 
+/* Récap « où chercher » : une carte par endroit. */
+.pickup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pickup-place {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.pickup-place.is-missing {
+  border-color: var(--accent);
+}
+
+.pickup-place-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pickup-place-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickup-place.is-missing .pickup-place-head b {
+  color: var(--accent);
+}
+
+.pickup-items {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.pickup-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 12px;
+  font-size: 14px;
+}
+
+.pickup-qty {
+  flex: none;
+  width: 26px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pickup-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pickup-name > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickup-sub {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.pickup-sub:empty {
+  display: none;
+}
+
 .hide-settled .is-settled {
   display: none;
 }

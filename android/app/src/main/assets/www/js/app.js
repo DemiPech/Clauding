@@ -85,6 +85,11 @@ const els = {
   buildSurplusCount: $('#build-surplus-count'),
   buildSurplusRows: $('#build-surplus-rows'),
   buildOut: $('#build-out'),
+  buildPickup: $('#build-pickup'),
+  buildPickupCount: $('#build-pickup-count'),
+  buildPickupList: $('#build-pickup-list'),
+  buildPickupCopy: $('#build-pickup-copy'),
+  buildReset: $('#build-reset'),
 
   compareBtn: $('#compare-btn'),
   compare: $('#compare'),
@@ -1301,6 +1306,7 @@ function buildRowNode(row) {
               const alloc = allocationFor(row.key);
               if (count > 0) alloc.set(line.inventoryId, count);
               else alloc.delete(line.inventoryId);
+              build.modified = true;
               paintSource();
               renderBuildSummary();
             },
@@ -1426,6 +1432,8 @@ function renderBuildSummary() {
     ...(totals.fromDecks ? [stat("prises à d'autres decks", totals.fromDecks, 'is-warn')] : []),
   );
 
+  renderPickup();
+
   const moves = totals.toMove + totals.toRemove;
   els.buildApply.disabled = moves === 0;
   if (moves) {
@@ -1440,6 +1448,158 @@ function renderBuildSummary() {
   } else {
     els.buildHint.textContent = 'le deck correspond déjà à la liste';
   }
+}
+
+// --- Récap « où chercher » -------------------------------------------------
+//
+// La tournée à faire dans la collection : les exemplaires sélectionnés,
+// regroupés par endroit, le plus fourni en premier. Il suit les compteurs.
+
+const PITCH_FR = { 1: 'rouge', 2: 'jaune', 3: 'bleu' };
+
+const byCardName = (a, b) => a.row.name.localeCompare(b.row.name) || (a.row.pitch ?? 0) - (b.row.pitch ?? 0);
+
+/** [{ place, total, items: [{ row, line, count }] }], du plus gros au plus petit. */
+function pickupGroups() {
+  const byPlace = new Map();
+  for (const row of build.plan.rows) {
+    for (const [inventoryId, count] of allocationFor(row.key)) {
+      const line = row.candidates.find((c) => c.inventoryId === inventoryId);
+      if (!count || !line) continue;
+      const key = line.location ?? '';
+      if (!byPlace.has(key)) byPlace.set(key, { place: line.location || null, total: 0, items: [] });
+      const group = byPlace.get(key);
+      group.items.push({ row, line, count });
+      group.total += count;
+    }
+  }
+
+  const groups = [...byPlace.values()];
+  for (const group of groups) group.items.sort(byCardName);
+  return groups.sort((a, b) => b.total - a.total || (a.place || '').localeCompare(b.place || '', 'fr'));
+}
+
+/** Ce qui manque encore une fois la sélection prise : à acheter ou à échanger. */
+function missingCards() {
+  return build.plan.rows
+    .map((row) => ({ row, count: Math.max(0, row.needed - row.already - takenFor(row.key)) }))
+    .filter((item) => item.count > 0)
+    .sort(byCardName);
+}
+
+const cardLabel = (row) => `${row.name}${PITCH_FR[row.pitch] ? ` (${PITCH_FR[row.pitch]})` : ''}`;
+
+function pickupItemNode({ row, line, count }) {
+  const li = document.createElement('li');
+  li.className = 'pickup-item';
+  li.innerHTML = `
+    <span class="pickup-qty">${count}×</span>
+    <i class="row-pitch" style="--dot:${PITCH_COLORS[row.pitch] || 'var(--pitch-0)'}"></i>
+    <span class="pickup-name">
+      <span>${escapeHtml(row.name)}</span>
+      <span class="pickup-sub"></span>
+    </span>
+  `;
+  li.querySelector('.pickup-sub').textContent = [
+    line ? lineLabel(line) : null,
+    line?.forSale ? 'en vente' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return li;
+}
+
+function pickupPlaceNode({ title, total, items, note, className }) {
+  const box = document.createElement('div');
+  box.className = `pickup-place${className ? ` ${className}` : ''}`;
+
+  const head = document.createElement('div');
+  head.className = 'pickup-place-head';
+  const name = document.createElement('b');
+  name.textContent = title;
+  const count = document.createElement('span');
+  count.className = 'section-count';
+  count.textContent = `${total} carte${total > 1 ? 's' : ''}`;
+  head.append(name);
+  if (note) {
+    const badge = document.createElement('span');
+    badge.className = 'badge is-partial';
+    badge.textContent = note;
+    head.append(badge);
+  }
+  head.append(count);
+
+  const list = document.createElement('ul');
+  list.className = 'pickup-items';
+  list.append(...items.map(pickupItemNode));
+
+  box.append(head, list);
+  return box;
+}
+
+function renderPickup() {
+  const groups = pickupGroups();
+  const missing = missingCards();
+  els.buildPickup.hidden = groups.length === 0 && missing.length === 0;
+  els.buildReset.hidden = !build.modified;
+
+  const places = groups.length;
+  const cards = groups.reduce((sum, g) => sum + g.total, 0);
+  els.buildPickupCount.textContent = places
+    ? `${places} endroit${places > 1 ? 's' : ''} · ${cards} carte${cards > 1 ? 's' : ''}`
+    : 'rien à aller chercher';
+
+  const nodes = groups.map((group) =>
+    pickupPlaceNode({
+      title: group.place || 'Sans location',
+      total: group.total,
+      items: group.items,
+      note: isDeckLocation(group.place) ? 'autre deck' : null,
+    }),
+  );
+  if (missing.length) {
+    nodes.push(
+      pickupPlaceNode({
+        title: 'Manquantes',
+        total: missing.reduce((sum, item) => sum + item.count, 0),
+        items: missing.map(({ row, count }) => ({ row, line: null, count })),
+        className: 'is-missing',
+      }),
+    );
+  }
+  els.buildPickupList.replaceChildren(...nodes);
+}
+
+/** Le récap en texte, à coller dans une note ou un message. */
+function pickupAsText() {
+  const groups = pickupGroups();
+  const cards = groups.reduce((sum, g) => sum + g.total, 0);
+  const lines = [
+    `Monter « ${build.plan.destination} » — ${groups.length} endroit${groups.length > 1 ? 's' : ''}, ${cards} carte${cards > 1 ? 's' : ''}`,
+  ];
+
+  for (const group of groups) {
+    lines.push('', `${group.place || 'Sans location'} (${group.total})${isDeckLocation(group.place) ? ' — autre deck' : ''}`);
+    for (const { row, line, count } of group.items) {
+      lines.push(`  ${count}× ${cardLabel(row)} — ${lineLabel(line)}${line.forSale ? ' · en vente' : ''}`);
+    }
+  }
+
+  const missing = missingCards();
+  if (missing.length) {
+    lines.push('', `Manquantes (${missing.reduce((sum, item) => sum + item.count, 0)})`);
+    for (const { row, count } of missing) lines.push(`  ${count}× ${cardLabel(row)}`);
+  }
+  return lines.join('\n');
+}
+
+/** Rétablit la répartition calculée (le moins d'endroits), après des retouches. */
+function resetAllocation() {
+  build.allocation = new Map(
+    build.plan.rows.map((row) => [row.key, new Map(row.picks.map((p) => [p.inventoryId, p.take]))]),
+  );
+  build.modified = false;
+  renderBuild();
 }
 
 /** Où ranger les cartes en trop : toute location sauf le deck lui-même. */
@@ -1564,6 +1724,7 @@ async function computePlan() {
     build.removal = new Map(
       (plan.surplus || []).map((row) => [row.key, new Map(row.picks.map((p) => [p.inventoryId, p.take]))]),
     );
+    build.modified = false;
     build.pendingCreate = destination.create ? destination.name : null;
 
     els.buildNote.textContent = '';
@@ -2006,6 +2167,18 @@ els.buildSetup.addEventListener('submit', (event) => {
   computePlan();
 });
 els.buildApply.addEventListener('click', applyBuild);
+els.buildReset.addEventListener('click', resetAllocation);
+els.buildPickupCopy.addEventListener('click', async () => {
+  try {
+    await copyText(pickupAsText());
+    els.buildPickupCopy.textContent = 'Copié !';
+  } catch {
+    els.buildPickupCopy.textContent = 'Copie refusée';
+  }
+  setTimeout(() => {
+    els.buildPickupCopy.textContent = 'Copier le récap';
+  }, 1600);
+});
 els.buildHideSettled.addEventListener('change', () => {
   els.buildRows.classList.toggle('hide-settled', els.buildHideSettled.checked);
 });

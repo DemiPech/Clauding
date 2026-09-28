@@ -542,6 +542,148 @@ function allocationOrder(deckLocations) {
     b.quantity - a.quantity;
 }
 
+// --- Repartition sur le moins d'endroits possible ----------------------------
+
+/** Au-dela, l'enumeration exacte des combinaisons coute trop : on passe au glouton. */
+const EXACT_COVER_MAX_PLACES = 16;
+
+const placeOf = (line) => line.location ?? '';
+
+/** Copies obtenues pour chaque carte si l'on va chercher dans ces endroits. */
+function coverage(places, offers, need) {
+  let total = 0;
+  for (let i = 0; i < need.length; i += 1) {
+    let got = 0;
+    for (const place of places) got += offers.get(place)[i];
+    total += Math.min(need[i], got);
+  }
+  return total;
+}
+
+/** Toutes les combinaisons de `size` elements, dans l'ordre du tableau. */
+function* combinations(items, size, start = 0, prefix = []) {
+  if (prefix.length === size) {
+    yield prefix;
+    return;
+  }
+  for (let i = start; i <= items.length - (size - prefix.length); i += 1) {
+    yield* combinations(items, size, i + 1, [...prefix, items[i]]);
+  }
+}
+
+/**
+ * Le plus petit ensemble d'endroits qui fournit autant de copies que tous les
+ * endroits reunis. Exact jusqu'a EXACT_COVER_MAX_PLACES endroits (on essaie
+ * les ensembles de 1, puis 2, ... endroits), glouton au-dela.
+ *
+ * `offers` : Map(endroit → copies disponibles par carte). `need` : copies
+ * encore voulues par carte.
+ */
+function fewestPlaces(offers, need) {
+  // Les endroits qui fournissent le plus d'abord : a taille egale, la premiere
+  // combinaison trouvee prefere les gros stocks.
+  const places = [...offers.keys()].sort(
+    (a, b) => coverage([b], offers, need) - coverage([a], offers, need) || a.localeCompare(b, 'fr'),
+  );
+  const target = coverage(places, offers, need);
+  if (target === 0) return [];
+
+  // Un endroit sans lequel on n'atteint pas la cible (seul a avoir une carte,
+  // par exemple) est de toute facon retenu : on ne cherche que parmi les autres.
+  const required = places.filter(
+    (place) => coverage(places.filter((p) => p !== place), offers, need) < target,
+  );
+  const optional = places.filter((place) => !required.includes(place));
+  if (coverage(required, offers, need) === target) return required;
+
+  if (optional.length <= EXACT_COVER_MAX_PLACES) {
+    for (let size = 1; size <= optional.length; size += 1) {
+      for (const combo of combinations(optional, size)) {
+        const candidate = [...required, ...combo];
+        if (coverage(candidate, offers, need) === target) return candidate;
+      }
+    }
+  }
+
+  const chosen = [...required];
+  let covered = coverage(chosen, offers, need);
+  while (covered < target) {
+    let best = null;
+    let bestGain = 0;
+    for (const place of places) {
+      if (chosen.includes(place)) continue;
+      const gain = coverage([...chosen, place], offers, need) - covered;
+      if (gain > bestGain) {
+        best = place;
+        bestGain = gain;
+      }
+    }
+    if (!best) break;
+    chosen.push(best);
+    covered += bestGain;
+  }
+  return chosen;
+}
+
+/**
+ * Repartit les copies a prendre en visitant le moins d'endroits possible.
+ *
+ * `rows` : [{ need, candidates }], les candidates deja triees par preference
+ * (allocationOrder). Les regles de prudence passent avant le nombre
+ * d'endroits : on ne pioche dans un autre deck, puis dans une carte en vente,
+ * que si le reste de la collection ne suffit pas. A chaque palier, les endroits
+ * deja retenus sont gratuits ; on n'en ajoute que pour ce qu'ils ne couvrent pas.
+ *
+ * Renvoie, par carte, Map(inventoryId → copies prises).
+ */
+export function allocateFewestPlaces(rows, deckLocations) {
+  const tiers = [
+    (line) => !line.forSale && !deckLocations.has(line.location),
+    (line) => !line.forSale,
+    () => true,
+  ];
+
+  const taken = rows.map(() => new Map());
+  const remaining = rows.map((row) => row.need);
+  const chosen = new Set();
+
+  // Pioche dans les endroits retenus, dans l'ordre de preference des lignes.
+  const takeFrom = (allowed) => {
+    rows.forEach((row, i) => {
+      for (const line of row.candidates) {
+        if (remaining[i] === 0) break;
+        if (!allowed(line) || !chosen.has(placeOf(line))) continue;
+        const left = line.quantity - (taken[i].get(line.inventoryId) || 0);
+        const take = Math.min(remaining[i], left);
+        if (take <= 0) continue;
+        taken[i].set(line.inventoryId, (taken[i].get(line.inventoryId) || 0) + take);
+        remaining[i] -= take;
+      }
+    });
+  };
+
+  for (const allowed of tiers) {
+    takeFrom(allowed);
+    if (remaining.every((n) => n === 0)) break;
+
+    const offers = new Map();
+    rows.forEach((row, i) => {
+      if (remaining[i] === 0) return;
+      for (const line of row.candidates) {
+        const place = placeOf(line);
+        if (!allowed(line) || chosen.has(place)) continue;
+        if (!offers.has(place)) offers.set(place, rows.map(() => 0));
+        offers.get(place)[i] += line.quantity;
+      }
+    });
+
+    for (const place of fewestPlaces(offers, remaining)) chosen.add(place);
+    takeFrom(allowed);
+  }
+
+  return taken;
+}
+
 /**
  * Ordre dans lequel on propose de sortir les exemplaires en trop d'un deck :
  * d'abord ce qui n'a rien a y faire (une carte en vente), puis le plus abime,
@@ -668,20 +810,8 @@ export async function planDeckBuild(rawWanted, destination, { existing = false }
 
     const onSite = candidates.filter((line) => line.location === destination);
     const elsewhere = candidates.filter((line) => line.location !== destination);
-
     const already = onSite.reduce((sum, line) => sum + line.quantity, 0);
-    let remaining = Math.max(0, card.quantity - already);
 
-    // Repartition proposee : on pioche dans l'ordre jusqu'a completer.
-    const picks = [];
-    for (const line of elsewhere) {
-      if (remaining === 0) break;
-      const take = Math.min(remaining, line.quantity);
-      picks.push({ ...line, take });
-      remaining -= take;
-    }
-
-    const available = elsewhere.reduce((sum, line) => sum + line.quantity, 0);
     return {
       key,
       name: card.name,
@@ -691,13 +821,23 @@ export async function planDeckBuild(rawWanted, destination, { existing = false }
       imageUrl: card.imageUrl || candidates[0]?.imageUrl || null,
       needed: card.quantity,
       already,
-      picked: card.quantity - already - remaining,
-      missing: remaining,
-      available,
+      available: elsewhere.reduce((sum, line) => sum + line.quantity, 0),
       candidates: elsewhere,
       onSite,
-      picks,
     };
+  });
+
+  // Repartition proposee : le moins d'endroits possible ou aller chercher.
+  const allocation = allocateFewestPlaces(
+    rows.map((row) => ({ need: Math.max(0, row.needed - row.already), candidates: row.candidates })),
+    deckLocations,
+  );
+  rows.forEach((row, i) => {
+    row.picks = row.candidates
+      .filter((line) => allocation[i].has(line.inventoryId))
+      .map((line) => ({ ...line, take: allocation[i].get(line.inventoryId) }));
+    row.picked = row.picks.reduce((sum, pick) => sum + pick.take, 0);
+    row.missing = Math.max(0, row.needed - row.already - row.picked);
   });
 
   const surplus = existing ? await surplusInLocation(wanted, destination) : [];
