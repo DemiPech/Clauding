@@ -640,12 +640,12 @@ function fewestPlaces(offers, need) {
  *
  * Renvoie, par carte, Map(inventoryId → copies prises).
  */
-export function allocateFewestPlaces(rows, deckLocations) {
-  const tiers = [
-    (line) => !line.forSale && !deckLocations.has(line.location),
-    (line) => !line.forSale,
-    () => true,
-  ];
+export function allocateFewestPlaces(rows, deckLocations, { protectDecks = true } = {}) {
+  // Sans protection, un autre deck est un endroit comme un autre : utile pour
+  // reprendre en bloc un deck qui contient deja la liste.
+  const tiers = protectDecks
+    ? [(line) => !line.forSale && !deckLocations.has(line.location), (line) => !line.forSale, () => true]
+    : [(line) => !line.forSale, () => true];
 
   const taken = rows.map(() => new Map());
   const remaining = rows.map((row) => row.need);
@@ -806,7 +806,7 @@ function mergeWanted(wanted) {
  * `wanted` : [{ name, pitch, quantity, imageUrl, types }] — issu d'une liste
  * FaBrary. `destination` : la location ou le deck doit finir.
  */
-export async function planDeckBuild(rawWanted, destination, { existing = false } = {}) {
+export async function planDeckBuild(rawWanted, destination, { existing = false, protectDecks = true } = {}) {
   if (!Array.isArray(rawWanted) || !rawWanted.length) {
     throw new CardnexusError('Liste de cartes vide.', 400);
   }
@@ -855,10 +855,24 @@ export async function planDeckBuild(rawWanted, destination, { existing = false }
   });
 
   // Repartition proposee : le moins d'endroits possible ou aller chercher.
-  const allocation = allocateFewestPlaces(
-    rows.map((row) => ({ need: Math.max(0, row.needed - row.already), candidates: row.candidates })),
-    deckLocations,
-  );
+  const needs = rows.map((row) => ({ need: Math.max(0, row.needed - row.already), candidates: row.candidates }));
+  const allocation = allocateFewestPlaces(needs, deckLocations, { protectDecks });
+
+  // Ce que chaque autre deck pourrait fournir a lui seul : de quoi suggerer de
+  // le reprendre en bloc plutot que de courir la collection.
+  const deckSources = [...deckLocations]
+    .filter((name) => name !== destination)
+    .map((name) => ({
+      name,
+      cards: needs.reduce((sum, { need, candidates }) => {
+        const here = candidates
+          .filter((line) => line.location === name && !line.forSale)
+          .reduce((total, line) => total + line.quantity, 0);
+        return sum + Math.min(need, here);
+      }, 0),
+    }))
+    .filter((source) => source.cards > 0)
+    .sort((a, b) => b.cards - a.cards);
   rows.forEach((row, i) => {
     row.picks = row.candidates
       .filter((line) => allocation[i].has(line.inventoryId))
@@ -874,6 +888,7 @@ export async function planDeckBuild(rawWanted, destination, { existing = false }
     destination,
     rows,
     surplus,
+    deckSources,
     totals: {
       extra: surplus.reduce((total, row) => total + row.extra, 0),
       needed: sum('needed'),

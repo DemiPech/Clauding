@@ -139,6 +139,11 @@
             <span id="build-sideboard-label">Inclure la réserve</span>
           </label>
 
+          <label class="check-row">
+            <input type="checkbox" id="build-protect" checked />
+            <span>Éviter de prendre dans les autres decks</span>
+          </label>
+
           <button type="submit" class="primary-btn" id="build-compute">Calculer le plan</button>
         </form>
 
@@ -151,6 +156,11 @@
               <button class="primary-btn" id="build-apply">Déplacer les cartes</button>
               <span class="build-hint" id="build-hint"></span>
             </div>
+          </div>
+
+          <div class="deck-hint" id="build-deck-hint" hidden>
+            <p id="build-deck-hint-text"></p>
+            <button type="button" class="link-btn" id="build-deck-hint-btn">Tout prendre là-bas</button>
           </div>
 
           <section id="build-pickup" hidden>

@@ -1414,6 +1414,20 @@ body.has-movebar .toast {
   font-size: 13px;
 }
 
+/* Suggestion : un autre deck contient déjà une bonne part de la liste. */
+.deck-hint {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--pitch-2);
+  border-radius: var(--radius);
+  background: rgba(217, 165, 32, 0.08);
+  font-size: 14px;
+}
+
+.deck-hint p {
+  margin: 0 0 10px;
+}
+
 /* Récap « où chercher » : une carte par endroit. */
 .pickup-actions {
   display: flex;

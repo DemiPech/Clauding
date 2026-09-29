@@ -85,6 +85,10 @@ const els = {
   buildSurplusCount: $('#build-surplus-count'),
   buildSurplusRows: $('#build-surplus-rows'),
   buildOut: $('#build-out'),
+  buildProtect: $('#build-protect'),
+  buildDeckHint: $('#build-deck-hint'),
+  buildDeckHintText: $('#build-deck-hint-text'),
+  buildDeckHintBtn: $('#build-deck-hint-btn'),
   buildPickup: $('#build-pickup'),
   buildPickupCount: $('#build-pickup-count'),
   buildPickupList: $('#build-pickup-list'),
@@ -1615,7 +1619,29 @@ function renderBuildOutOptions() {
   if (current) els.buildOut.value = current;
 }
 
+/** Seuil à partir duquel un autre deck vaut la peine d'être repris en bloc. */
+const DECK_HINT_SHARE = 0.5;
+
+/**
+ * Quand les autres decks sont protégés mais que l'un d'eux contient déjà une
+ * bonne part de la liste, on le signale : le reprendre évite de courir la
+ * collection (typiquement, remonter une liste déjà montée ailleurs).
+ */
+function renderDeckHint() {
+  const [best] = build.plan.deckSources || [];
+  const toFind = build.plan.rows.reduce((sum, row) => sum + Math.max(0, row.needed - row.already), 0);
+  const show = els.buildProtect.checked && best && toFind > 0 && best.cards / toFind >= DECK_HINT_SHARE;
+
+  els.buildDeckHint.hidden = !show;
+  if (show) {
+    els.buildDeckHintText.textContent =
+      `« ${best.name} » contient déjà ${best.cards} des ${toFind} cartes à réunir. ` +
+      'Comme c’est un autre deck, il n’est utilisé qu’en dernier recours.';
+  }
+}
+
 function renderBuild() {
+  renderDeckHint();
   els.buildRows.replaceChildren(...build.plan.rows.map(buildRowNode));
 
   const settled = build.plan.rows.filter((row) => row.already >= row.needed).length;
@@ -1675,6 +1701,7 @@ function openBuild(deck, { existing = null } = {}) {
     : 'Inclure la réserve (aucune)';
   els.buildSideboard.disabled = !deck.counts.sideboard;
   els.buildSideboard.checked = false;
+  els.buildProtect.checked = true;
 
   // Le deck comparé peut ne pas porter l'icône deck (ouvert par lien direct).
   const choices = deckLocations.map((l) => l.name);
@@ -1712,6 +1739,7 @@ async function computePlan() {
         destination: destination.name,
         includeSideboard: els.buildSideboard.checked,
         existing: !destination.create,
+        protectDecks: els.buildProtect.checked,
       }),
     });
     const plan = await res.json();
@@ -2168,6 +2196,14 @@ els.buildSetup.addEventListener('submit', (event) => {
 });
 els.buildApply.addEventListener('click', applyBuild);
 els.buildReset.addEventListener('click', resetAllocation);
+// Changer la protection des decks change la répartition : on recalcule.
+els.buildProtect.addEventListener('change', () => {
+  if (build.plan) computePlan();
+});
+els.buildDeckHintBtn.addEventListener('click', () => {
+  els.buildProtect.checked = false;
+  computePlan();
+});
 els.buildPickupCopy.addEventListener('click', async () => {
   try {
     await copyText(pickupAsText());

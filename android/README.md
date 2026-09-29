@@ -35,6 +35,11 @@ d'un seul endroit quand l'un d'eux en a assez : le mieux classé. Sinon, elle es
 le mieux classé, et le reste ailleurs. Dans un même endroit, on prend d'abord les exemplaires
 Standard et en meilleur état.
 
+La case **« Éviter de prendre dans les autres decks »** (cochée par défaut) commande l'étape 2.
+Décochée, un autre deck devient un endroit comme un autre. C'est utile pour reprendre en bloc un
+deck qui contient déjà la liste. Quand un autre deck peut fournir au moins la moitié des cartes à
+réunir, l'app le signale et propose « Tout prendre là-bas », qui décoche la case et recalcule.
+
 Le récap **Où chercher** regroupe la sélection par endroit, le plus fourni en premier, avec
 pour chaque carte le code d'impression, la finition, l'état et la langue. Il signale les
 endroits qui sont d'autres decks, et liste à part les cartes **manquantes**. Il suit les

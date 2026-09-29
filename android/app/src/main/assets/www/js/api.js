@@ -118,7 +118,10 @@ function handlePlan(body) {
   return respond(async () => {
     const deck = await cached(`fabrary:${deckId}`, () => fetchDeck(deckId));
     const wanted = wantedFromDeck(deck, { includeSideboard: Boolean(body.includeSideboard) });
-    const plan = await planDeckBuild(wanted, body.destination, { existing: Boolean(body.existing) });
+    const plan = await planDeckBuild(wanted, body.destination, {
+      existing: Boolean(body.existing),
+      protectDecks: body.protectDecks !== false,
+    });
     return { ...plan, deck: { name: deck.name, hero: deck.hero?.name || null, format: deck.format } };
   }, 'Impossible de calculer le plan pour le moment.');
 }
