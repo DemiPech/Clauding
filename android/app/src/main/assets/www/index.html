@@ -43,6 +43,17 @@
           </p>
         </div>
 
+        <nav class="home-tools" id="home-tools" hidden>
+          <button type="button" class="tool-card" id="open-places">
+            <b>Emplacements</b>
+            <span>Voir le contenu de chaque endroit et déplacer des cartes</span>
+          </button>
+          <button type="button" class="tool-card" id="open-tidy">
+            <b>Ranger les vracs</b>
+            <span>Regrouper les cartes par nom, classe ou extension</span>
+          </button>
+        </nav>
+
         <section class="picker" id="picker">
           <div class="section-head">
             <h2>Mes decks CardNexus</h2>
@@ -200,6 +211,83 @@
             </label>
             <ul class="build-rows" id="build-surplus-rows"></ul>
           </section>
+        </div>
+      </section>
+
+      <section id="places" hidden>
+        <button class="link-btn" id="places-back">← Accueil</button>
+
+        <header class="build-head">
+          <p class="eyebrow">Collection CardNexus</p>
+          <h1>Emplacements</h1>
+          <p class="byline">Touchez un endroit pour voir son contenu et en sortir des cartes.</p>
+        </header>
+
+        <form class="move-search-form places-search" id="places-search-form" autocomplete="off">
+          <input
+            id="places-search-input"
+            type="search"
+            placeholder="Chercher une carte dans toute la collection…"
+            aria-label="Chercher une carte dans toute la collection"
+          />
+          <button type="submit">Chercher</button>
+        </form>
+        <p class="move-note" id="places-search-note"></p>
+        <div id="places-search-results"></div>
+
+        <div class="pickup-actions">
+          <button type="button" class="primary-btn" id="places-tidy">Ranger les vracs…</button>
+        </div>
+        <p class="move-note" id="places-note"></p>
+        <div id="places-list"></div>
+      </section>
+
+      <section id="tidy" hidden>
+        <button class="link-btn" id="tidy-back">← Emplacements</button>
+
+        <header class="build-head">
+          <p class="eyebrow">Ranger les vracs</p>
+          <h1>Regrouper les cartes</h1>
+          <p class="byline">
+            Toutes les copies d'une même carte, pitchs confondus, finissent au même endroit. Par
+            classe ou par extension, chaque groupe occupe en plus le moins d'endroits possible.
+          </p>
+        </header>
+
+        <form class="build-setup" id="tidy-setup">
+          <fieldset class="build-dest">
+            <legend>Endroits à ranger</legend>
+            <div id="tidy-places"></div>
+          </fieldset>
+
+          <div class="toolbar-group" role="group" aria-label="Regrouper par">
+            <span class="toolbar-label">Regrouper par</span>
+            <button type="button" class="chip is-active" data-tidy-mode="name">Nom</button>
+            <button type="button" class="chip" data-tidy-mode="class">Classe</button>
+            <button type="button" class="chip" data-tidy-mode="expansion">Extension</button>
+          </div>
+
+          <button type="submit" class="primary-btn" id="tidy-compute">Calculer le plan</button>
+        </form>
+
+        <p class="move-note" id="tidy-note"></p>
+
+        <div id="tidy-result" hidden>
+          <div class="build-summary">
+            <ul class="stat-row" id="tidy-stats"></ul>
+            <div class="build-actions">
+              <button class="primary-btn" id="tidy-apply">Déplacer les cartes</button>
+            </div>
+          </div>
+          <div class="pickup-actions">
+            <button type="button" class="link-btn" id="tidy-copy">Copier le plan</button>
+          </div>
+
+          <div class="build-section-head"><h2>Après rangement</h2></div>
+          <div id="tidy-layout"></div>
+
+          <div class="build-section-head"><h2>Déplacements, endroit par endroit</h2></div>
+          <div id="tidy-moves"></div>
         </div>
       </section>
     </main>

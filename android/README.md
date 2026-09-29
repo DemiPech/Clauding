@@ -65,6 +65,37 @@ retourne alors d'où elle venait.
 Le même calcul s'applique quand on monte une liste FaBrary dans un **deck existant** depuis
 l'écran « Monter dans CardNexus ».
 
+## Emplacements
+
+Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangées en
+« Vrac & autres », « Kallax », « Classeurs » et « Decks ». La nature d'un endroit se lit
+à son icône (deck) et à son nom (kallax, classeur/binder/album).
+
+- Toucher un endroit l'ouvre avec les outils d'un deck d'inventaire : prendre des cartes,
+  les sortir vers un autre endroit, annuler. Le retour ramène aux Emplacements.
+- La recherche trouve une carte dans toute la collection. On règle combien d'exemplaires
+  prendre sur chaque ligne, puis on choisit la destination dans la barre du bas.
+
+Le nombre de cartes d'un endroit s'affiche dès qu'il est connu (endroit ouvert, rangement
+calculé). On ne relit pas toute la collection pour l'obtenir, afin d'épargner le quota de l'API.
+
+## Ranger les vracs
+
+**Ranger les vracs** propose un plan pour regrouper les cartes dans les endroits cochés.
+Par défaut, c'est tout ce qui n'est ni deck, ni Kallax, ni classeur ; le choix est mémorisé.
+
+- **Par nom** : toutes les copies d'une carte, pitchs confondus, rejoignent l'endroit qui en
+  a déjà le plus.
+- **Par classe** ou **par extension** : même règle pour les noms, et chaque groupe occupe en
+  plus le moins d'endroits possible. Les plus gros groupes sont placés d'abord, dans les
+  endroits où ils sont déjà. Chaque boîte garde à peu près son remplissage actuel (+5 %).
+
+Un nom de carte n'est jamais coupé entre deux endroits. Le plan montre le contenu de chaque
+endroit après rangement, puis les déplacements trajet par trajet (« Vrac 3 → Vrac 1 »). On peut
+le copier en texte et l'appliquer d'un geste, annulable depuis le bandeau.
+
+La logique est dans `js/tidy.js`, sans accès réseau, donc testable seule.
+
 ## Comment c'est fait
 
 Pas de serveur Node sur le téléphone : l'app est une WebView qui embarque l'interface web.

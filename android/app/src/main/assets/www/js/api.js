@@ -15,9 +15,11 @@ import {
   moveLines,
   planDeckBuild,
   ensureLocation,
+  linesInPlaces,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
+import { planTidy, TIDY_MODES } from './tidy.js';
 
 // Un deck change rarement : on evite de retaper les API a chaque affichage.
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -150,9 +152,22 @@ function handleMove(body) {
   }, "Impossible d'appliquer les deplacements pour le moment.");
 }
 
+/** Plan de rangement des endroits choisis (lecture seule : rien ne bouge ici). */
+function handleTidy(body) {
+  const places = Array.isArray(body.places) ? body.places.filter((p) => typeof p === 'string' && p) : [];
+  if (places.length < 2) return json(400, { error: 'Choisissez au moins deux endroits à ranger.' });
+  const mode = TIDY_MODES.includes(body.mode) ? body.mode : 'name';
+
+  return respond(async () => {
+    const lines = await linesInPlaces(places);
+    return planTidy(lines, places, mode);
+  }, 'Impossible de calculer le rangement pour le moment.');
+}
+
 const WRITE_ROUTES = {
   '/api/cardnexus/move': handleMove,
   '/api/cardnexus/plan': handlePlan,
+  '/api/cardnexus/tidy': handleTidy,
   '/api/cardnexus/locations/create': handleCreateLocation,
 };
 

@@ -1414,6 +1414,71 @@ body.has-movebar .toast {
   font-size: 13px;
 }
 
+/* ---------- Outils de l'accueil ---------- */
+
+.home-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tool-card:active,
+.tool-card:hover {
+  border-color: var(--accent);
+}
+
+.tool-card span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ---------- Emplacements et rangement ---------- */
+
+.places-search {
+  margin-top: 20px;
+}
+
+#places-search-results {
+  margin-bottom: 10px;
+}
+
+.tidy-group {
+  margin-bottom: 10px;
+}
+
+.tidy-group-title {
+  margin: 8px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.tidy-group .check-row {
+  padding: 4px 0;
+}
+
+.tidy-groups {
+  margin: 0;
+  padding: 9px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 /* Suggestion : un autre deck contient déjà une bonne part de la liste. */
 .deck-hint {
   margin-top: 16px;

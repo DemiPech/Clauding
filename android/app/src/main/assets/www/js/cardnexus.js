@@ -903,6 +903,37 @@ export async function planDeckBuild(rawWanted, destination, { existing = false, 
   };
 }
 
+// --- Rangement des vracs ----------------------------------------------------
+
+/**
+ * Toutes les lignes de ces endroits, chacune avec la carte qu'elle porte (nom,
+ * classes, extension) : la matiere premiere d'un plan de rangement.
+ */
+export async function linesInPlaces(places) {
+  const lines = [];
+  for (const place of places) {
+    lines.push(...(await fetchAllInventory({ location: place })));
+  }
+  const products = await resolveProducts(lines.map((line) => line.productId));
+
+  return lines
+    .filter((line) => products.has(line.productId))
+    .map((line) => {
+      const product = products.get(line.productId);
+      const attrs = product.attributes || {};
+      return {
+        ...describeLine(line, product),
+        card: {
+          slug: product.nameSlug || slugifyName(cleanName(product.name)),
+          name: cleanName(product.name),
+          pitch: attrs.pitch ?? null,
+          classes: (attrs.classes || []).filter((c) => c && c !== 'NotClassed'),
+          expansion: product.expansion?.name || null,
+        },
+      };
+    });
+}
+
 /** Cree la location (ou la renvoie telle quelle si elle existe deja). */
 export async function ensureLocation(name, { color = 'blue', icon = DECK_ICON } = {}) {
   const trimmed = String(name || '').trim();
