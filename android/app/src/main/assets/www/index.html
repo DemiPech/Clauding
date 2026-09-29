@@ -87,6 +87,8 @@
               <button class="link-btn" id="copy-btn">Copier la decklist</button>
               <button class="link-btn" id="build-btn" hidden>Monter dans CardNexus</button>
               <button class="link-btn" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
+              <button class="link-btn" id="rename-btn" hidden>Renommer</button>
+              <button class="link-btn danger-btn" id="delete-btn" hidden>Supprimer l'emplacement</button>
             </div>
           </div>
         </section>
@@ -97,12 +99,18 @@
             <button class="chip is-active" data-view="grid">Grille</button>
             <button class="chip" data-view="list">Liste</button>
           </div>
-          <div class="toolbar-group" role="group" aria-label="Regroupement">
+          <label class="toolbar-group">
             <span class="toolbar-label">Grouper par</span>
-            <button class="chip is-active" data-group="pitch">Pitch</button>
-            <button class="chip" data-group="type">Type</button>
-            <button class="chip" data-group="none">Rien</button>
-          </div>
+            <select id="group-select" class="group-select" aria-label="Grouper par">
+              <option value="pitch">Pitch</option>
+              <option value="type">Type</option>
+              <option value="class">Classe</option>
+              <option value="talent">Talent</option>
+              <option value="classTalent">Classe + talent</option>
+              <option value="expansion">Extension</option>
+              <option value="none">Rien</option>
+            </select>
+          </label>
         </nav>
 
         <div id="sections"></div>
@@ -266,6 +274,7 @@
             <button type="button" class="chip is-active" data-tidy-mode="name">Nom</button>
             <button type="button" class="chip" data-tidy-mode="class">Classe</button>
             <button type="button" class="chip" data-tidy-mode="talent">Talent</button>
+            <button type="button" class="chip" data-tidy-mode="classTalent">Classe + talent</button>
             <button type="button" class="chip" data-tidy-mode="expansion">Extension</button>
           </div>
 
@@ -382,6 +391,42 @@
         <div class="sheet-actions">
           <button type="button" class="link-btn" id="settings-clear">Effacer</button>
           <button type="submit" class="primary-btn">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="sheet-backdrop" id="rename" hidden>
+      <form class="sheet" id="rename-form" autocomplete="off">
+        <div class="sheet-head">
+          <h2>Renommer l'emplacement</h2>
+          <button type="button" class="icon-btn" id="rename-close" aria-label="Fermer">×</button>
+        </div>
+        <label class="field">
+          <span>Nouveau nom</span>
+          <input id="rename-input" type="text" maxlength="100" spellcheck="false" />
+        </label>
+        <p class="move-note" id="rename-note">Les cartes restent en place : seul le nom change.</p>
+        <div class="sheet-actions">
+          <button type="submit" class="primary-btn" id="rename-submit">Renommer</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="sheet-backdrop" id="delete" hidden>
+      <form class="sheet" id="delete-form" autocomplete="off">
+        <div class="sheet-head">
+          <h2>Supprimer l'emplacement</h2>
+          <button type="button" class="icon-btn" id="delete-close" aria-label="Fermer">×</button>
+        </div>
+        <p id="delete-text"></p>
+        <label class="field" id="delete-move-field">
+          <span>Déplacer d'abord ses cartes vers</span>
+          <select id="delete-target"></select>
+        </label>
+        <p class="move-note" id="delete-note"></p>
+        <div class="sheet-actions">
+          <button type="button" class="link-btn" id="delete-cancel">Annuler</button>
+          <button type="submit" class="primary-btn danger" id="delete-submit">Supprimer</button>
         </div>
       </form>
     </div>

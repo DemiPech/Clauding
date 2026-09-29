@@ -95,6 +95,25 @@ const els = {
   buildPickupCopy: $('#build-pickup-copy'),
   buildReset: $('#build-reset'),
 
+  groupSelect: $('#group-select'),
+  renameBtn: $('#rename-btn'),
+  deleteBtn: $('#delete-btn'),
+  rename: $('#rename'),
+  renameForm: $('#rename-form'),
+  renameInput: $('#rename-input'),
+  renameNote: $('#rename-note'),
+  renameSubmit: $('#rename-submit'),
+  renameClose: $('#rename-close'),
+  delete: $('#delete'),
+  deleteForm: $('#delete-form'),
+  deleteText: $('#delete-text'),
+  deleteMoveField: $('#delete-move-field'),
+  deleteTarget: $('#delete-target'),
+  deleteNote: $('#delete-note'),
+  deleteSubmit: $('#delete-submit'),
+  deleteCancel: $('#delete-cancel'),
+  deleteClose: $('#delete-close'),
+
   compareBtn: $('#compare-btn'),
   compare: $('#compare'),
   compareForm: $('#compare-form'),
@@ -357,7 +376,55 @@ function statItem(label, value) {
   return li;
 }
 
+/**
+ * Un emplacement CardNexus qui n'est pas un deck (vrac, Kallax, classeur...) :
+ * pas de héros ni de decklist, juste un tas de cartes à consulter et à ranger.
+ */
+function isStoragePlace(deck = state.deck) {
+  return deck?.source === 'cardnexus' && !deckLocations.some((loc) => loc.name === deck.deckId);
+}
+
+/** Toutes les cartes d'un emplacement, héros compris, pour l'afficher à plat. */
+const placeCards = (deck) =>
+  [deck.hero, ...deck.weapons, ...deck.equipment, ...deck.deck, ...deck.sideboard].filter(Boolean);
+
+function renderPlaceHeader(deck) {
+  const cards = placeCards(deck);
+  const total = cards.reduce((sum, card) => sum + card.quantity, 0);
+  const known = locations.find((loc) => loc.name === deck.deckId);
+
+  els.heroArt.hidden = true;
+  els.heroLine.textContent = known ? PLACE_KINDS.find((k) => k.kind === placeKind(known))?.label || '' : 'Emplacement';
+  els.name.textContent = deck.name;
+  els.byline.textContent = deck.updatedAt
+    ? `mis à jour le ${new Date(deck.updatedAt).toLocaleDateString('fr-FR')}`
+    : '';
+  els.fabraryLink.hidden = true;
+  els.copyBtn.hidden = true;
+  els.compareBtn.hidden = true;
+  els.buildBtn.hidden = true;
+
+  els.stats.replaceChildren(statItem('cartes', total), statItem('différentes', cards.length));
+  els.notes.hidden = !deck.notes;
+  if (deck.notes) els.notesBody.textContent = deck.notes;
+}
+
 function renderHeader(deck) {
+  // Renommer et supprimer valent pour tout emplacement CardNexus, deck compris.
+  els.renameBtn.hidden = deck.source !== 'cardnexus';
+  els.deleteBtn.hidden = deck.source !== 'cardnexus';
+  // Grouper par extension n'a de sens que pour l'inventaire (FaBrary ne la donne pas).
+  els.groupSelect.querySelector('option[value="expansion"]').hidden = deck.source !== 'cardnexus';
+  if (deck.source !== 'cardnexus' && state.group === 'expansion') {
+    state.group = 'pitch';
+    els.groupSelect.value = 'pitch';
+  }
+
+  if (isStoragePlace(deck)) {
+    renderPlaceHeader(deck);
+    return;
+  }
+  els.copyBtn.hidden = false;
   const hero = deck.hero;
 
   if (hero?.imageUrl) {
@@ -525,10 +592,33 @@ function renderSection({ title, cards, dotColor }) {
   return section;
 }
 
+/** Regroupements par attribut : la clé d'une carte, et le libellé quand elle n'en a pas. */
+const ATTRIBUTE_GROUPS = {
+  class: (card) => (card.classes?.length ? card.classes.join(' / ') : 'Sans classe'),
+  talent: (card) => (card.talents?.length ? card.talents.join(' / ') : 'Sans talent'),
+  classTalent: (card) => [...(card.talents || []), ...(card.classes || [])].join(' ') || 'Sans classe',
+  expansion: (card) => card.expansion || 'Extension inconnue',
+};
+
 /** Découpe le deck principal selon le regroupement choisi. */
-function groupMainDeck(cards) {
+function groupMainDeck(cards, { title = 'Deck' } = {}) {
   if (state.group === 'none') {
-    return [{ title: 'Deck', cards }];
+    return [{ title, cards }];
+  }
+
+  const byAttribute = ATTRIBUTE_GROUPS[state.group];
+  if (byAttribute) {
+    const buckets = new Map();
+    for (const card of cards) {
+      const key = byAttribute(card);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(card);
+    }
+    // Les groupes nommés par ordre alphabétique, les « Sans ... » à la fin.
+    const last = (key) => Number(/^(Sans|Extension inconnue)/.test(key));
+    return [...buckets.entries()]
+      .sort(([a], [b]) => last(a) - last(b) || a.localeCompare(b, 'fr'))
+      .map(([key, list]) => ({ title: key, cards: list }));
   }
 
   if (state.group === 'pitch') {
@@ -569,6 +659,16 @@ function renderSectionsAndMarks() {
 
 function renderSections() {
   const deck = state.deck;
+  if (isStoragePlace(deck)) {
+    // Un emplacement n'a ni armes ni réserve : toutes ses cartes, groupées d'un bloc.
+    const cards = placeCards(deck).sort(
+      (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0) - (b.pitch ?? 0),
+    );
+    els.sections.replaceChildren(
+      ...groupMainDeck(cards, { title: 'Cartes' }).map(renderSection).filter(Boolean),
+    );
+    return;
+  }
   const groups = [
     { title: 'Armes', cards: deck.weapons },
     { title: 'Équipement', cards: deck.equipment },
@@ -2221,7 +2321,13 @@ function renderPlacesSearch() {
 // --- Ranger les vracs --------------------------------------------------------
 
 const TIDY_STORAGE = 'tidy_places';
-const TIDY_MODE_LABELS = { name: 'nom', class: 'classe', talent: 'talent', expansion: 'extension' };
+const TIDY_MODE_LABELS = {
+  name: 'nom',
+  class: 'classe',
+  talent: 'talent',
+  classTalent: 'classe et talent',
+  expansion: 'extension',
+};
 const tidy = { mode: 'name', plan: null };
 
 /** Endroits cochés : ceux mémorisés, sinon tout ce qui n'est ni deck, ni Kallax, ni classeur. */
@@ -2416,6 +2522,141 @@ async function applyTidy() {
   }
 }
 
+// --- Renommer / supprimer un emplacement -------------------------------------
+
+/** Le choix d'endroits à ranger est mémorisé par nom : il suit les renommages. */
+function renameInTidySelection(from, to) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TIDY_STORAGE) || 'null');
+    if (!Array.isArray(saved)) return;
+    const next = saved.map((name) => (name === from ? to : name)).filter(Boolean);
+    localStorage.setItem(TIDY_STORAGE, JSON.stringify(next));
+  } catch {
+    // Réglage illisible ou stockage indisponible : rien à suivre.
+  }
+}
+
+/** Après un renommage ou une suppression, les listes d'emplacements sont à relire. */
+async function reloadPlaces() {
+  await Promise.all([loadDeckLocations(), loadLocations()]);
+}
+
+function openRename() {
+  els.renameInput.value = state.deck.deckId;
+  els.renameNote.textContent = 'Les cartes restent en place : seul le nom change.';
+  els.renameSubmit.disabled = false;
+  els.rename.hidden = false;
+  els.renameInput.focus();
+  els.renameInput.select();
+}
+
+const closeRename = () => {
+  els.rename.hidden = true;
+};
+
+async function submitRename() {
+  const from = state.deck.deckId;
+  const to = els.renameInput.value.trim();
+  if (!to || to === from) return closeRename();
+
+  els.renameSubmit.disabled = true;
+  try {
+    const res = await fetch('/api/cardnexus/locations/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+
+    if (placeCounts.has(from)) placeCounts.set(to, placeCounts.get(from));
+    placeCounts.delete(from);
+    renameInTidySelection(from, to);
+    closeRename();
+    await reloadPlaces();
+    await loadCardnexusDeck(to);
+    showToast(`« ${from} » s'appelle maintenant « ${to} ».`);
+  } catch (err) {
+    els.renameNote.textContent = err.message;
+    els.renameSubmit.disabled = false;
+  }
+}
+
+function openDelete() {
+  const deck = state.deck;
+  const cards = placeCards(deck);
+  const total = cards.reduce((sum, card) => sum + card.quantity, 0);
+
+  els.deleteText.textContent = total
+    ? `« ${deck.deckId} » contient ${total} carte${total > 1 ? 's' : ''}. Sans destination, elles resteront dans votre collection mais sans emplacement.`
+    : `« ${deck.deckId} » est vide.`;
+  els.deleteMoveField.hidden = total === 0;
+  els.deleteTarget.innerHTML = [
+    '<option value="">Ne pas les déplacer (sans emplacement)</option>',
+    ...locations
+      .filter((loc) => loc.name !== deck.deckId)
+      .sort(byPlaceName)
+      .map((loc) => `<option value="${escapeHtml(loc.name)}">${escapeHtml(loc.name)}</option>`),
+  ].join('');
+  els.deleteNote.textContent = 'La suppression est définitive (les cartes, elles, ne sont jamais supprimées).';
+  els.deleteSubmit.disabled = false;
+  els.delete.hidden = false;
+}
+
+const closeDelete = () => {
+  els.delete.hidden = true;
+};
+
+async function submitDelete() {
+  const deck = state.deck;
+  const name = deck.deckId;
+  const target = els.deleteTarget.value || null;
+
+  els.deleteSubmit.disabled = true;
+  try {
+    // Les cartes d'abord, si on a choisi où les mettre : après, l'emplacement n'existe plus.
+    let moved = 0;
+    if (target) {
+      els.deleteNote.textContent = `Déplacement des cartes vers « ${target} »…`;
+      const origins = new Map();
+      const moves = [];
+      for (const card of placeCards(deck)) {
+        for (const line of card.printings || []) {
+          origins.set(line.inventoryId, name);
+          moves.push({ inventoryId: line.inventoryId, count: line.quantity });
+        }
+      }
+      const result = await postMovesInBatches(moves, target, origins);
+      moved = result.moved;
+      if (result.failed.length) {
+        throw new Error(`${result.failed.length} ligne(s) n'ont pas pu être déplacées (${result.failed[0].reason}). Rien n'a été supprimé.`);
+      }
+    }
+
+    els.deleteNote.textContent = 'Suppression…';
+    const res = await fetch('/api/cardnexus/locations/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+
+    placeCounts.clear();
+    renameInTidySelection(name, null);
+    closeDelete();
+    await reloadPlaces();
+    showToast(
+      `« ${name} » supprimé` + (moved ? ` · ${moved} carte${moved > 1 ? 's' : ''} → « ${target} »` : '') + '.',
+    );
+    if (state.from === 'places') showPlaces();
+    else showHome();
+  } catch (err) {
+    els.deleteNote.textContent = err.message;
+    els.deleteSubmit.disabled = false;
+  }
+}
+
 // --- Retour Android --------------------------------------------------------
 
 /**
@@ -2425,6 +2666,8 @@ async function applyTidy() {
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
   if (!els.compare.hidden) return closeCompare(), true;
+  if (!els.rename.hidden) return closeRename(), true;
+  if (!els.delete.hidden) return closeDelete(), true;
   if (!els.lightbox.hidden) return closeLightbox(), true;
   if (!els.linePicker.hidden) return closeLinePicker(), true;
   if (movePanel !== 'none') return setMovePanel('none'), true;
@@ -2513,14 +2756,18 @@ els.toolbar.addEventListener('click', (event) => {
   const chip = event.target.closest('.chip');
   if (!chip) return;
 
-  const key = chip.dataset.view ? 'view' : 'group';
-  const value = chip.dataset.view || chip.dataset.group;
-  if (state[key] === value) return;
+  const value = chip.dataset.view;
+  if (!value || state.view === value) return;
 
-  state[key] = value;
+  state.view = value;
   for (const sibling of chip.parentElement.querySelectorAll('.chip')) {
     sibling.classList.toggle('is-active', sibling === chip);
   }
+  renderSectionsAndMarks();
+});
+
+els.groupSelect.addEventListener('change', () => {
+  state.group = els.groupSelect.value;
   renderSectionsAndMarks();
 });
 
@@ -2603,7 +2850,28 @@ document.addEventListener('keydown', (event) => {
   closeLightbox();
   closeSettings();
   closeCompare();
+  closeRename();
+  closeDelete();
 });
+
+els.renameBtn.addEventListener('click', openRename);
+els.renameClose.addEventListener('click', closeRename);
+els.renameForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitRename();
+});
+els.deleteBtn.addEventListener('click', openDelete);
+els.deleteClose.addEventListener('click', closeDelete);
+els.deleteCancel.addEventListener('click', closeDelete);
+els.deleteForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitDelete();
+});
+for (const sheet of [els.rename, els.delete]) {
+  sheet.addEventListener('click', (event) => {
+    if (event.target === sheet) sheet.hidden = true;
+  });
+}
 
 els.heroArt.addEventListener('click', () => {
   const hero = state.deck?.hero;

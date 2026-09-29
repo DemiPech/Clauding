@@ -1414,6 +1414,39 @@ body.has-movebar .toast {
   font-size: 13px;
 }
 
+/* ---------- Grouper par, actions destructrices ---------- */
+
+.group-select {
+  padding: 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.build-setup .toolbar-group {
+  flex-wrap: wrap;
+}
+
+.danger-btn {
+  color: #e07a64;
+  border-color: rgba(184, 73, 47, 0.5);
+}
+
+.primary-btn.danger {
+  background: #9c2f1c;
+}
+
+.field select {
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 15px;
+}
+
 /* ---------- Outils de l'accueil ---------- */
 
 .home-tools {

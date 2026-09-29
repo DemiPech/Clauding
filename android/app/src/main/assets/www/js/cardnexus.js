@@ -100,11 +100,14 @@ async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
       }
       throw new CardnexusError(`Quota CardNexus atteint. Reessayez dans ${retry} secondes.`, 429);
     }
+    if (res.status === 409) throw new CardnexusError('Ce nom est déjà utilisé par un autre emplacement.', 409);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new CardnexusError(`CardNexus a repondu ${res.status}. ${text.slice(0, 200)}`, 502);
     }
-    return res.json();
+    // Une suppression peut repondre sans corps.
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
   }
 }
 
@@ -265,6 +268,7 @@ function buildCard(group) {
     subtypes: attrs.subTypes || [],
     talents: attrs.talents || [],
     classes: attrs.classes || [],
+    expansion: product.expansion?.name || null,
     keywords: [],
     rarity: product.rarity || attrs.rarity || null,
     typeText: [(attrs.classes || []).join(' '), (attrs.types || []).join(' ')]
@@ -324,6 +328,9 @@ export async function fetchDeckFromLocation(locationName) {
 
   const hero = heroCard
     ? {
+        // Toute la carte : sur un simple emplacement, le heros s'affiche et se
+        // groupe comme les autres (type, classe, extension...).
+        ...heroCard,
         id: heroCard.id,
         name: heroCard.name,
         image: heroCard.image,
@@ -970,6 +977,20 @@ export async function linesInPlaces(places) {
         },
       };
     });
+}
+
+/** Renomme un emplacement ; ses cartes restent en place. */
+export async function renameLocation(from, to) {
+  const name = String(to || '').trim();
+  if (!name) throw new CardnexusError('Nouveau nom manquant.', 400);
+  if (name.length > 100) throw new CardnexusError('Nom trop long (100 caracteres max).', 400);
+  return api(`/inventory/locations/${encodeURIComponent(from)}`, { method: 'PATCH', body: { name } });
+}
+
+/** Supprime un emplacement ; les cartes qui y restaient n'ont plus d'emplacement. */
+export async function deleteLocation(name) {
+  await api(`/inventory/locations/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  return { deleted: name };
 }
 
 /** Cree la location (ou la renvoie telle quelle si elle existe deja). */

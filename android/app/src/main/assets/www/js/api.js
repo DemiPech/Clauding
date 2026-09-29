@@ -17,6 +17,8 @@ import {
   ensureLocation,
   linesInPlaces,
   countByLocation,
+  renameLocation,
+  deleteLocation,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
@@ -153,6 +155,31 @@ function handleMove(body) {
   }, "Impossible d'appliquer les deplacements pour le moment.");
 }
 
+/** Un emplacement a change de nom ou disparu : tout ce qui est en cache peut le citer. */
+function forgetCardnexusCache() {
+  for (const key of deckCache.keys()) {
+    if (key.startsWith('cardnexus:')) deckCache.delete(key);
+  }
+}
+
+function handleRenameLocation(body) {
+  if (!body.from) return json(400, { error: 'Emplacement à renommer manquant.' });
+  return respond(async () => {
+    const location = await renameLocation(body.from, body.to);
+    forgetCardnexusCache();
+    return location;
+  }, "Impossible de renommer l'emplacement pour le moment.");
+}
+
+function handleDeleteLocation(body) {
+  if (!body.name) return json(400, { error: 'Emplacement à supprimer manquant.' });
+  return respond(async () => {
+    const result = await deleteLocation(body.name);
+    forgetCardnexusCache();
+    return result;
+  }, "Impossible de supprimer l'emplacement pour le moment.");
+}
+
 /** Plan de rangement des endroits choisis (lecture seule : rien ne bouge ici). */
 function handleTidy(body) {
   const places = Array.isArray(body.places) ? body.places.filter((p) => typeof p === 'string' && p) : [];
@@ -169,6 +196,8 @@ const WRITE_ROUTES = {
   '/api/cardnexus/move': handleMove,
   '/api/cardnexus/plan': handlePlan,
   '/api/cardnexus/tidy': handleTidy,
+  '/api/cardnexus/locations/rename': handleRenameLocation,
+  '/api/cardnexus/locations/delete': handleDeleteLocation,
   '/api/cardnexus/locations/create': handleCreateLocation,
 };
 

@@ -21,6 +21,8 @@ const GROUPERS = {
   name: () => null,
   class: (card) => (card.classes.length ? card.classes.join(' / ') : 'Sans classe'),
   talent: (card) => (card.talents?.length ? card.talents.join(' / ') : 'Sans talent'),
+  // « Draconic Ninja », « Earth Guardian », ou la classe seule sans talent.
+  classTalent: (card) => [...(card.talents || []), ...card.classes].join(' ') || 'Sans classe',
   expansion: (card) => card.expansion || 'Extension inconnue',
 };
 

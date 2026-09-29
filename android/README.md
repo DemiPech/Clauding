@@ -73,6 +73,14 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
 
 - Toucher un endroit l'ouvre avec les outils d'un deck d'inventaire : prendre des cartes,
   les sortir vers un autre endroit, annuler. Le retour ramène aux Emplacements.
+- Un emplacement qui n'est pas un deck s'affiche sans héros ni decklist : son nom, sa nature,
+  son nombre de cartes, et toutes ses cartes (héros compris) d'un bloc.
+- **Renommer** change le nom de l'emplacement, et les cartes restent en place.
+  **Supprimer l'emplacement** propose d'abord de déplacer ses cartes ailleurs. Sinon, elles
+  restent dans la collection sans emplacement ; aucune carte n'est jamais supprimée. Les deux
+  valent aussi pour les decks.
+- **Grouper par** : pitch, type, classe, talent, classe + talent (« Draconic Ninja »),
+  extension (inventaire seulement) ou rien.
 - La recherche trouve une carte dans toute la collection. On règle combien d'exemplaires
   prendre sur chaque ligne, puis on choisit la destination dans la barre du bas.
 
@@ -87,7 +95,7 @@ Par défaut, c'est tout ce qui n'est ni deck, ni Kallax, ni classeur ; le choix 
 
 - **Par nom** : toutes les copies d'une carte, pitchs confondus, rejoignent l'endroit qui en
   a déjà le plus.
-- **Par classe**, **par talent** ou **par extension** : même règle pour les noms, et chaque groupe occupe en
+- **Par classe**, **talent**, **classe + talent** ou **extension** : même règle pour les noms, et chaque groupe occupe en
   plus le moins d'endroits possible. Les plus gros groupes sont placés d'abord, dans les
   endroits où ils sont déjà. Chaque boîte garde à peu près son remplissage actuel (+5 %).
 
