@@ -653,19 +653,31 @@ export function allocateFewestPlaces(rows, deckLocations) {
   const chosen = [];
   const rankOf = (line) => chosen.indexOf(placeOf(line));
 
-  // Pioche dans les endroits retenus : le mieux classe d'abord, puis, dans un
-  // meme endroit, dans l'ordre de preference des lignes (Standard, etat...).
+  // Pioche dans les endroits retenus. Une carte vient d'un seul endroit quand
+  // l'un d'eux suffit (le mieux classe) ; sinon, du mieux classe d'abord. Dans
+  // un meme endroit, l'ordre de preference des lignes (Standard, etat...).
   const takeFrom = (allowed) => {
     rows.forEach((row, i) => {
-      const lines = row.candidates
+      if (remaining[i] === 0) return;
+      const left = (line) => line.quantity - (taken[i].get(line.inventoryId) || 0);
+      const usable = row.candidates
         .map((line, order) => ({ line, order, rank: rankOf(line) }))
-        .filter(({ line, rank }) => rank !== -1 && allowed(line))
+        .filter(({ line, rank }) => rank !== -1 && allowed(line));
+
+      const stock = new Map();
+      for (const { line, rank } of usable) stock.set(rank, (stock.get(rank) || 0) + left(line));
+      const single = [...stock.entries()]
+        .filter(([, count]) => count >= remaining[i])
+        .map(([rank]) => rank)
+        .sort((a, b) => a - b)[0];
+
+      const lines = usable
+        .filter(({ rank }) => single === undefined || rank === single)
         .sort((a, b) => a.rank - b.rank || a.order - b.order);
 
       for (const { line } of lines) {
         if (remaining[i] === 0) break;
-        const left = line.quantity - (taken[i].get(line.inventoryId) || 0);
-        const take = Math.min(remaining[i], left);
+        const take = Math.min(remaining[i], left(line));
         if (take <= 0) continue;
         taken[i].set(line.inventoryId, (taken[i].get(line.inventoryId) || 0) + take);
         remaining[i] -= take;
