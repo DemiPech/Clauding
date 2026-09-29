@@ -20,6 +20,7 @@ const SLACK_MIN = 5;
 const GROUPERS = {
   name: () => null,
   class: (card) => (card.classes.length ? card.classes.join(' / ') : 'Sans classe'),
+  talent: (card) => (card.talents?.length ? card.talents.join(' / ') : 'Sans talent'),
   expansion: (card) => card.expansion || 'Extension inconnue',
 };
 

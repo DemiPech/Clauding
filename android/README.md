@@ -77,7 +77,8 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
   prendre sur chaque ligne, puis on choisit la destination dans la barre du bas.
 
 Le nombre de cartes d'un endroit s'affiche dès qu'il est connu (endroit ouvert, rangement
-calculé). On ne relit pas toute la collection pour l'obtenir, afin d'épargner le quota de l'API.
+calculé). **Compter les cartes** compte toute la collection en un balayage (200 lignes par
+requête) et indique aussi combien de cartes n'ont aucun emplacement.
 
 ## Ranger les vracs
 
@@ -86,7 +87,7 @@ Par défaut, c'est tout ce qui n'est ni deck, ni Kallax, ni classeur ; le choix 
 
 - **Par nom** : toutes les copies d'une carte, pitchs confondus, rejoignent l'endroit qui en
   a déjà le plus.
-- **Par classe** ou **par extension** : même règle pour les noms, et chaque groupe occupe en
+- **Par classe**, **par talent** ou **par extension** : même règle pour les noms, et chaque groupe occupe en
   plus le moins d'endroits possible. Les plus gros groupes sont placés d'abord, dans les
   endroits où ils sont déjà. Chaque boîte garde à peu près son remplissage actuel (+5 %).
 
@@ -95,6 +96,18 @@ endroit après rangement, puis les déplacements trajet par trajet (« Vrac 3 �
 le copier en texte et l'appliquer d'un geste, annulable depuis le bandeau.
 
 La logique est dans `js/tidy.js`, sans accès réseau, donc testable seule.
+
+## API CardNexus
+
+Référence : https://docs.cardnexus.com/ (`llms.txt` liste les pages, `reference/openapi.json`
+décrit chaque route).
+
+- Les lectures d'endroits passent par `POST /inventory/search` : 200 lignes par page contre 100
+  pour `GET /inventory`, et jusqu'à 50 endroits dans une même requête (filtre `location` en
+  `op: "or"`). Elle pagine par position, dans la limite de 10 000 lignes.
+- Limite : 60 requêtes par minute et par compte. L'app s'auto-limite à 55. Sur un `429`, elle
+  attend la durée indiquée par `Retry-After` et rejoue la requête, jusqu'à 3 fois. Les écritures
+  gardent leur `Idempotency-Key`, donc une reprise ne s'applique qu'une fois.
 
 ## Comment c'est fait
 

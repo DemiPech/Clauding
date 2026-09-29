@@ -67,53 +67,93 @@ async function throttle() {
   }
 }
 
+// Un 429 n'est pas une erreur a remonter : l'API dit combien attendre
+// (Retry-After), on patiente et on rejoue. Au-dela, on abandonne.
+const MAX_RATE_RETRIES = 3;
+
 async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
   const key = getApiKey();
   if (!key) {
     throw new CardnexusError("Aucune clé d'API CardNexus : ajoutez-la dans les réglages (⚙).", 503);
   }
 
-  await throttle();
-  const res = await httpFetch(`${BASE}${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${key}`,
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    await throttle();
+    const res = await httpFetch(`${BASE}${endpoint}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        Accept: 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        // La meme cle a chaque reprise : une ecriture rejouee ne s'applique qu'une fois.
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
 
-  if (res.status === 401) throw new CardnexusError("Clé d'API CardNexus refusée (401).", 401);
-  if (res.status === 429) {
-    const retry = res.headers.get('Retry-After');
-    throw new CardnexusError(
-      `Quota CardNexus atteint. Reessayez dans ${retry || 'quelques'} secondes.`,
-      429,
-    );
+    if (res.status === 401) throw new CardnexusError("Clé d'API CardNexus refusée (401).", 401);
+    if (res.status === 429) {
+      const retry = Number(res.headers.get('Retry-After')) || 10;
+      if (attempt < MAX_RATE_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 1000));
+        continue;
+      }
+      throw new CardnexusError(`Quota CardNexus atteint. Reessayez dans ${retry} secondes.`, 429);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new CardnexusError(`CardNexus a repondu ${res.status}. ${text.slice(0, 200)}`, 502);
+    }
+    return res.json();
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new CardnexusError(`CardNexus a repondu ${res.status}. ${text.slice(0, 200)}`, 502);
-  }
-  return res.json();
 }
 
-/** Suit les curseurs jusqu'a epuisement (garde-fou a 50 pages). */
-async function fetchAllInventory(params) {
-  const lines = [];
-  let cursor = null;
+// POST /inventory/search rend 200 lignes par page (contre 100 pour
+// GET /inventory) et filtre plusieurs endroits a la fois : deux fois moins de
+// requetes pour lire un endroit. Il pagine par position, jusqu'a 10 000 lignes.
+const LINES_PAGE = 200;
+const SEARCH_WINDOW = 10_000;
+const LOCATIONS_PER_QUERY = 50;
 
-  for (let page = 0; page < 50; page += 1) {
-    const qs = new URLSearchParams({ ...params, limit: '100' });
-    if (cursor) qs.set('cursor', cursor);
-    const res = await api(`/inventory?${qs}`);
+/** Toutes les lignes repondant a ce filtre de recherche, page apres page. */
+async function searchAllLines(filters) {
+  const lines = [];
+  for (let offset = 0; offset < SEARCH_WINDOW; offset += LINES_PAGE) {
+    const res = await api('/inventory/search', {
+      method: 'POST',
+      body: { ...filters, limit: LINES_PAGE, offset, sortBy: 'name' },
+    });
     lines.push(...(res.data || []));
-    cursor = res.pagination?.nextCursor;
-    if (!cursor) break;
+    if (!res.pagination?.hasMore) return lines;
+  }
+  throw new CardnexusError(
+    'Plus de 10 000 lignes a lire d’un coup : choisissez moins d’endroits a la fois.',
+    400,
+  );
+}
+
+/** Les lignes rangees dans ces endroits (par lots de 50 noms, limite de l'API). */
+async function linesAtLocations(names) {
+  const lines = [];
+  for (let i = 0; i < names.length; i += LOCATIONS_PER_QUERY) {
+    const values = names.slice(i, i + LOCATIONS_PER_QUERY);
+    lines.push(...(await searchAllLines({ location: { op: 'or', values } })));
   }
   return lines;
+}
+
+/**
+ * Nombre de cartes par endroit, pour toute la collection, en un balayage
+ * (quelques dizaines de requetes). Les lignes sans endroit sont comptees sous
+ * la cle `null`.
+ */
+export async function countByLocation() {
+  const counts = new Map();
+  for (const line of await searchAllLines({})) {
+    const place = line.location ?? null;
+    counts.set(place, (counts.get(place) || 0) + line.quantity);
+  }
+  return counts;
 }
 
 // Le catalogue ne bouge quasiment jamais et les decks partagent des cartes :
@@ -241,7 +281,7 @@ function buildCard(group) {
 const byNameThenPitch = (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0) - (b.pitch ?? 0);
 
 export async function fetchDeckFromLocation(locationName) {
-  const lines = await fetchAllInventory({ location: locationName });
+  const lines = await linesAtLocations([locationName]);
   if (!lines.length) {
     throw new CardnexusError(`Aucune carte dans la location "${locationName}".`, 404);
   }
@@ -730,7 +770,7 @@ function removalOrder(a, b) {
  * comparaison — le plan dit quoi faire entrer, ceci dit quoi faire sortir.
  */
 async function surplusInLocation(wanted, destination) {
-  const lines = await fetchAllInventory({ location: destination });
+  const lines = await linesAtLocations([destination]);
   const products = await resolveProducts(lines.map((l) => l.productId));
 
   const wantedByKey = new Map(wanted.map((card) => [fabKey(card.name, card.pitch), card.quantity]));
@@ -910,10 +950,7 @@ export async function planDeckBuild(rawWanted, destination, { existing = false, 
  * classes, extension) : la matiere premiere d'un plan de rangement.
  */
 export async function linesInPlaces(places) {
-  const lines = [];
-  for (const place of places) {
-    lines.push(...(await fetchAllInventory({ location: place })));
-  }
+  const lines = await linesAtLocations(places);
   const products = await resolveProducts(lines.map((line) => line.productId));
 
   return lines
@@ -928,6 +965,7 @@ export async function linesInPlaces(places) {
           name: cleanName(product.name),
           pitch: attrs.pitch ?? null,
           classes: (attrs.classes || []).filter((c) => c && c !== 'NotClassed'),
+          talents: attrs.talents || [],
           expansion: product.expansion?.name || null,
         },
       };

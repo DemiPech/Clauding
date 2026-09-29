@@ -16,6 +16,7 @@ import {
   planDeckBuild,
   ensureLocation,
   linesInPlaces,
+  countByLocation,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
@@ -194,6 +195,12 @@ async function route(url, init = {}) {
       return respond(
         () => cached('cardnexus:locations:all', listLocations),
         'Impossible de contacter CardNexus pour le moment.',
+      );
+
+    case '/api/cardnexus/counts':
+      return respond(
+        async () => [...(await countByLocation()).entries()].map(([name, count]) => ({ name, count })),
+        'Impossible de compter les cartes pour le moment.',
       );
 
     case '/api/cardnexus/search':

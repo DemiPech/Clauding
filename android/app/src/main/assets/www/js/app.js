@@ -115,6 +115,7 @@ const els = {
   placesSearchNote: $('#places-search-note'),
   placesSearchResults: $('#places-search-results'),
   placesTidy: $('#places-tidy'),
+  placesCount: $('#places-count'),
   placesNote: $('#places-note'),
   placesList: $('#places-list'),
 
@@ -2147,6 +2148,36 @@ function renderPlacesList() {
   els.placesList.replaceChildren(...sections);
 }
 
+/** Compte toutes les cartes de la collection, endroit par endroit, en un balayage. */
+async function countAllPlaces() {
+  els.placesCount.disabled = true;
+  els.placesNote.textContent = 'Comptage de toute la collection… (quelques secondes par tranche de 200 lignes)';
+  try {
+    const res = await fetch('/api/cardnexus/counts');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+
+    placeCounts.clear();
+    let loose = 0;
+    let total = 0;
+    for (const { name, count } of data) {
+      total += count;
+      if (name === null) loose = count;
+      else placeCounts.set(name, count);
+    }
+    // Un endroit vide n'apparaît pas dans le balayage : il vaut 0.
+    for (const loc of locations) if (!placeCounts.has(loc.name)) placeCounts.set(loc.name, 0);
+
+    els.placesNote.textContent =
+      `${total} cartes au total.` + (loose ? ` ${loose} n'ont aucun emplacement.` : '');
+    renderPlacesList();
+  } catch (err) {
+    els.placesNote.textContent = err.message;
+  } finally {
+    els.placesCount.disabled = false;
+  }
+}
+
 async function runPlacesSearch(term) {
   placesSearch.term = term;
   els.placesSearchNote.textContent = 'Recherche…';
@@ -2190,7 +2221,7 @@ function renderPlacesSearch() {
 // --- Ranger les vracs --------------------------------------------------------
 
 const TIDY_STORAGE = 'tidy_places';
-const TIDY_MODE_LABELS = { name: 'nom', class: 'classe', expansion: 'extension' };
+const TIDY_MODE_LABELS = { name: 'nom', class: 'classe', talent: 'talent', expansion: 'extension' };
 const tidy = { mode: 'name', plan: null };
 
 /** Endroits cochés : ceux mémorisés, sinon tout ce qui n'est ni deck, ni Kallax, ni classeur. */
@@ -2430,6 +2461,7 @@ els.openPlaces.addEventListener('click', showPlaces);
 els.openTidy.addEventListener('click', showTidy);
 els.placesBack.addEventListener('click', showHome);
 els.placesTidy.addEventListener('click', showTidy);
+els.placesCount.addEventListener('click', countAllPlaces);
 els.placesList.addEventListener('click', (event) => {
   const place = event.target.closest('[data-place]');
   if (!place) return;
