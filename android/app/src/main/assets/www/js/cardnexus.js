@@ -634,6 +634,10 @@ function fewestPlaces(offers, need) {
  * que si le reste de la collection ne suffit pas. A chaque palier, les endroits
  * deja retenus sont gratuits ; on n'en ajoute que pour ce qu'ils ne couvrent pas.
  *
+ * Une fois les endroits choisis, chaque carte est prise dans le plus fourni
+ * d'entre eux, et seulement ce qui y manque ailleurs : la tournee se concentre
+ * sur les gros stocks au lieu de s'eparpiller au gre de la taille des lignes.
+ *
  * Renvoie, par carte, Map(inventoryId → copies prises).
  */
 export function allocateFewestPlaces(rows, deckLocations) {
@@ -645,14 +649,21 @@ export function allocateFewestPlaces(rows, deckLocations) {
 
   const taken = rows.map(() => new Map());
   const remaining = rows.map((row) => row.need);
-  const chosen = new Set();
+  // Endroits retenus, du plus fourni au moins fourni : c'est l'ordre de pioche.
+  const chosen = [];
+  const rankOf = (line) => chosen.indexOf(placeOf(line));
 
-  // Pioche dans les endroits retenus, dans l'ordre de preference des lignes.
+  // Pioche dans les endroits retenus : le mieux classe d'abord, puis, dans un
+  // meme endroit, dans l'ordre de preference des lignes (Standard, etat...).
   const takeFrom = (allowed) => {
     rows.forEach((row, i) => {
-      for (const line of row.candidates) {
+      const lines = row.candidates
+        .map((line, order) => ({ line, order, rank: rankOf(line) }))
+        .filter(({ line, rank }) => rank !== -1 && allowed(line))
+        .sort((a, b) => a.rank - b.rank || a.order - b.order);
+
+      for (const { line } of lines) {
         if (remaining[i] === 0) break;
-        if (!allowed(line) || !chosen.has(placeOf(line))) continue;
         const left = line.quantity - (taken[i].get(line.inventoryId) || 0);
         const take = Math.min(remaining[i], left);
         if (take <= 0) continue;
@@ -671,13 +682,17 @@ export function allocateFewestPlaces(rows, deckLocations) {
       if (remaining[i] === 0) return;
       for (const line of row.candidates) {
         const place = placeOf(line);
-        if (!allowed(line) || chosen.has(place)) continue;
+        if (!allowed(line) || chosen.includes(place)) continue;
         if (!offers.has(place)) offers.set(place, rows.map(() => 0));
         offers.get(place)[i] += line.quantity;
       }
     });
 
-    for (const place of fewestPlaces(offers, remaining)) chosen.add(place);
+    // Les nouveaux endroits, du plus fourni au moins fourni pour ce qui reste.
+    const added = fewestPlaces(offers, remaining).sort(
+      (a, b) => coverage([b], offers, remaining) - coverage([a], offers, remaining),
+    );
+    chosen.push(...added);
     takeFrom(allowed);
   }
 

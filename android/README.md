@@ -30,7 +30,9 @@ La répartition proposée cherche à **visiter le moins d'endroits possible** :
 À chaque étape, les endroits déjà retenus sont gratuits : on n'en ajoute un que pour ce qu'ils
 ne couvrent pas. La recherche est exacte jusqu'à 16 endroits candidats (les endroits
 indispensables, seuls à avoir une carte, sont retenus d'office), puis gloutonne au-delà.
-Dans un endroit retenu, on prend d'abord les exemplaires Standard et en meilleur état.
+Une fois les endroits retenus, chaque carte est prise dans le plus fourni d'entre eux, et seul ce qui
+y manque est pris ailleurs. Dans un même endroit, on prend d'abord les exemplaires Standard et en
+meilleur état.
 
 Le récap **Où chercher** regroupe la sélection par endroit, le plus fourni en premier, avec
 pour chaque carte le code d'impression, la finition, l'état et la langue. Il signale les
