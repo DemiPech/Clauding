@@ -2135,3 +2135,158 @@ body.has-movebar .toast {
     width: 140px;
   }
 }
+
+/* ---------- Étape 3 : finitions ---------- */
+
+/* Barre du haut : titre de l'écran, flèche retour sur les écrans de détail. */
+.topbar {
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-height: 56px;
+}
+
+.app-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-back {
+  margin-left: -8px;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+}
+
+.app-back svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+/* Le titre est dans la barre du haut : plus de grand titre en double dans la page. */
+.view-head h1,
+#history .build-head,
+#tidy .build-head .eyebrow,
+#build-back,
+#tidy-back {
+  display: none;
+}
+
+.view-head {
+  margin: 0 0 12px;
+}
+
+.view-head:not(:has(.byline)) {
+  display: none;
+}
+
+main {
+  padding-top: 16px;
+}
+
+#tidy .build-head h1,
+#build-title {
+  font-size: 21px;
+}
+
+.build-head {
+  margin-top: 0;
+}
+
+/* Contrôle segmenté : options exclusives sur une ligne. */
+.segmented {
+  display: flex;
+  width: 100%;
+  max-width: 420px;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+}
+
+.segmented .chip {
+  flex: 1;
+  border: 0;
+  border-radius: 999px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.segmented .chip.is-active {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.view-toggle {
+  max-width: 220px;
+}
+
+.history-tabs {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+/* Tailles de touche homogènes. */
+.chip {
+  min-height: 34px;
+}
+
+.link-btn,
+.primary-btn {
+  min-height: 40px;
+}
+
+.icon-btn {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* Rangement : le libellé au-dessus, les modes sur une ligne défilante. */
+#tidy-setup .toolbar-group {
+  flex-wrap: wrap;
+}
+
+#tidy-setup .toolbar-group .toolbar-label {
+  flex-basis: 100%;
+  margin-bottom: 2px;
+}
+
+/* Collection : listes d'emplacements plus denses. */
+#places .deck-cards {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#places .deck-card {
+  padding: 10px 12px;
+}
+
+.section-head h2 {
+  font-size: 15px;
+}
+
+/* Le nom est dans la barre du haut ; la page garde la nature (héros, type d'emplacement). */
+#deck-name {
+  display: none;
+}
+
+.deck-title .eyebrow {
+  margin-top: 6px;
+}

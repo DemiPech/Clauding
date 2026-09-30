@@ -13,6 +13,9 @@ const els = {
   toolBuild: $('#tool-build'),
   toolCompare: $('#tool-compare'),
   tabbar: $('#tabbar'),
+  appBack: $('#app-back'),
+  appBrand: $('#app-brand'),
+  appTitle: $('#app-title'),
   collectionFilter: $('#collection-filter'),
   collectionKinds: $('#collection-kinds'),
   compareDeckField: $('#compare-deck-field'),
@@ -262,8 +265,31 @@ function showOnly(el) {
   for (const tab of els.tabbar.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('is-active', tab.dataset.tab === state.tab);
   }
+  updateAppBar();
   updateMovebar();
   window.scrollTo(0, 0);
+}
+
+/** Titres des écrans racines (les onglets) ; les autres ont une flèche retour. */
+const ROOT_TITLES = { places: 'Collection', 'search-view': 'Chercher', 'tools-view': 'Outils', history: 'Historique' };
+
+/**
+ * Barre du haut à la manière d'Android : le nom de l'onglet à la racine, une
+ * flèche retour et le titre de l'écran ouvert par-dessus.
+ */
+function updateAppBar() {
+  const views = [els.places, els.search, els.tools, els.history, els.deck, els.build, els.tidy, els.loading, els.error];
+  const current = views.find((view) => !view.hidden);
+  const root = current && ROOT_TITLES[current.id];
+  let title = root || '';
+  if (current === els.deck) title = state.deck?.name || '';
+  else if (current === els.build) title = els.buildEyebrow.textContent.startsWith('Comparer') ? 'Comparer' : 'Monter un deck';
+  else if (current === els.tidy) title = 'Ranger les vracs';
+  else if (current === els.loading) title = 'Chargement…';
+  else if (current === els.error) title = 'Indisponible';
+  els.appTitle.textContent = title;
+  els.appBack.hidden = Boolean(root);
+  els.appBrand.hidden = !root;
 }
 
 /** L'accueil : l'onglet Collection. */
@@ -750,6 +776,7 @@ const closeActions = () => {
 function renderDeck() {
   renderHeader(state.deck);
   updateMoreButton();
+  updateAppBar();
   renderSections();
   markHeldCards();
   updateMovebar();
@@ -3629,6 +3656,8 @@ els.search.addEventListener('click', (event) => {
   els.input.value = example.dataset.example;
   loadFabraryDeck(example.dataset.example);
 });
+
+els.appBack.addEventListener('click', () => window.__appBack());
 
 els.tabbar.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-tab]');

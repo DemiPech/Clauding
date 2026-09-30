@@ -10,10 +10,13 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
+      <button type="button" class="icon-btn app-back" id="app-back" aria-label="Retour" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="brand" id="app-brand">
         <span class="brand-mark">FaB</span>
-        <span class="brand-name">Decklist Viewer</span>
       </div>
+      <h1 class="app-title" id="app-title">Collection</h1>
       <div class="topbar-actions">
         <button class="icon-btn settings-btn" id="settings-btn" aria-label="Réglages" title="Réglages">⚙</button>
       </div>
@@ -97,8 +100,7 @@
         </section>
 
         <nav class="toolbar">
-          <div class="toolbar-group" role="group" aria-label="Affichage">
-            <span class="toolbar-label">Vue</span>
+          <div class="segmented view-toggle" role="group" aria-label="Affichage">
             <button class="chip is-active" data-view="grid">Grille</button>
             <button class="chip" data-view="list">Liste</button>
           </div>
@@ -322,10 +324,10 @@
           <h1>Historique</h1>
         </header>
 
-        <div class="toolbar-group history-tabs" id="history-tabs" role="tablist">
+        <div class="segmented history-tabs" id="history-tabs" role="tablist">
           <button type="button" class="chip is-active" data-history-tab="journal">Journal de l'app</button>
           <button type="button" class="chip" data-history-tab="changes">Changements</button>
-          <button type="button" class="chip" data-history-tab="recent">Modifié récemment</button>
+          <button type="button" class="chip" data-history-tab="recent">Récent</button>
         </div>
 
         <div id="history-changes" hidden>

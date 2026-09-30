@@ -45,6 +45,10 @@ Dans un deck ou un emplacement :
   « depuis l'inventaire » ouvert). Elle affiche « N en main », Tout reposer, la destination,
   Déplacer et Supprimer.
 
+La barre du haut suit l'écran : le nom de l'onglet à la racine. Sur un écran ouvert par-dessus
+(emplacement, deck, plan, rangement), elle affiche une flèche retour et le titre de l'écran. Les
+choix exclusifs (Grille/Liste, les vues de l'Historique) sont des contrôles segmentés.
+
 Un deck, un emplacement ou un plan de montage s'ouvre par-dessus l'onglet d'où l'on vient.
 Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis quitte l'app.
 
