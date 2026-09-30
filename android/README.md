@@ -81,6 +81,12 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
   valent aussi pour les decks.
 - **Grouper par** : pitch, type, classe, talent, classe + talent (« Draconic Ninja »),
   extension (inventaire seulement) ou rien.
+- **« Sans emplacement »**, en tête de liste, montre les cartes qui n'ont aucun emplacement.
+  Il s'ouvre comme un emplacement : on y prend des cartes et on les range ailleurs.
+- **Prendre au-delà de N** (N entre 1 et 4, 3 par défaut) met en main tout ce qui dépasse N
+  exemplaires par carte (même nom, même pitch). Avec 5, 6 et 2 exemplaires, on en prend 2, 3 et 0.
+  Partent d'abord les exemplaires en vente, puis les plus abîmés, puis les Standard : les foils
+  restent sur place. On choisit ensuite la destination dans la barre du bas.
 - La recherche trouve une carte dans toute la collection. On règle combien d'exemplaires
   prendre sur chaque ligne, puis on choisit la destination dans la barre du bas.
 

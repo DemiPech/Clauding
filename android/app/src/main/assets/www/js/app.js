@@ -1,4 +1,4 @@
-import { getApiKey, setApiKey } from './cardnexus.js';
+import { getApiKey, setApiKey, UNPLACED, UNPLACED_LABEL } from './cardnexus.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -96,6 +96,9 @@ const els = {
   buildReset: $('#build-reset'),
 
   groupSelect: $('#group-select'),
+  excessGroup: $('#excess-group'),
+  excessBtn: $('#excess-btn'),
+  excessKeep: $('#excess-keep'),
   renameBtn: $('#rename-btn'),
   deleteBtn: $('#delete-btn'),
   rename: $('#rename'),
@@ -394,7 +397,11 @@ function renderPlaceHeader(deck) {
   const known = locations.find((loc) => loc.name === deck.deckId);
 
   els.heroArt.hidden = true;
-  els.heroLine.textContent = known ? PLACE_KINDS.find((k) => k.kind === placeKind(known))?.label || '' : 'Emplacement';
+  els.heroLine.textContent = deck.unplaced
+    ? 'Cartes à ranger'
+    : known
+      ? PLACE_KINDS.find((k) => k.kind === placeKind(known))?.label || ''
+      : 'Emplacement';
   els.name.textContent = deck.name;
   els.byline.textContent = deck.updatedAt
     ? `mis à jour le ${new Date(deck.updatedAt).toLocaleDateString('fr-FR')}`
@@ -411,8 +418,10 @@ function renderPlaceHeader(deck) {
 
 function renderHeader(deck) {
   // Renommer et supprimer valent pour tout emplacement CardNexus, deck compris.
-  els.renameBtn.hidden = deck.source !== 'cardnexus';
-  els.deleteBtn.hidden = deck.source !== 'cardnexus';
+  const realPlace = deck.source === 'cardnexus' && !deck.unplaced;
+  els.excessGroup.hidden = deck.source !== 'cardnexus';
+  els.renameBtn.hidden = !realPlace;
+  els.deleteBtn.hidden = !realPlace;
   // Grouper par extension n'a de sens que pour l'inventaire (FaBrary ne la donne pas).
   els.groupSelect.querySelector('option[value="expansion"]').hidden = deck.source !== 'cardnexus';
   if (deck.source !== 'cardnexus' && state.group === 'expansion') {
@@ -744,7 +753,10 @@ function writeHeld(line, card, count, { toDeck = false } = {}) {
 }
 
 /** Le deck actuellement ouvert, quand c'est un deck d'inventaire. */
-const currentDeckName = () => (state.deck?.source === 'cardnexus' ? state.deck.deckId : null);
+const currentDeckName = () => (state.deck?.source === 'cardnexus' ? state.deck.name : null);
+
+/** Où l'API doit ranger ce qui entre dans la vue ouverte : `null` pour « Sans emplacement ». */
+const currentDeckTarget = () => (state.deck?.unplaced ? null : state.deck?.deckId ?? null);
 
 function refreshBasketViews() {
   renderBasket();
@@ -780,6 +792,49 @@ function toggleCard(card) {
   for (const line of card.printings) writeHeld(line, card, takeAll ? line.quantity : 0);
   refreshBasketViews();
   closeLinePicker();
+}
+
+/**
+ * Ordre dans lequel on met de côté l'excédent d'une carte : on garde sur place
+ * les plus beaux exemplaires. Partent d'abord les exemplaires en vente, puis
+ * les plus abîmés, puis les Standard (les foils restent), puis les grosses
+ * lignes (moins de lignes à couper).
+ */
+const EXCESS_CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
+const excessOrder = (a, b) =>
+  Number(b.forSale) - Number(a.forSale) ||
+  (EXCESS_CONDITION_RANK[b.condition] ?? 9) - (EXCESS_CONDITION_RANK[a.condition] ?? 9) ||
+  Number(a.finish !== 'Standard') - Number(b.finish !== 'Standard') ||
+  b.quantity - a.quantity;
+
+/**
+ * Met en main tout ce qui dépasse `keep` exemplaires par carte (nom et pitch).
+ * La sélection des cartes de cette vue est remplacée ; ce qui a été pris
+ * ailleurs (recherche) reste en main.
+ */
+function takeExcess(keep) {
+  let taken = 0;
+  let cards = 0;
+  for (const card of allDeckCards().filter((c) => c.printings?.length)) {
+    for (const line of card.printings) writeHeld(line, card, 0);
+    let excess = cardTotal(card) - keep;
+    if (excess <= 0) continue;
+    cards += 1;
+    for (const line of card.printings.slice().sort(excessOrder)) {
+      if (excess === 0) break;
+      const take = Math.min(excess, line.quantity);
+      writeHeld(line, card, take);
+      excess -= take;
+      taken += take;
+    }
+  }
+  refreshBasketViews();
+  closeLinePicker();
+  showToast(
+    taken
+      ? `${taken} exemplaire${taken > 1 ? 's' : ''} en main (${cards} carte${cards > 1 ? 's' : ''} au-delà de ${keep}). Choisissez la destination en bas.`
+      : `Aucune carte n'a plus de ${keep} exemplaire${keep > 1 ? 's' : ''} ici.`,
+  );
 }
 
 /** Prend tout le deck, ou repose tout si tout est déjà en main. */
@@ -1158,7 +1213,7 @@ function resolveDestinations() {
   let skipped = 0;
 
   for (const entry of entries) {
-    const destination = entry.toDeck ? currentDeckName() : outTarget;
+    const destination = entry.toDeck ? currentDeckTarget() : outTarget;
     // Une ligne déjà dans sa destination n'a rien à y faire.
     if (entry.location === destination) {
       skipped += 1;
@@ -2208,7 +2263,35 @@ async function showPlaces() {
   renderPlacesSearch();
 }
 
+/** Bouton d'un emplacement dans la liste, avec son nombre de cartes s'il est connu. */
+function placeButtonNode(name, label, color) {
+  const li = document.createElement('li');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'deck-card';
+  button.dataset.place = name;
+  button.style.setProperty('--chip', color || 'var(--line-strong)');
+  const count = placeCounts.get(name);
+  button.innerHTML = `
+    <span class="deck-card-body">
+      <span class="deck-card-name">${escapeHtml(label)}</span>
+      <span class="deck-card-sub">${count == null ? 'toucher pour ouvrir' : `${count} carte${count > 1 ? 's' : ''}`}</span>
+    </span>
+  `;
+  li.append(button);
+  return li;
+}
+
 function renderPlacesList() {
+  // Les cartes sans emplacement, en tête : c'est ce qui reste à ranger.
+  const loose = document.createElement('section');
+  loose.className = 'picker';
+  loose.innerHTML = '<div class="section-head"><h2>À ranger</h2></div>';
+  const looseList = document.createElement('ul');
+  looseList.className = 'deck-cards';
+  looseList.append(placeButtonNode(UNPLACED, UNPLACED_LABEL, 'var(--pitch-2)'));
+  loose.append(looseList);
+
   const sections = PLACE_KINDS.map(({ kind, label }) => {
     const list = locations.filter((loc) => placeKind(loc) === kind).sort(byPlaceName);
     if (!list.length) return null;
@@ -2224,28 +2307,12 @@ function renderPlacesList() {
 
     const ul = document.createElement('ul');
     ul.className = 'deck-cards';
-    for (const loc of list) {
-      const li = document.createElement('li');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'deck-card';
-      button.dataset.place = loc.name;
-      button.style.setProperty('--chip', LOCATION_COLORS[loc.color] || 'var(--line-strong)');
-      const count = placeCounts.get(loc.name);
-      button.innerHTML = `
-        <span class="deck-card-body">
-          <span class="deck-card-name">${escapeHtml(loc.name)}</span>
-          <span class="deck-card-sub">${count == null ? 'toucher pour ouvrir' : `${count} carte${count > 1 ? 's' : ''}`}</span>
-        </span>
-      `;
-      li.append(button);
-      ul.append(li);
-    }
+    for (const loc of list) ul.append(placeButtonNode(loc.name, loc.name, LOCATION_COLORS[loc.color]));
     section.append(ul);
     return section;
   }).filter(Boolean);
 
-  els.placesList.replaceChildren(...sections);
+  els.placesList.replaceChildren(loose, ...sections);
 }
 
 /** Compte toutes les cartes de la collection, endroit par endroit, en un balayage. */
@@ -2267,6 +2334,7 @@ async function countAllPlaces() {
     }
     // Un endroit vide n'apparaît pas dans le balayage : il vaut 0.
     for (const loc of locations) if (!placeCounts.has(loc.name)) placeCounts.set(loc.name, 0);
+    placeCounts.set(UNPLACED, loose);
 
     els.placesNote.textContent =
       `${total} cartes au total.` + (loose ? ` ${loose} n'ont aucun emplacement.` : '');
@@ -2765,6 +2833,8 @@ els.toolbar.addEventListener('click', (event) => {
   }
   renderSectionsAndMarks();
 });
+
+els.excessBtn.addEventListener('click', () => takeExcess(Number(els.excessKeep.value) || 3));
 
 els.groupSelect.addEventListener('change', () => {
   state.group = els.groupSelect.value;

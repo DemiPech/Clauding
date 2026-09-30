@@ -284,10 +284,21 @@ function buildCard(group) {
 
 const byNameThenPitch = (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0) - (b.pitch ?? 0);
 
+/**
+ * Pseudo-emplacement des cartes qui n'en ont aucun : il s'ouvre comme un
+ * emplacement (deckId = UNPLACED), mais se lit et s'adresse avec `null`.
+ */
+export const UNPLACED = '__sans_emplacement__';
+export const UNPLACED_LABEL = 'Sans emplacement';
+
 export async function fetchDeckFromLocation(locationName) {
-  const lines = await linesAtLocations([locationName]);
+  const unplaced = locationName === UNPLACED;
+  const lines = await linesAtLocations([unplaced ? null : locationName]);
   if (!lines.length) {
-    throw new CardnexusError(`Aucune carte dans la location "${locationName}".`, 404);
+    throw new CardnexusError(
+      unplaced ? 'Toutes vos cartes ont un emplacement.' : `Aucune carte dans la location "${locationName}".`,
+      404,
+    );
   }
 
   const products = await resolveProducts(lines.map((l) => l.productId));
@@ -354,8 +365,9 @@ export async function fetchDeckFromLocation(locationName) {
   return {
     source: 'cardnexus',
     deckId: locationName,
+    unplaced,
     url: null,
-    name: locationName,
+    name: unplaced ? UNPLACED_LABEL : locationName,
     format: 'Inventaire CardNexus',
     notes: unresolved
       ? `${unresolved} ligne(s) d'inventaire n'ont pas pu etre resolues dans le catalogue CardNexus.`
