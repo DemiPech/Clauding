@@ -52,6 +52,10 @@
             <b>Ranger les vracs</b>
             <span>Regrouper les cartes par nom, classe ou extension</span>
           </button>
+          <button type="button" class="tool-card" id="open-history">
+            <b>Historique</b>
+            <span>Journal des actions de l'app, et dernières modifications de la collection</span>
+          </button>
         </nav>
 
         <section class="picker" id="picker">
@@ -309,6 +313,39 @@
 
           <div class="build-section-head"><h2>Déplacements, endroit par endroit</h2></div>
           <div id="tidy-moves"></div>
+        </div>
+      </section>
+
+      <section id="history" hidden>
+        <button class="link-btn" id="history-back">← Accueil</button>
+
+        <header class="build-head">
+          <p class="eyebrow">Collection CardNexus</p>
+          <h1>Historique</h1>
+        </header>
+
+        <div class="toolbar-group history-tabs" id="history-tabs" role="tablist">
+          <button type="button" class="chip is-active" data-history-tab="journal">Journal de l'app</button>
+          <button type="button" class="chip" data-history-tab="recent">Modifié récemment</button>
+        </div>
+
+        <div id="history-journal">
+          <p class="move-note">
+            Ce que l'app a fait, gardé sur ce téléphone. Touchez une action pour voir le détail ; un
+            déplacement peut encore être annulé.
+          </p>
+          <div id="journal-list"></div>
+          <div class="pickup-actions">
+            <button type="button" class="link-btn danger-btn" id="journal-clear" hidden>Vider le journal</button>
+          </div>
+        </div>
+
+        <div id="history-recent" hidden>
+          <p class="move-note" id="recent-note"></p>
+          <div id="recent-list"></div>
+          <div class="pickup-actions">
+            <button type="button" class="link-btn" id="recent-more" hidden>Charger plus</button>
+          </div>
         </div>
       </section>
     </main>

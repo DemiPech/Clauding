@@ -119,6 +119,19 @@ le copier en texte et l'appliquer d'un geste, annulable depuis le bandeau.
 
 La logique est dans `js/tidy.js`, sans accès réseau, donc testable seule.
 
+## Historique
+
+L'API CardNexus n'a pas d'historique d'inventaire. Une ligne ne donne que sa date de dernière
+modification (`updatedAt`), et les webhooks ne signalent que les changements de quantité, vers
+un serveur. L'écran **Historique** combine donc deux sources :
+
+- **Journal de l'app** : chaque action faite depuis l'app (déplacement, montage, rangement,
+  suppression de cartes, retrait des tags, renommage et suppression d'emplacement), avec sa
+  date et son détail carte par carte. Il est gardé sur le téléphone (300 dernières actions).
+  Un déplacement peut encore y être annulé : chaque carte retourne à son emplacement d'origine.
+- **Modifié récemment** : les lignes de la collection, de la plus récemment modifiée à la plus
+  ancienne, y compris ce qui est fait sur le site, mais sans dire ce qui a changé.
+
 ## API CardNexus
 
 Référence : https://docs.cardnexus.com/ (`llms.txt` liste les pages, `reference/openapi.json`

@@ -21,6 +21,7 @@ import {
   deleteLocation,
   deleteCards,
   clearTags,
+  recentLines,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
@@ -244,6 +245,12 @@ async function route(url, init = {}) {
       return respond(
         () => cached('cardnexus:locations:all', listLocations),
         'Impossible de contacter CardNexus pour le moment.',
+      );
+
+    case '/api/cardnexus/recent':
+      return respond(
+        () => recentLines(Math.max(0, Number(params.get('offset')) || 0)),
+        'Impossible de lire les dernières modifications pour le moment.',
       );
 
     case '/api/cardnexus/counts':

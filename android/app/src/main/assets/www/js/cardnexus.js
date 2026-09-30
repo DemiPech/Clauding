@@ -225,6 +225,7 @@ function describeLine(line, product) {
     location: line.location || null,
     forSale: Boolean(line.forSale),
     tags: line.tags || [],
+    updatedAt: line.updatedAt || null,
   };
 }
 
@@ -990,6 +991,40 @@ export async function linesInPlaces(places) {
         },
       };
     });
+}
+
+// --- Modifie recemment -------------------------------------------------------
+
+const RECENT_PAGE = 100;
+
+/**
+ * Les lignes de la collection, de la plus recemment modifiee a la plus
+ * ancienne. L'API ne dit pas ce qui a change, seulement quand : c'est le seul
+ * historique qu'elle expose, et il couvre aussi ce qui est fait sur le site.
+ */
+export async function recentLines(offset = 0) {
+  const res = await api('/inventory/search', {
+    method: 'POST',
+    body: { limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc' },
+  });
+  const lines = res.data || [];
+  const products = await resolveProducts(lines.map((line) => line.productId));
+
+  return {
+    total: res.pagination?.total ?? lines.length,
+    hasMore: Boolean(res.pagination?.hasMore),
+    next: offset + lines.length,
+    lines: lines
+      .filter((line) => products.has(line.productId))
+      .map((line) => {
+        const product = products.get(line.productId);
+        const pitch = product.attributes?.pitch ?? null;
+        return {
+          ...describeLine(line, product),
+          card: { name: cleanName(product.name), pitch, imageUrl: product.imageUrl || cardImageUrl(product.printNumber) },
+        };
+      }),
+  };
 }
 
 // --- Suppression de cartes, retrait des tags --------------------------------

@@ -1459,6 +1459,107 @@ body.has-movebar .toast {
   color: var(--text-muted);
 }
 
+/* ---------- Historique ---------- */
+
+.history-tabs {
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.journal-day h3 {
+  margin: 22px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.journal-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.journal-entry,
+.recent-line {
+  border-top: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.journal-entry:first-child,
+.recent-line:first-child {
+  border-top: 0;
+}
+
+.journal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-time {
+  flex: none;
+  width: 42px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.journal-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.journal-kind {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.journal-summary {
+  font-size: 14px;
+}
+
+.journal-entry.is-undone .journal-summary {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.journal-details {
+  padding: 0 12px 12px 64px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.journal-details ul {
+  margin: 0 0 10px;
+  padding-left: 16px;
+}
+
+.recent-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
 /* ---------- Outils de l'accueil ---------- */
 
 .home-tools {

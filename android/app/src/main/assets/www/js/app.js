@@ -165,6 +165,18 @@ const els = {
   tidyLayout: $('#tidy-layout'),
   tidyMoves: $('#tidy-moves'),
 
+  openHistory: $('#open-history'),
+  history: $('#history'),
+  historyBack: $('#history-back'),
+  historyTabs: $('#history-tabs'),
+  historyJournal: $('#history-journal'),
+  historyRecent: $('#history-recent'),
+  journalList: $('#journal-list'),
+  journalClear: $('#journal-clear'),
+  recentList: $('#recent-list'),
+  recentNote: $('#recent-note'),
+  recentMore: $('#recent-more'),
+
   settingsBtn: $('#settings-btn'),
   settings: $('#settings'),
   settingsForm: $('#settings-form'),
@@ -231,7 +243,7 @@ function updateMyDecksButton() {
 }
 
 function showOnly(el) {
-  for (const node of [els.idle, els.loading, els.error, els.deck, els.build, els.places, els.tidy]) {
+  for (const node of [els.idle, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history]) {
     node.hidden = node !== el;
   }
   updateMyDecksButton();
@@ -728,6 +740,8 @@ const basket = new Map();
 let locations = [];
 let movePanel = 'none';
 let lastMove = null;
+/** Entrée du journal liée au bandeau affiché : l'annuler depuis le bandeau la marque annulée. */
+let lastLogId = null;
 
 const FINISH_SHORT = { Standard: 'Standard' };
 const lineLabel = (line) =>
@@ -1193,11 +1207,17 @@ function hideToast() {
   els.toast.hidden = true;
 }
 
-function showToast(message, { error = false, undo = null } = {}) {
+/**
+ * Bandeau de confirmation. Avec `log`, l'action est aussi inscrite au journal
+ * ({ kind, details }) — le message du bandeau en devient le résumé, et
+ * l'annulation proposée ici reste possible plus tard depuis l'historique.
+ */
+function showToast(message, { error = false, undo = null, log = null } = {}) {
   els.toastMessage.textContent = message;
   els.toast.classList.toggle('is-error', error);
   els.toastUndo.hidden = !undo;
   lastMove = undo;
+  lastLogId = log ? logAction({ ...log, summary: message, undo }) : null;
   els.toast.hidden = false;
 
   clearTimeout(showToast.timer);
@@ -1287,6 +1307,12 @@ async function applyBasket() {
       }
     }
 
+    const details = [...byDestination].flatMap(([destination, entries]) =>
+      entries.map(
+        (e) =>
+          `${e.count}× ${cardLabel({ name: e.cardName, pitch: e.pitch })} : ${placeLabel(e.location)} → ${placeLabel(destination)}`,
+      ),
+    );
     basket.clear();
     renderBasket();
     setMovePanel('none');
@@ -1299,7 +1325,7 @@ async function applyBasket() {
     showToast(
       `${moved} carte${moved > 1 ? 's' : ''} → ${places.join(' et ')}` +
         (problems.length ? ` (${problems.join(', ')})` : ''),
-      { error: Boolean(failed.length), undo: undo.length ? undo : null },
+      { error: Boolean(failed.length), undo: undo.length ? undo : null, log: { kind: 'move', details } },
     );
 
     await reloadCurrentDeck();
@@ -1316,25 +1342,40 @@ async function applyBasket() {
  * elle a fusionné à l'arrivée, on la redécoupe : le contenu revient à
  * l'identique, l'identifiant de ligne pas forcément.
  */
-async function undoLastMove() {
-  if (!lastMove) return;
-
-  // Un lot peut venir de plusieurs origines : un envoi par destination.
+/**
+ * Renvoie chaque ligne vers son emplacement d'origine. Un lot peut venir de
+ * plusieurs origines : un envoi par origine, par lots de 200.
+ */
+async function undoMoves(items) {
   const byOrigin = new Map();
-  for (const item of lastMove) {
+  for (const item of items) {
     if (!byOrigin.has(item.back)) byOrigin.set(item.back, []);
     byOrigin.get(item.back).push({ inventoryId: item.inventoryId, count: item.count });
   }
+  let restored = 0;
+  const failed = [];
+  for (const [origin, moves] of byOrigin) {
+    for (let i = 0; i < moves.length; i += 200) {
+      const result = await postMoves(moves.slice(i, i + 200), origin);
+      restored += result.applied.reduce((sum, m) => sum + m.count, 0);
+      failed.push(...result.failed);
+    }
+  }
+  return { restored, failed };
+}
+
+async function undoLastMove() {
+  if (!lastMove) return;
 
   els.toastUndo.disabled = true;
   try {
-    let restored = 0;
-    for (const [origin, moves] of byOrigin) {
-      const result = await postMoves(moves, origin);
-      restored += result.applied.reduce((sum, m) => sum + m.count, 0);
-    }
+    const { restored } = await undoMoves(lastMove);
+    const logId = lastLogId;
     lastMove = null;
-    showToast(`${restored} carte${restored > 1 ? 's' : ''} remise${restored > 1 ? 's' : ''} en place.`);
+    markUndone(logId);
+    showToast(`${restored} carte${restored > 1 ? 's' : ''} remise${restored > 1 ? 's' : ''} en place.`, {
+      log: { kind: 'undo' },
+    });
     await reloadCurrentDeck();
   } catch (err) {
     showToast(`Annulation impossible : ${err.message}`, { error: true });
@@ -2102,7 +2143,7 @@ async function applyBuild() {
         .filter(Boolean)
         .join(' · ') +
         (failures.length ? ` (${failures.length} refusée(s) : ${failures[0].reason})` : ''),
-      { error: Boolean(failures.length), undo: undo.length ? undo : null },
+      { error: Boolean(failures.length), undo: undo.length ? undo : null, log: { kind: 'build', details: buildDetails(outTarget) } },
     );
 
     // On ouvre le deck monté, mais sans perdre le plan si la lecture échoue
@@ -2613,9 +2654,18 @@ async function applyTidy() {
 
     placeCounts.clear();
     showToast(
-      `${moved} carte${moved > 1 ? 's' : ''} rangée${moved > 1 ? 's' : ''}` +
+      `${moved} carte${moved > 1 ? 's' : ''} rangée${moved > 1 ? 's' : ''} (par ${TIDY_MODE_LABELS[tidy.plan.mode]})` +
         (failed.length ? ` (${failed.length} refusée(s) : ${failed[0].reason})` : ''),
-      { error: Boolean(failed.length), undo: undo.length ? undo : null },
+      {
+        error: Boolean(failed.length),
+        undo: undo.length ? undo : null,
+        log: {
+          kind: 'tidy',
+          details: tidyTrips().flatMap((trip) =>
+            trip.items.map(({ row, count }) => `${count}× ${cardLabel(row)} : ${trip.from} → ${trip.to}`),
+          ),
+        },
+      },
     );
     els.tidyResult.hidden = true;
     els.tidyNote.textContent = 'Rangement appliqué. Recalculez le plan pour vérifier le résultat.';
@@ -2716,7 +2766,15 @@ async function deleteHeldCards() {
     showToast(
       `${data.removed} carte${data.removed > 1 ? 's' : ''} supprimée${data.removed > 1 ? 's' : ''} de la collection` +
         (data.failed.length ? ` (${data.failed.length} échec(s) : ${data.failed[0].reason})` : ''),
-      { error: Boolean(data.failed.length) },
+      {
+        error: Boolean(data.failed.length),
+        log: {
+          kind: 'delete',
+          details: entries
+            .filter((e) => !failedIds.has(e.inventoryId))
+            .map((e) => `${e.count}× ${cardLabel({ name: e.cardName, pitch: e.pitch })} — ${e.label} — ${placeLabel(e.location)}`),
+        },
+      },
     );
     await reloadCurrentDeck();
   } catch (err) {
@@ -2754,8 +2812,12 @@ async function untagCurrentView() {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
     showToast(
       `Tags retirés de ${data.cleared} ligne${data.cleared > 1 ? 's' : ''}` +
-        (data.failed.length ? ` (${data.failed.length} échec(s))` : ''),
-      { error: Boolean(data.failed.length) },
+        (data.failed.length ? ` (${data.failed.length} échec(s))` : '') +
+        ` dans « ${state.deck.name} »`,
+      {
+        error: Boolean(data.failed.length),
+        log: { kind: 'untag', details: [...tagCounts.entries()].map(([tag, n]) => `${tag} — ${n} ligne${n > 1 ? 's' : ''}`) },
+      },
     );
     await reloadCurrentDeck();
   } catch (err) {
@@ -2818,7 +2880,7 @@ async function submitRename() {
     closeRename();
     await reloadPlaces();
     await loadCardnexusDeck(to);
-    showToast(`« ${from} » s'appelle maintenant « ${to} ».`);
+    showToast(`« ${from} » s'appelle maintenant « ${to} ».`, { log: { kind: 'rename' } });
   } catch (err) {
     els.renameNote.textContent = err.message;
     els.renameSubmit.disabled = false;
@@ -2891,6 +2953,7 @@ async function submitDelete() {
     await reloadPlaces();
     showToast(
       `« ${name} » supprimé` + (moved ? ` · ${moved} carte${moved > 1 ? 's' : ''} → « ${target} »` : '') + '.',
+      { log: { kind: 'deleteLocation' } },
     );
     if (state.from === 'places') showPlaces();
     else showHome();
@@ -2898,6 +2961,292 @@ async function submitDelete() {
     els.deleteNote.textContent = err.message;
     els.deleteSubmit.disabled = false;
   }
+}
+
+// --- Historique ----------------------------------------------------------------
+//
+// Deux sources. Le journal : ce que l'app a fait, gardé sur le téléphone, avec
+// le détail et de quoi annuler un déplacement. « Modifié récemment » : ce que
+// l'API sait, c'est-à-dire la date de dernière modification de chaque ligne —
+// y compris ce qui a été fait sur le site, mais sans dire quoi.
+
+const JOURNAL_STORAGE = 'action_log';
+const JOURNAL_MAX = 300;
+const JOURNAL_MAX_DETAILS = 300;
+
+const LOG_KINDS = {
+  move: 'Déplacement',
+  build: 'Montage de deck',
+  tidy: 'Rangement',
+  delete: 'Suppression de cartes',
+  untag: 'Retrait des tags',
+  rename: 'Renommage',
+  deleteLocation: "Suppression d'emplacement",
+  undo: 'Annulation',
+};
+
+const placeLabel = (name) => (name == null || name === UNPLACED ? 'sans emplacement' : name);
+
+function readJournal() {
+  try {
+    const list = JSON.parse(localStorage.getItem(JOURNAL_STORAGE) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeJournal(list) {
+  try {
+    localStorage.setItem(JOURNAL_STORAGE, JSON.stringify(list.slice(0, JOURNAL_MAX)));
+  } catch {
+    // Stockage plein ou indisponible : le journal n'est qu'un confort.
+  }
+}
+
+/** Inscrit une action ; renvoie son identifiant. */
+function logAction({ kind, summary, details = [], undo = null }) {
+  const entry = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    at: new Date().toISOString(),
+    kind,
+    summary,
+    details: details.slice(0, JOURNAL_MAX_DETAILS),
+    more: Math.max(0, details.length - JOURNAL_MAX_DETAILS),
+    undo: undo?.length ? undo : null,
+    undone: false,
+  };
+  writeJournal([entry, ...readJournal()]);
+  if (!els.history.hidden) renderJournal();
+  return entry.id;
+}
+
+function markUndone(id) {
+  if (!id) return;
+  writeJournal(readJournal().map((entry) => (entry.id === id ? { ...entry, undone: true } : entry)));
+}
+
+/** Détail d'un montage : ce qui entre, d'où, et ce qui sort, vers où. */
+function buildDetails(outTarget) {
+  const destination = build.plan.destination;
+  const lines = [];
+  for (const row of build.plan.rows) {
+    for (const [inventoryId, count] of allocationFor(row.key)) {
+      const line = row.candidates.find((c) => c.inventoryId === inventoryId);
+      if (count > 0 && line) lines.push(`${count}× ${cardLabel(row)} : ${placeLabel(line.location)} → ${destination}`);
+    }
+  }
+  for (const row of build.plan.surplus || []) {
+    const count = removedFor(row.key);
+    if (count > 0) lines.push(`${count}× ${cardLabel(row)} : ${destination} → ${placeLabel(outTarget)}`);
+  }
+  return lines;
+}
+
+const timeFormat = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const dayFormat = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+function dayLabel(date) {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Aujourd'hui";
+  if (date.toDateString() === yesterday.toDateString()) return 'Hier';
+  const label = dayFormat.format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Regroupe des éléments datés par jour, dans l'ordre reçu. */
+function byDay(items, dateOf) {
+  const days = [];
+  for (const item of items) {
+    const date = new Date(dateOf(item));
+    const label = Number.isNaN(date.getTime()) ? 'Date inconnue' : dayLabel(date);
+    if (days.at(-1)?.label !== label) days.push({ label, items: [] });
+    days.at(-1).items.push(item);
+  }
+  return days;
+}
+
+function journalEntryNode(entry) {
+  const li = document.createElement('li');
+  li.className = `journal-entry${entry.undone ? ' is-undone' : ''}`;
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'journal-head';
+  head.innerHTML = `
+    <span class="journal-time"></span>
+    <span class="journal-body">
+      <span class="journal-kind"></span>
+      <span class="journal-summary"></span>
+    </span>
+    <span class="build-row-caret">${entry.details.length ? '▸' : ''}</span>
+  `;
+  head.querySelector('.journal-time').textContent = timeFormat.format(new Date(entry.at));
+  head.querySelector('.journal-kind').textContent =
+    (LOG_KINDS[entry.kind] || entry.kind) + (entry.undone ? ' · annulé' : '');
+  head.querySelector('.journal-summary').textContent = entry.summary;
+
+  const details = document.createElement('div');
+  details.className = 'journal-details';
+  details.hidden = true;
+  const list = document.createElement('ul');
+  list.append(...entry.details.map((text) => Object.assign(document.createElement('li'), { textContent: text })));
+  if (entry.more) list.append(Object.assign(document.createElement('li'), { textContent: `… et ${entry.more} de plus` }));
+  details.append(list);
+
+  if (entry.undo && !entry.undone) {
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'link-btn';
+    undo.textContent = 'Annuler ce déplacement';
+    undo.addEventListener('click', () => undoJournalEntry(entry, undo));
+    details.append(undo);
+  }
+
+  head.addEventListener('click', () => {
+    if (!entry.details.length && !entry.undo) return;
+    details.hidden = !details.hidden;
+    head.querySelector('.build-row-caret').textContent = details.hidden ? '▸' : '▾';
+  });
+
+  li.append(head, details);
+  return li;
+}
+
+function renderJournal() {
+  const entries = readJournal();
+  els.journalClear.hidden = entries.length === 0;
+  if (!entries.length) {
+    els.journalList.replaceChildren(
+      Object.assign(document.createElement('p'), {
+        className: 'move-note',
+        textContent: "Rien pour l'instant : les déplacements, montages, rangements et suppressions faits dans l'app s'afficheront ici.",
+      }),
+    );
+    return;
+  }
+  els.journalList.replaceChildren(
+    ...byDay(entries, (e) => e.at).map(({ label, items }) => {
+      const section = document.createElement('section');
+      section.className = 'journal-day';
+      section.append(Object.assign(document.createElement('h3'), { textContent: label }));
+      const ul = document.createElement('ul');
+      ul.className = 'journal-list';
+      ul.append(...items.map(journalEntryNode));
+      section.append(ul);
+      return section;
+    }),
+  );
+}
+
+async function undoJournalEntry(entry, button) {
+  const confirmed = await askConfirm({
+    title: 'Annuler ce déplacement',
+    text: `Remettre chaque carte là où elle était avant : « ${entry.summary} » ?`,
+    items: entry.details.slice(0, 12),
+    note: "Si des cartes ont bougé depuis, elles seront quand même renvoyées à leur emplacement d'origine.",
+    ok: 'Annuler le déplacement',
+  });
+  if (!confirmed) return;
+
+  button.disabled = true;
+  try {
+    const { restored, failed } = await undoMoves(entry.undo);
+    markUndone(entry.id);
+    placeCounts.clear();
+    showToast(
+      `${restored} carte${restored > 1 ? 's' : ''} remise${restored > 1 ? 's' : ''} en place` +
+        (failed.length ? ` (${failed.length} échec(s) : ${failed[0].reason})` : ''),
+      { error: Boolean(failed.length), log: { kind: 'undo', details: [`Annule : ${entry.summary}`] } },
+    );
+    renderJournal();
+  } catch (err) {
+    showToast(`Annulation impossible : ${err.message}`, { error: true });
+    button.disabled = false;
+  }
+}
+
+const recent = { lines: [], next: 0, hasMore: false, loading: false };
+
+async function loadRecent({ reset = false } = {}) {
+  if (recent.loading) return;
+  if (reset) Object.assign(recent, { lines: [], next: 0, hasMore: false });
+  recent.loading = true;
+  els.recentMore.disabled = true;
+  els.recentNote.textContent = 'Lecture des dernières modifications…';
+  try {
+    const res = await fetch(`/api/cardnexus/recent?offset=${recent.next}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    recent.lines.push(...data.lines);
+    recent.next = data.next;
+    recent.hasMore = data.hasMore;
+    els.recentNote.textContent =
+      'Lignes de votre collection, de la plus récemment modifiée à la plus ancienne — y compris les changements faits sur le site CardNexus. ' +
+      "L'API donne la date de la dernière modification, pas sa nature.";
+    renderRecent();
+  } catch (err) {
+    els.recentNote.textContent = err.message;
+  } finally {
+    recent.loading = false;
+    els.recentMore.disabled = false;
+    els.recentMore.hidden = !recent.hasMore;
+  }
+}
+
+function renderRecent() {
+  els.recentList.replaceChildren(
+    ...byDay(recent.lines, (line) => line.updatedAt).map(({ label, items }) => {
+      const section = document.createElement('section');
+      section.className = 'journal-day';
+      section.append(Object.assign(document.createElement('h3'), { textContent: label }));
+      const ul = document.createElement('ul');
+      ul.className = 'journal-list';
+      for (const line of items) {
+        const li = document.createElement('li');
+        li.className = 'recent-line';
+        li.innerHTML = `
+          <span class="journal-time"></span>
+          <i class="row-pitch" style="--dot:${PITCH_COLORS[line.card.pitch] || 'var(--pitch-0)'}"></i>
+          <span class="pickup-name">
+            <span></span>
+            <span class="pickup-sub"></span>
+          </span>
+        `;
+        li.querySelector('.journal-time').textContent = line.updatedAt ? timeFormat.format(new Date(line.updatedAt)) : '';
+        li.querySelector('.pickup-name > span').textContent = `${line.quantity}× ${line.card.name}`;
+        li.querySelector('.pickup-sub').textContent = [
+          placeLabel(line.location),
+          lineLabel(line),
+          line.forSale ? 'en vente' : null,
+          line.tags?.length ? `tags : ${line.tags.join(', ')}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        ul.append(li);
+      }
+      section.append(ul);
+      return section;
+    }),
+  );
+}
+
+function setHistoryTab(tab) {
+  for (const chip of els.historyTabs.querySelectorAll('[data-history-tab]')) {
+    chip.classList.toggle('is-active', chip.dataset.historyTab === tab);
+  }
+  els.historyJournal.hidden = tab !== 'journal';
+  els.historyRecent.hidden = tab !== 'recent';
+  if (tab === 'recent' && !recent.lines.length) loadRecent({ reset: true });
+}
+
+function showHistory() {
+  state.from = null;
+  showOnly(els.history);
+  renderJournal();
+  setHistoryTab('journal');
 }
 
 // --- Retour Android --------------------------------------------------------
@@ -2917,6 +3266,7 @@ window.__appBack = () => {
   if (movePanel !== 'none') return setMovePanel('none'), true;
   if (!els.build.hidden) return showOnly(els.deck), true;
   if (!els.tidy.hidden) return showPlaces(), true;
+  if (!els.history.hidden) return showHome(), true;
   if (!els.deck.hidden && state.from === 'places') return showPlaces(), true;
   if (els.idle.hidden) return showHome(), true;
   return false;
@@ -2945,6 +3295,24 @@ els.idle.addEventListener('click', (event) => {
 });
 
 els.openPlaces.addEventListener('click', showPlaces);
+els.openHistory.addEventListener('click', showHistory);
+els.historyBack.addEventListener('click', showHome);
+els.historyTabs.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-history-tab]');
+  if (chip) setHistoryTab(chip.dataset.historyTab);
+});
+els.recentMore.addEventListener('click', () => loadRecent());
+els.journalClear.addEventListener('click', async () => {
+  const confirmed = await askConfirm({
+    title: 'Vider le journal',
+    text: "Effacer tout le journal des actions de l'app ? Les cartes ne bougent pas, seul l'historique est effacé.",
+    ok: 'Vider le journal',
+    danger: true,
+  });
+  if (!confirmed) return;
+  writeJournal([]);
+  renderJournal();
+});
 els.openTidy.addEventListener('click', showTidy);
 els.placesBack.addEventListener('click', showHome);
 els.placesTidy.addEventListener('click', showTidy);
