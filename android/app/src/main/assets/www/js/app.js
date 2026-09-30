@@ -1,4 +1,5 @@
 import { getApiKey, setApiKey, UNPLACED, UNPLACED_LABEL } from './cardnexus.js';
+import { diffSnapshots, snapshotTotal } from './snapshots.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -174,6 +175,11 @@ const els = {
   journalList: $('#journal-list'),
   journalClear: $('#journal-clear'),
   recentList: $('#recent-list'),
+  historyChanges: $('#history-changes'),
+  snapshotStatus: $('#snapshot-status'),
+  snapshotNow: $('#snapshot-now'),
+  changesList: $('#changes-list'),
+  settingsSnapshot: $('#settings-snapshot'),
   recentNote: $('#recent-note'),
   recentMore: $('#recent-more'),
 
@@ -376,6 +382,10 @@ async function loadDeckLocations() {
 
     cardnexusReady = true;
     els.homeTools.hidden = false;
+    if (!loadDeckLocations.snapshotScheduled) {
+      loadDeckLocations.snapshotScheduled = true;
+      scheduleAutoSnapshot();
+    }
     updateBuildButton();
     deckLocations = data.decks;
     if (!deckLocations.length) {
@@ -2245,6 +2255,7 @@ function closeLightbox() {
 // --- Réglages --------------------------------------------------------------
 
 function openSettings() {
+  els.settingsSnapshot.value = String(snapshotInterval());
   els.settingsKey.value = getApiKey() || '';
   els.settingsShow.checked = false;
   els.settingsKey.type = 'password';
@@ -3233,12 +3244,224 @@ function renderRecent() {
   );
 }
 
+// --- Photos de la collection ------------------------------------------------------
+
+const SNAPSHOT_STORAGE = 'collection_snapshot';
+const CHANGES_STORAGE = 'collection_changes';
+const INTERVAL_STORAGE = 'snapshot_interval_h';
+const CHANGES_MAX_STEPS = 120;
+const CHANGES_MAX_ITEMS = 1500;
+/** Laisse l'accueil charger avant de lancer un balayage automatique. */
+const AUTO_SNAPSHOT_DELAY_MS = 8000;
+
+let snapshotRunning = false;
+
+function readStored(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || 'null');
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Intervalle entre deux photos automatiques, en heures (0 = jamais). */
+function snapshotInterval() {
+  const hours = Number(readStored(INTERVAL_STORAGE, 24));
+  return Number.isFinite(hours) && hours >= 0 ? hours : 24;
+}
+
+const dateTimeFormat = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+const shortDate = (iso) => dateTimeFormat.format(new Date(iso)).replace(' ', ' à ');
+
+/**
+ * Photographie la collection et, s'il y a une photo précédente, inscrit les
+ * différences. Renvoie { changes, first } ou null si une photo est déjà en cours.
+ */
+async function takeSnapshot({ auto = false } = {}) {
+  if (snapshotRunning) return null;
+  snapshotRunning = true;
+  els.snapshotNow.disabled = true;
+  renderSnapshotStatus(auto ? 'Photo automatique en cours…' : 'Photo en cours… (quelques secondes par tranche de 200 lignes)');
+
+  try {
+    const res = await fetch('/api/cardnexus/snapshot');
+    const now = await res.json();
+    if (!res.ok) throw new Error(now.error || `Erreur ${res.status}`);
+
+    const previous = readStored(SNAPSHOT_STORAGE, null);
+    let changes = [];
+    if (previous?.counts) {
+      changes = diffSnapshots(previous.counts, now.counts);
+      if (changes.length) {
+        const ids = [...new Set(changes.map((c) => c.productId))];
+        const namesRes = await fetch('/api/cardnexus/products/names', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        const names = namesRes.ok ? await namesRes.json() : {};
+        const described = changes.map((change) => ({ ...change, ...(names[change.productId] || { name: `Produit ${change.productId}` }) }));
+        const step = {
+          from: previous.at,
+          to: now.at,
+          auto,
+          total: described.length,
+          changes: described.slice(0, CHANGES_MAX_ITEMS),
+        };
+        writeStored(CHANGES_STORAGE, [step, ...readStored(CHANGES_STORAGE, [])].slice(0, CHANGES_MAX_STEPS));
+      }
+    }
+
+    const saved = writeStored(SNAPSHOT_STORAGE, { at: now.at, lines: now.lines, cards: snapshotTotal(now.counts), counts: now.counts });
+    renderSnapshotStatus(saved ? '' : 'Photo prise, mais la mémoire du téléphone est pleine : elle n’a pas pu être gardée.');
+    if (!els.history.hidden) renderChanges();
+    return { changes, first: !previous?.counts };
+  } catch (err) {
+    renderSnapshotStatus(`Photo impossible : ${err.message}`);
+    return null;
+  } finally {
+    snapshotRunning = false;
+    els.snapshotNow.disabled = false;
+  }
+}
+
+/** À l'ouverture : une photo si la dernière est plus vieille que l'intervalle choisi. */
+function scheduleAutoSnapshot() {
+  const hours = snapshotInterval();
+  if (!hours) return;
+  const last = readStored(SNAPSHOT_STORAGE, null);
+  const age = last?.at ? Date.now() - new Date(last.at).getTime() : Infinity;
+  if (age < hours * 3600 * 1000) return;
+
+  setTimeout(async () => {
+    const result = await takeSnapshot({ auto: true });
+    if (result?.changes.length) {
+      showToast(
+        `Photo automatique : ${result.changes.length} changement${result.changes.length > 1 ? 's' : ''} dans la collection depuis la dernière. Voir Historique → Changements.`,
+      );
+    }
+  }, AUTO_SNAPSHOT_DELAY_MS);
+}
+
+function renderSnapshotStatus(message = '') {
+  const last = readStored(SNAPSHOT_STORAGE, null);
+  els.snapshotStatus.textContent =
+    message ||
+    (last?.at
+      ? `Dernière photo : ${shortDate(last.at)} · ${last.cards ?? '?'} cartes`
+      : 'Aucune photo pour l’instant : la première servira de point de départ.');
+}
+
+const CHANGE_GROUPS = [
+  { kind: 'added', title: 'Ajoutées', sign: '+' },
+  { kind: 'removed', title: 'Supprimées ou vendues', sign: '−' },
+  { kind: 'moved', title: 'Déplacées', sign: '' },
+];
+
+function changeText(change) {
+  const card = `${change.count}× ${cardLabel(change)}`;
+  const variant = [change.printNumber, change.finish !== 'Standard' ? change.finish : null, change.condition, change.language?.toUpperCase()]
+    .filter(Boolean)
+    .join(' · ');
+  const where =
+    change.kind === 'moved'
+      ? `${placeLabel(change.from)} → ${placeLabel(change.to)}`
+      : change.kind === 'added'
+        ? `dans ${placeLabel(change.to)}`
+        : `de ${placeLabel(change.from)}`;
+  return { card, sub: [variant, where].filter(Boolean).join(' — ') };
+}
+
+function renderChanges() {
+  renderSnapshotStatus(snapshotRunning ? 'Photo en cours…' : '');
+  const steps = readStored(CHANGES_STORAGE, []);
+  if (!steps.length) {
+    const hasSnapshot = Boolean(readStored(SNAPSHOT_STORAGE, null));
+    els.changesList.replaceChildren(
+      Object.assign(document.createElement('p'), {
+        className: 'move-note',
+        textContent: hasSnapshot
+          ? 'Aucun changement détecté entre les photos pour l’instant.'
+          : 'Prenez une première photo : les suivantes lui seront comparées.',
+      }),
+    );
+    return;
+  }
+
+  els.changesList.replaceChildren(
+    ...steps.map((step) => {
+      const section = document.createElement('section');
+      section.className = 'journal-day';
+      const title = document.createElement('h3');
+      title.textContent = `Du ${shortDate(step.from)} au ${shortDate(step.to)} · ${step.total} changement${step.total > 1 ? 's' : ''}`;
+      section.append(title);
+
+      for (const { kind, title: groupTitle, sign } of CHANGE_GROUPS) {
+        const items = step.changes.filter((c) => c.kind === kind);
+        if (!items.length) continue;
+        const count = items.reduce((sum, c) => sum + c.count, 0);
+        const box = document.createElement('div');
+        box.className = `pickup-place change-${kind}`;
+        box.innerHTML = `
+          <div class="pickup-place-head">
+            <b></b>
+            <span class="section-count">${sign}${count} carte${count > 1 ? 's' : ''}</span>
+          </div>
+        `;
+        box.querySelector('b').textContent = groupTitle;
+        const ul = document.createElement('ul');
+        ul.className = 'pickup-items';
+        for (const change of items.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))) {
+          const { card, sub } = changeText(change);
+          const li = document.createElement('li');
+          li.className = 'pickup-item';
+          li.innerHTML = `
+            <i class="row-pitch" style="--dot:${PITCH_COLORS[change.pitch] || 'var(--pitch-0)'}"></i>
+            <span class="pickup-name"><span></span><span class="pickup-sub"></span></span>
+          `;
+          li.querySelector('.pickup-name > span').textContent = card;
+          li.querySelector('.pickup-sub').textContent = sub;
+          ul.append(li);
+        }
+        box.append(ul);
+        section.append(box);
+      }
+      if (step.total > step.changes.length) {
+        section.append(
+          Object.assign(document.createElement('p'), {
+            className: 'move-note',
+            textContent: `… et ${step.total - step.changes.length} autres changements non conservés.`,
+          }),
+        );
+      }
+      return section;
+    }),
+  );
+}
+
 function setHistoryTab(tab) {
   for (const chip of els.historyTabs.querySelectorAll('[data-history-tab]')) {
     chip.classList.toggle('is-active', chip.dataset.historyTab === tab);
   }
   els.historyJournal.hidden = tab !== 'journal';
   els.historyRecent.hidden = tab !== 'recent';
+  els.historyChanges.hidden = tab !== 'changes';
+  if (tab === 'changes') renderChanges();
   if (tab === 'recent' && !recent.lines.length) loadRecent({ reset: true });
 }
 
@@ -3302,6 +3525,20 @@ els.historyTabs.addEventListener('click', (event) => {
   if (chip) setHistoryTab(chip.dataset.historyTab);
 });
 els.recentMore.addEventListener('click', () => loadRecent());
+els.snapshotNow.addEventListener('click', async () => {
+  const result = await takeSnapshot();
+  if (!result) return;
+  showToast(
+    result.first
+      ? 'Première photo prise : les suivantes lui seront comparées.'
+      : result.changes.length
+        ? `${result.changes.length} changement${result.changes.length > 1 ? 's' : ''} depuis la photo précédente.`
+        : 'Aucun changement depuis la photo précédente.',
+  );
+});
+els.settingsSnapshot.addEventListener('change', () => {
+  writeStored(INTERVAL_STORAGE, Number(els.settingsSnapshot.value));
+});
 els.journalClear.addEventListener('click', async () => {
   const confirmed = await askConfirm({
     title: 'Vider le journal',

@@ -146,6 +146,48 @@ async function linesAtLocations(names) {
 }
 
 /**
+ * Toute la collection, sans plafond : GET /inventory au curseur (100 lignes
+ * par page). Plus lent que la recherche, mais va au-dela de 10 000 lignes.
+ */
+async function walkAllLines() {
+  const lines = [];
+  let cursor = null;
+  for (let page = 0; page < 2000; page += 1) {
+    const qs = new URLSearchParams({ limit: '100' });
+    if (cursor) qs.set('cursor', cursor);
+    const res = await api(`/inventory?${qs}`);
+    lines.push(...(res.data || []));
+    cursor = res.pagination?.nextCursor;
+    if (!cursor) break;
+  }
+  return lines;
+}
+
+/**
+ * Photo de toute la collection : les lignes, par la recherche (200 par page),
+ * ou au curseur si la collection depasse ce que la recherche sait paginer.
+ */
+export async function allCollectionLines() {
+  try {
+    return await searchAllLines({});
+  } catch (err) {
+    if (err.status !== 400) throw err;
+    return walkAllLines();
+  }
+}
+
+/** Nom et pitch de ces produits, pour decrire des changements. */
+export async function productNames(productIds) {
+  const products = await resolveProducts(productIds);
+  return Object.fromEntries(
+    [...products].map(([id, product]) => [
+      id,
+      { name: cleanName(product.name), pitch: product.attributes?.pitch ?? null, printNumber: product.printNumber || null },
+    ]),
+  );
+}
+
+/**
  * Nombre de cartes par endroit, pour toute la collection, en un balayage
  * (quelques dizaines de requetes). Les lignes sans endroit sont comptees sous
  * la cle `null`.

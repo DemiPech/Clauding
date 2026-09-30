@@ -129,6 +129,15 @@ un serveur. L'écran **Historique** combine donc deux sources :
   suppression de cartes, retrait des tags, renommage et suppression d'emplacement), avec sa
   date et son détail carte par carte. Il est gardé sur le téléphone (300 dernières actions).
   Un déplacement peut encore y être annulé : chaque carte retourne à son emplacement d'origine.
+- **Changements** : l'app photographie la collection, c'est-à-dire combien d'exemplaires de
+  chaque carte (finition, état, langue) il y a à chaque endroit. Elle compare ensuite chaque
+  photo à la précédente : cartes **ajoutées**, **supprimées ou vendues**, **déplacées**. Cela
+  couvre aussi ce qui est fait sur le site. La photo est prise automatiquement à l'ouverture
+  quand la dernière date de plus de 24 h (réglable dans ⚙ : 12 h, 1 jour, 3 jours, 1 semaine,
+  jamais), ou à la demande. Seules la dernière photo et les différences sont gardées sur le
+  téléphone. Le calcul (`js/snapshots.js`) compte par carte et par endroit plutôt que par
+  ligne : un déplacement partiel coupe une ligne et une arrivée peut fusionner, donc les
+  identifiants de ligne changent sans que la collection change.
 - **Modifié récemment** : les lignes de la collection, de la plus récemment modifiée à la plus
   ancienne, y compris ce qui est fait sur le site, mais sans dire ce qui a changé.
 

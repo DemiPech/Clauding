@@ -1560,6 +1560,25 @@ body.has-movebar .toast {
   font-size: 14px;
 }
 
+.snapshot-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.change-added .pickup-place-head .section-count {
+  color: #6fc286;
+}
+
+.change-removed .pickup-place-head .section-count {
+  color: #e07a64;
+}
+
 /* ---------- Outils de l'accueil ---------- */
 
 .home-tools {

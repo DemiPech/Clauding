@@ -326,7 +326,21 @@
 
         <div class="toolbar-group history-tabs" id="history-tabs" role="tablist">
           <button type="button" class="chip is-active" data-history-tab="journal">Journal de l'app</button>
+          <button type="button" class="chip" data-history-tab="changes">Changements</button>
           <button type="button" class="chip" data-history-tab="recent">Modifié récemment</button>
+        </div>
+
+        <div id="history-changes" hidden>
+          <p class="move-note">
+            L'app photographie votre collection (au plus une fois par jour, à l'ouverture — réglable
+            dans ⚙) et compare chaque photo à la précédente : cartes ajoutées, supprimées ou vendues,
+            déplacées. Cela couvre aussi ce qui est fait sur le site CardNexus.
+          </p>
+          <div class="snapshot-bar">
+            <span id="snapshot-status"></span>
+            <button type="button" class="link-btn" id="snapshot-now">Prendre une photo maintenant</button>
+          </div>
+          <div id="changes-list"></div>
         </div>
 
         <div id="history-journal">
@@ -430,6 +444,17 @@
         <label class="check-row">
           <input type="checkbox" id="settings-show" />
           <span>Afficher la clé</span>
+        </label>
+
+        <label class="field">
+          <span>Photo automatique de la collection</span>
+          <select id="settings-snapshot">
+            <option value="12">Toutes les 12 heures</option>
+            <option value="24">Une fois par jour</option>
+            <option value="72">Tous les 3 jours</option>
+            <option value="168">Une fois par semaine</option>
+            <option value="0">Jamais (seulement à la demande)</option>
+          </select>
         </label>
 
         <p class="move-note" id="settings-note">

@@ -22,10 +22,13 @@ import {
   deleteCards,
   clearTags,
   recentLines,
+  allCollectionLines,
+  productNames,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
 import { planTidy, TIDY_MODES } from './tidy.js';
+import { countLines } from './snapshots.js';
 
 // Un deck change rarement : on evite de retaper les API a chaque affichage.
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -219,6 +222,8 @@ const WRITE_ROUTES = {
   '/api/cardnexus/locations/delete': handleDeleteLocation,
   '/api/cardnexus/cards/delete': handleDeleteCards,
   '/api/cardnexus/cards/untag': handleClearTags,
+  '/api/cardnexus/products/names': (body) =>
+    respond(() => productNames((body.ids || []).slice(0, 5000)), 'Impossible de lire le catalogue pour le moment.'),
   '/api/cardnexus/locations/create': handleCreateLocation,
 };
 
@@ -252,6 +257,12 @@ async function route(url, init = {}) {
         () => recentLines(Math.max(0, Number(params.get('offset')) || 0)),
         'Impossible de lire les dernières modifications pour le moment.',
       );
+
+    case '/api/cardnexus/snapshot':
+      return respond(async () => {
+        const lines = await allCollectionLines();
+        return { at: new Date().toISOString(), lines: lines.length, counts: countLines(lines) };
+      }, 'Impossible de photographier la collection pour le moment.');
 
     case '/api/cardnexus/counts':
       return respond(
