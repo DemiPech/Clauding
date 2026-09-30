@@ -18,6 +18,24 @@ fichier de la release. Toutes les versions sont signées avec la même clé
 (`app/decklist.keystore`), donc une mise à jour s'installe par-dessus l'ancienne sans
 perdre la clé d'API.
 
+## Navigation
+
+Quatre onglets en bas de l'écran :
+
+- **Collection** (l'accueil) : tous les emplacements sur une seule page, decks compris (avec
+  leur héros et leur nombre de cartes). « Sans emplacement » est épinglé en tête tant qu'il
+  reste des cartes à ranger. Un champ filtre par nom, et des filtres rapides sélectionnent
+  Decks, Vracs, Kallax ou Classeurs. Toucher un emplacement l'ouvre.
+- **Chercher** : un seul champ. Un nom de carte montre où sont les exemplaires dans la
+  collection, et on peut les déplacer depuis la barre du bas. Un lien de deck FaBrary (ou son
+  identifiant de 26 caractères) ouvre la liste.
+- **Outils** : Ranger les vracs, Monter une liste FaBrary, Comparer un deck à une liste
+  (on y choisit le deck).
+- **Historique** : journal de l'app, changements entre photos, modifié récemment.
+
+Un deck, un emplacement ou un plan de montage s'ouvre par-dessus l'onglet d'où l'on vient.
+Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis quitte l'app.
+
 ## Monter un deck : où chercher les cartes
 
 La répartition proposée cherche à **visiter le moins d'endroits possible** :

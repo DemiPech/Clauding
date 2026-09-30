@@ -1894,3 +1894,141 @@ body.has-movebar .toast {
   gap: 10px;
   margin-top: 18px;
 }
+
+/* ---------- Navigation par onglets ---------- */
+
+:root {
+  --tabbar-h: 60px;
+}
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: var(--tabbar-h);
+  background: rgba(18, 16, 15, 0.98);
+  border-top: 1px solid var(--line-strong);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tab.is-active {
+  color: var(--text);
+}
+
+.tab.is-active svg {
+  stroke: var(--accent);
+}
+
+/* Le contenu, la barre de déplacement et le bandeau passent au-dessus des onglets. */
+main {
+  padding-bottom: calc(var(--tabbar-h) + 40px);
+}
+
+.movebar {
+  bottom: var(--tabbar-h);
+}
+
+body.has-movebar main {
+  padding-bottom: calc(var(--tabbar-h) + 160px);
+}
+
+.toast {
+  bottom: calc(var(--tabbar-h) + 16px);
+}
+
+body.has-movebar .toast {
+  bottom: calc(var(--tabbar-h) + 120px);
+}
+
+.sheet {
+  padding-bottom: calc(22px + var(--tabbar-h));
+}
+
+/* ---------- En-têtes de vue et Collection ---------- */
+
+.topbar {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.view-head {
+  margin: 4px 0 14px;
+}
+
+.view-head h1 {
+  font-size: 24px;
+}
+
+.view-head .byline {
+  margin-top: 4px;
+}
+
+#search-view .search {
+  margin-top: 4px;
+}
+
+.collection-filter {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.collection-kinds {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.collection-kinds .chip {
+  flex: none;
+}
+
+.collection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 6px;
+}
+
+.collection-bar .move-note {
+  flex: 1 1 200px;
+}
+
+#places .picker {
+  margin-top: 20px;
+}

@@ -7,15 +7,19 @@ const els = {
   form: $('#search-form'),
   input: $('#deck-input'),
   loadBtn: $('#load-btn'),
-  myDecksBtn: $('#my-decks-btn'),
-  idle: $('#state-idle'),
+  search: $('#search-view'),
+  searchHint: $('#search-hint'),
+  tools: $('#tools-view'),
+  toolBuild: $('#tool-build'),
+  toolCompare: $('#tool-compare'),
+  tabbar: $('#tabbar'),
+  collectionFilter: $('#collection-filter'),
+  collectionKinds: $('#collection-kinds'),
+  compareDeckField: $('#compare-deck-field'),
+  compareDeck: $('#compare-deck'),
   loading: $('#state-loading'),
   error: $('#state-error'),
   errorMessage: $('#error-message'),
-  picker: $('#picker'),
-  pickerList: $('#picker-list'),
-  pickerNote: $('#picker-note'),
-  pickerCount: $('#picker-count'),
   deck: $('#deck'),
   heroArt: $('#hero-art'),
   heroLine: $('#deck-hero-line'),
@@ -138,17 +142,11 @@ const els = {
   compareSubmit: $('#compare-submit'),
   compareClose: $('#compare-close'),
 
-  homeTools: $('#home-tools'),
-  openPlaces: $('#open-places'),
   openTidy: $('#open-tidy'),
 
   places: $('#places'),
-  placesBack: $('#places-back'),
-  placesSearchForm: $('#places-search-form'),
-  placesSearchInput: $('#places-search-input'),
   placesSearchNote: $('#places-search-note'),
   placesSearchResults: $('#places-search-results'),
-  placesTidy: $('#places-tidy'),
   placesCount: $('#places-count'),
   placesNote: $('#places-note'),
   placesList: $('#places-list'),
@@ -166,9 +164,7 @@ const els = {
   tidyLayout: $('#tidy-layout'),
   tidyMoves: $('#tidy-moves'),
 
-  openHistory: $('#open-history'),
   history: $('#history'),
-  historyBack: $('#history-back'),
   historyTabs: $('#history-tabs'),
   historyJournal: $('#history-journal'),
   historyRecent: $('#history-recent'),
@@ -243,25 +239,58 @@ const escapeHtml = (text) =>
 
 // --- Chargement ------------------------------------------------------------
 
-/** "Mes decks" ne sert qu'à revenir au sélecteur, depuis une autre vue. */
-function updateMyDecksButton() {
-  els.myDecksBtn.hidden = !els.idle.hidden;
-}
+// --- Navigation par onglets --------------------------------------------------
+//
+// Quatre onglets en bas : Collection (l'accueil), Chercher, Outils, Historique.
+// Les vues de détail (un deck, un emplacement, un plan de montage, le
+// rangement) s'ouvrent par-dessus l'onglet d'où l'on vient, qui reste allumé,
+// et le retour y ramène.
+
+/** Onglet auquel appartient chaque vue ; les autres gardent l'onglet courant. */
+const VIEW_TABS = { places: 'collection', 'search-view': 'search', 'tools-view': 'tools', history: 'history', tidy: 'tools' };
 
 function showOnly(el) {
-  for (const node of [els.idle, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history]) {
-    node.hidden = node !== el;
+  const views = [els.search, els.tools, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history];
+  for (const node of views) node.hidden = node !== el;
+  if (VIEW_TABS[el.id]) state.tab = VIEW_TABS[el.id];
+  for (const tab of els.tabbar.querySelectorAll('[data-tab]')) {
+    tab.classList.toggle('is-active', tab.dataset.tab === state.tab);
   }
-  updateMyDecksButton();
   updateMovebar();
   window.scrollTo(0, 0);
 }
 
+/** L'accueil : l'onglet Collection. */
 function showHome() {
   state.from = null;
   history.replaceState(null, '', location.pathname);
   document.title = 'Decklist Viewer — Flesh and Blood';
-  showOnly(els.idle);
+  showPlaces();
+}
+
+function showSearch() {
+  showOnly(els.search);
+  renderPlacesSearch();
+}
+
+function showTools() {
+  showOnly(els.tools);
+}
+
+/** Revient à l'onglet d'où une vue de détail a été ouverte. */
+function returnToTab(tab = state.from || state.tab) {
+  if (tab === 'search') showSearch();
+  else if (tab === 'tools') showTools();
+  else if (tab === 'history') showHistory();
+  else showHome();
+}
+
+function showTab(tab) {
+  state.from = null;
+  if (tab === 'search') showSearch();
+  else if (tab === 'tools') showTools();
+  else if (tab === 'history') showHistory();
+  else showHome();
 }
 
 async function loadFromApi(endpoint, { historyUrl }) {
@@ -294,6 +323,7 @@ const loadFabraryDeck = (input) => {
   const value = String(input || '').trim();
   if (!value) return Promise.resolve();
   els.input.blur();
+  state.from = state.tab;
   return loadFromApi(`/api/deck?id=${encodeURIComponent(value)}`, {
     historyUrl: `?deck=${encodeURIComponent(value)}`,
   });
@@ -318,50 +348,26 @@ function updateBuildButton() {
   els.buildBtn.hidden = state.deck?.source !== 'fabrary' || !cardnexusReady;
 }
 
-function deckCardNode(location) {
-  const li = document.createElement('li');
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'deck-card';
-  button.dataset.location = location.name;
-  button.style.setProperty('--chip', LOCATION_COLORS[location.color] || 'var(--line-strong)');
+/** Héros et nombre de cartes de chaque deck, pour la liste de la Collection. */
+const deckInfo = new Map();
 
-  button.innerHTML = `
-    <img class="deck-card-art" alt="" hidden />
-    <span class="deck-card-body">
-      <span class="deck-card-name">${escapeHtml(location.name)}</span>
-      <span class="deck-card-sub is-pending">chargement…</span>
-    </span>
-  `;
-  li.append(button);
-  return li;
-}
-
-/** Complète chaque carte avec son héros et son nombre de cartes, sans saturer l'API. */
-async function enrichDeckCards() {
-  const queue = [...els.pickerList.querySelectorAll('.deck-card')];
+/** Complète les decks de la Collection (héros, cartes), deux à la fois pour ménager l'API. */
+async function enrichDecks() {
+  const queue = deckLocations.map((loc) => loc.name).filter((name) => !deckInfo.has(name));
 
   const worker = async () => {
-    for (let node = queue.shift(); node; node = queue.shift()) {
-      const sub = node.querySelector('.deck-card-sub');
+    for (let name = queue.shift(); name; name = queue.shift()) {
       try {
-        const res = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(node.dataset.location)}`);
+        const res = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(name)}`);
         const deck = await res.json();
         if (!res.ok) throw new Error(deck.error);
-
-        const total = deck.counts.deck + deck.counts.weapons + deck.counts.equipment;
-        sub.textContent = [deck.hero?.name, `${total} cartes`].filter(Boolean).join(' · ');
-        sub.classList.remove('is-pending');
-
-        const art = node.querySelector('.deck-card-art');
-        if (deck.hero?.imageUrl) {
-          art.src = deck.hero.imageUrl;
-          art.hidden = false;
-        }
+        const total = deck.counts.deck + deck.counts.weapons + deck.counts.equipment + (deck.hero?.quantity || 0);
+        deckInfo.set(name, { hero: deck.hero?.name || null, imageUrl: deck.hero?.imageUrl || null });
+        placeCounts.set(name, total);
       } catch {
-        sub.textContent = 'détail indisponible';
-        sub.classList.remove('is-pending');
+        deckInfo.set(name, { hero: null, imageUrl: null, failed: true });
       }
+      if (!els.places.hidden) updatePlaceNode(name);
     }
   };
 
@@ -375,31 +381,22 @@ async function loadDeckLocations() {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
 
     if (!data.configured) {
-      els.pickerNote.textContent =
-        "Aucune clé d'API CardNexus : touchez ⚙ en haut à droite pour l'ajouter. Les decks FaBrary fonctionnent sans.";
+      els.placesNote.textContent =
+        "Aucune clé d'API CardNexus : touchez ⚙ en haut à droite pour l'ajouter. Les decks FaBrary (onglet Chercher) fonctionnent sans.";
       return;
     }
 
     cardnexusReady = true;
-    els.homeTools.hidden = false;
     if (!loadDeckLocations.snapshotScheduled) {
       loadDeckLocations.snapshotScheduled = true;
       scheduleAutoSnapshot();
     }
     updateBuildButton();
     deckLocations = data.decks;
-    if (!deckLocations.length) {
-      els.pickerNote.textContent =
-        "Aucune location d'inventaire ne porte l'icône deck sur votre compte CardNexus.";
-      return;
-    }
-
-    els.pickerNote.textContent = '';
-    els.pickerCount.textContent = `${deckLocations.length} deck${deckLocations.length > 1 ? 's' : ''}`;
-    els.pickerList.replaceChildren(...deckLocations.map(deckCardNode));
-    enrichDeckCards();
+    if (!els.places.hidden) renderPlacesList();
+    enrichDecks();
   } catch (err) {
-    els.pickerNote.textContent = `Inventaire CardNexus indisponible : ${err.message}`;
+    els.placesNote.textContent = `Inventaire CardNexus indisponible : ${err.message}`;
   }
 }
 
@@ -1106,7 +1103,7 @@ function renderBasket() {
 function updateDestinationField(entries) {
   const outgoing = entries.some((entry) => !entry.toDeck);
   els.destination.disabled = !outgoing;
-  const verb = els.places.hidden ? 'Sortir vers' : 'Déplacer vers';
+  const verb = els.search.hidden ? 'Sortir vers' : 'Déplacer vers';
   els.destinationLabel.textContent = outgoing ? verb : `${verb} (rien en main)`;
 }
 
@@ -1114,7 +1111,7 @@ function updateDestinationField(entries) {
 function refreshOpenSteppers() {
   closeLinePicker();
   if (movePanel === 'search') renderSearchResults();
-  if (!els.places.hidden) renderPlacesSearch();
+  if (!els.search.hidden) renderPlacesSearch();
 }
 
 // Aucune location ne porte ce nom : jeton sentinelle pour « retirer la carte
@@ -1135,12 +1132,13 @@ function renderDestinations() {
 function updateMovebar() {
   // Deux usages : sur un deck d'inventaire, et sur l'écran Emplacements, où il
   // n'y a pas de deck ouvert — tout ce qui est pris part vers la destination.
-  const onPlaces = !els.places.hidden;
+  const onPlaces = !els.search.hidden && (Boolean(placesSearch.data?.cards?.length) || basketTotal() > 0);
   const active = (state.deck?.source === 'cardnexus' && !els.deck.hidden) || onPlaces;
   els.movebar.hidden = !active;
   els.selectAll.hidden = onPlaces;
   els.searchToggle.hidden = onPlaces;
   els.destinationLabel.dataset.mode = onPlaces ? 'places' : 'deck';
+  updateDestinationField([...basket.values()]);
   document.body.classList.toggle('has-movebar', active);
   if (!active) {
     if (movePanel !== 'none') setMovePanel('none');
@@ -1397,8 +1395,13 @@ async function undoLastMove() {
 async function reloadCurrentDeck() {
   // Le stock a bougé : les comptes connus des endroits sont périmés.
   placeCounts.clear();
+  deckInfo.clear();
   if (!els.places.hidden) {
     renderPlacesList();
+    enrichDecks();
+    return;
+  }
+  if (!els.search.hidden) {
     if (placesSearch.term) runPlacesSearch(placesSearch.term);
     return;
   }
@@ -1975,7 +1978,8 @@ function syncBuildMode() {
  * Ouvre l'écran de montage pour une liste FaBrary. Avec `existing`, on vient
  * d'un deck d'inventaire à comparer : il est présélectionné comme destination.
  */
-function openBuild(deck, { existing = null } = {}) {
+function openBuild(deck, { existing = null, returnTo = 'deck' } = {}) {
+  build.returnTo = returnTo;
   build.deckId = deck.deckId;
   build.plan = null;
   build.allocation = new Map();
@@ -2275,11 +2279,25 @@ function saveApiKey(value) {
 // --- Comparer un deck d'inventaire à une liste FaBrary ---------------------
 
 const COMPARE_HINT = els.compareNote.innerHTML;
+const compare = { pick: false };
 
-function openCompare() {
-  if (state.deck?.source !== 'cardnexus') return;
+/**
+ * Depuis un deck ouvert, on compare ce deck. Depuis les Outils, on choisit
+ * d'abord le deck (ou l'emplacement) dans la collection.
+ */
+function openCompare({ pick = false } = {}) {
+  pick = pick || state.deck?.source !== 'cardnexus' || els.deck.hidden;
+  compare.pick = pick;
+  els.compareDeckField.hidden = !pick;
+  if (pick) {
+    const decks = locations.filter((loc) => placeKind(loc) === 'deck').sort(byPlaceName);
+    const others = locations.filter((loc) => placeKind(loc) !== 'deck').sort(byPlaceName);
+    els.compareDeck.innerHTML = [...decks, ...others]
+      .map((loc) => `<option value="${escapeHtml(loc.name)}">${escapeHtml(loc.name)}</option>`)
+      .join('');
+  }
   els.compareNote.innerHTML = COMPARE_HINT;
-  els.compareNote.querySelector('#compare-target').textContent = state.deck.deckId;
+  els.compareNote.querySelector('#compare-target').textContent = pick ? 'le deck choisi' : state.deck.deckId;
   els.compareSubmit.disabled = false;
   els.compare.hidden = false;
   els.compareInput.focus();
@@ -2293,7 +2311,8 @@ function closeCompare() {
 async function runCompare() {
   const value = els.compareInput.value.trim();
   if (!value) return;
-  const target = state.deck.deckId;
+  const target = compare.pick ? els.compareDeck.value : state.deck.deckId;
+  if (!target) return;
 
   els.compareSubmit.disabled = true;
   els.compareNote.textContent = 'Récupération de la liste FaBrary…';
@@ -2303,7 +2322,7 @@ async function runCompare() {
     if (!res.ok) throw new Error(list.error || `Erreur ${res.status}`);
 
     closeCompare();
-    openBuild(list, { existing: target });
+    openBuild(list, { existing: target, returnTo: compare.pick ? 'tools' : 'deck' });
     computePlan();
   } catch (err) {
     els.compareNote.textContent = err.message;
@@ -2340,6 +2359,12 @@ const placesSearch = { term: '', data: null };
 
 const byPlaceName = (a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true });
 
+/** Filtre de la Collection : nature d'emplacement et texte, mémorisés pour la session. */
+const collectionFilter = { kind: 'all', text: '' };
+
+/** Ordre des sections de la Collection : les decks d'abord. */
+const COLLECTION_ORDER = ['deck', 'other', 'kallax', 'binder'];
+
 async function showPlaces() {
   state.from = null;
   showOnly(els.places);
@@ -2347,9 +2372,24 @@ async function showPlaces() {
     els.placesNote.textContent = 'Chargement des emplacements…';
     await loadLocations();
   }
-  els.placesNote.textContent = locations.length ? '' : 'Aucun emplacement trouvé sur votre compte CardNexus.';
+  if (!getApiKey()) {
+    els.placesNote.textContent =
+      "Aucune clé d'API CardNexus : touchez ⚙ en haut à droite pour l'ajouter. Les decks FaBrary (onglet Chercher) fonctionnent sans.";
+  } else if (cardnexusReady || locations.length) {
+    els.placesNote.textContent = locations.length ? '' : 'Aucun emplacement trouvé sur votre compte CardNexus.';
+  }
+  els.placesCount.hidden = !getApiKey();
   renderPlacesList();
-  renderPlacesSearch();
+}
+
+/** Sous-titre d'un emplacement : héros d'un deck, nombre de cartes s'il est connu. */
+function placeSubtitle(name) {
+  const info = deckInfo.get(name);
+  const count = placeCounts.get(name);
+  const parts = [info?.hero, count == null ? null : `${count} carte${count > 1 ? 's' : ''}`].filter(Boolean);
+  if (parts.length) return parts.join(' · ');
+  if (deckLocations.some((loc) => loc.name === name) && !info) return 'chargement…';
+  return 'toucher pour ouvrir';
 }
 
 /** Bouton d'un emplacement dans la liste, avec son nombre de cartes s'il est connu. */
@@ -2360,29 +2400,61 @@ function placeButtonNode(name, label, color) {
   button.className = 'deck-card';
   button.dataset.place = name;
   button.style.setProperty('--chip', color || 'var(--line-strong)');
-  const count = placeCounts.get(name);
   button.innerHTML = `
+    <img class="deck-card-art" alt="" hidden />
     <span class="deck-card-body">
       <span class="deck-card-name">${escapeHtml(label)}</span>
-      <span class="deck-card-sub">${count == null ? 'toucher pour ouvrir' : `${count} carte${count > 1 ? 's' : ''}`}</span>
+      <span class="deck-card-sub"></span>
     </span>
   `;
+  // Une image introuvable ne doit pas laisser de cadre vide.
+  button.querySelector('.deck-card-art').addEventListener('error', (event) => {
+    event.target.hidden = true;
+  });
   li.append(button);
+  fillPlaceNode(button, name);
   return li;
 }
 
-function renderPlacesList() {
-  // Les cartes sans emplacement, en tête : c'est ce qui reste à ranger.
-  const loose = document.createElement('section');
-  loose.className = 'picker';
-  loose.innerHTML = '<div class="section-head"><h2>À ranger</h2></div>';
-  const looseList = document.createElement('ul');
-  looseList.className = 'deck-cards';
-  looseList.append(placeButtonNode(UNPLACED, UNPLACED_LABEL, 'var(--pitch-2)'));
-  loose.append(looseList);
+function fillPlaceNode(button, name) {
+  const sub = button.querySelector('.deck-card-sub');
+  sub.textContent = placeSubtitle(name);
+  sub.classList.toggle('is-pending', sub.textContent === 'chargement…');
+  const art = button.querySelector('.deck-card-art');
+  const imageUrl = deckInfo.get(name)?.imageUrl;
+  if (imageUrl) art.src = imageUrl;
+  art.hidden = !imageUrl;
+}
 
-  const sections = PLACE_KINDS.map(({ kind, label }) => {
-    const list = locations.filter((loc) => placeKind(loc) === kind).sort(byPlaceName);
+/** Met à jour un emplacement déjà affiché (héros ou compte arrivé entre-temps). */
+function updatePlaceNode(name) {
+  const button = [...els.placesList.querySelectorAll('[data-place]')].find((b) => b.dataset.place === name);
+  if (button) fillPlaceNode(button, name);
+}
+
+function renderPlacesList() {
+  const text = collectionFilter.text.trim().toLowerCase();
+  const matches = (name) => !text || name.toLowerCase().includes(text);
+  const showKind = (kind) => collectionFilter.kind === 'all' || collectionFilter.kind === kind;
+
+  // Les cartes sans emplacement, en tête tant qu'il en reste (ou qu'on ne sait pas).
+  const nodes = [];
+  const loose = placeCounts.get(UNPLACED);
+  if (cardnexusReady && showKind('other') && loose !== 0 && matches(UNPLACED_LABEL)) {
+    const section = document.createElement('section');
+    section.className = 'picker';
+    section.innerHTML = '<div class="section-head"><h2>À ranger</h2></div>';
+    const list = document.createElement('ul');
+    list.className = 'deck-cards';
+    list.append(placeButtonNode(UNPLACED, UNPLACED_LABEL, 'var(--pitch-2)'));
+    section.append(list);
+    nodes.push(section);
+  }
+
+  const sections = COLLECTION_ORDER.map((kind) => {
+    const { label } = PLACE_KINDS.find((k) => k.kind === kind);
+    if (!showKind(kind)) return null;
+    const list = locations.filter((loc) => placeKind(loc) === kind && matches(loc.name)).sort(byPlaceName);
     if (!list.length) return null;
 
     const section = document.createElement('section');
@@ -2401,7 +2473,11 @@ function renderPlacesList() {
     return section;
   }).filter(Boolean);
 
-  els.placesList.replaceChildren(loose, ...sections);
+  nodes.push(...sections);
+  if (!nodes.length && locations.length) {
+    nodes.push(Object.assign(document.createElement('p'), { className: 'move-note', textContent: 'Aucun emplacement ne correspond.' }));
+  }
+  els.placesList.replaceChildren(...nodes);
 }
 
 /** Compte toutes les cartes de la collection, endroit par endroit, en un balayage. */
@@ -2455,6 +2531,7 @@ async function runPlacesSearch(term) {
 
 function renderPlacesSearch() {
   const cards = placesSearch.data?.cards || [];
+  if (!els.search.hidden) updateMovebar();
   els.placesSearchResults.replaceChildren(
     ...cards.map((card) => {
       const section = document.createElement('div');
@@ -2966,8 +3043,7 @@ async function submitDelete() {
       `« ${name} » supprimé` + (moved ? ` · ${moved} carte${moved > 1 ? 's' : ''} → « ${target} »` : '') + '.',
       { log: { kind: 'deleteLocation' } },
     );
-    if (state.from === 'places') showPlaces();
-    else showHome();
+    returnToTab();
   } catch (err) {
     els.deleteNote.textContent = err.message;
     els.deleteSubmit.disabled = false;
@@ -3487,39 +3563,72 @@ window.__appBack = () => {
   if (!els.lightbox.hidden) return closeLightbox(), true;
   if (!els.linePicker.hidden) return closeLinePicker(), true;
   if (movePanel !== 'none') return setMovePanel('none'), true;
-  if (!els.build.hidden) return showOnly(els.deck), true;
-  if (!els.tidy.hidden) return showPlaces(), true;
-  if (!els.history.hidden) return showHome(), true;
-  if (!els.deck.hidden && state.from === 'places') return showPlaces(), true;
-  if (els.idle.hidden) return showHome(), true;
+  if (!els.build.hidden) return leaveBuild(), true;
+  if (!els.tidy.hidden) return showTools(), true;
+  if (!els.deck.hidden || !els.error.hidden || !els.loading.hidden) return returnToTab(), true;
+  if (els.places.hidden) return showHome(), true;
   return false;
 };
 
 // --- Événements ------------------------------------------------------------
 
+/** Un lien (ou un identifiant) de deck FaBrary, plutôt qu'un nom de carte. */
+const looksLikeFabrary = (value) =>
+  /fabrary\.net\/decks\//i.test(value) || /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value.trim());
+
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
-  loadFabraryDeck(els.input.value);
-});
-
-els.idle.addEventListener('click', (event) => {
-  const example = event.target.closest('[data-example]');
-  if (example) {
-    els.input.value = example.dataset.example;
-    loadFabraryDeck(example.dataset.example);
+  const value = els.input.value.trim();
+  if (!value) return;
+  if (looksLikeFabrary(value)) {
+    loadFabraryDeck(value);
     return;
   }
-
-  const deckCard = event.target.closest('[data-location]');
-  if (deckCard) {
-    state.from = null;
-    loadCardnexusDeck(deckCard.dataset.location);
+  if (value.length < 2) {
+    els.placesSearchNote.textContent = 'Tapez au moins deux caractères.';
+    return;
   }
+  if (!cardnexusReady) {
+    els.placesSearchNote.textContent = "Chercher dans la collection demande une clé d'API CardNexus (⚙).";
+    return;
+  }
+  els.input.blur();
+  runPlacesSearch(value);
 });
 
-els.openPlaces.addEventListener('click', showPlaces);
-els.openHistory.addEventListener('click', showHistory);
-els.historyBack.addEventListener('click', showHome);
+els.search.addEventListener('click', (event) => {
+  const example = event.target.closest('[data-example]');
+  if (!example) return;
+  els.input.value = example.dataset.example;
+  loadFabraryDeck(example.dataset.example);
+});
+
+els.tabbar.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-tab]');
+  if (tab) showTab(tab.dataset.tab);
+});
+
+els.collectionFilter.addEventListener('input', () => {
+  collectionFilter.text = els.collectionFilter.value;
+  renderPlacesList();
+});
+els.collectionKinds.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-kind]');
+  if (!chip) return;
+  collectionFilter.kind = chip.dataset.kind;
+  for (const other of els.collectionKinds.querySelectorAll('[data-kind]')) {
+    other.classList.toggle('is-active', other === chip);
+  }
+  renderPlacesList();
+});
+
+els.toolBuild.addEventListener('click', () => {
+  showSearch();
+  els.placesSearchNote.textContent =
+    'Collez le lien du deck FaBrary à monter, puis touchez « Monter dans CardNexus » sur la liste.';
+  els.input.focus();
+});
+els.toolCompare.addEventListener('click', () => openCompare({ pick: true }));
 els.historyTabs.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-history-tab]');
   if (chip) setHistoryTab(chip.dataset.historyTab);
@@ -3551,27 +3660,15 @@ els.journalClear.addEventListener('click', async () => {
   renderJournal();
 });
 els.openTidy.addEventListener('click', showTidy);
-els.placesBack.addEventListener('click', showHome);
-els.placesTidy.addEventListener('click', showTidy);
 els.placesCount.addEventListener('click', countAllPlaces);
 els.placesList.addEventListener('click', (event) => {
   const place = event.target.closest('[data-place]');
   if (!place) return;
-  state.from = 'places';
+  state.from = 'collection';
   loadCardnexusDeck(place.dataset.place);
 });
-els.placesSearchForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const term = els.placesSearchInput.value.trim();
-  if (term.length < 2) {
-    els.placesSearchNote.textContent = 'Tapez au moins deux caractères.';
-    return;
-  }
-  els.placesSearchInput.blur();
-  runPlacesSearch(term);
-});
 
-els.tidyBack.addEventListener('click', showPlaces);
+els.tidyBack.addEventListener('click', showTools);
 els.tidySetup.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-tidy-mode]');
   if (!chip) return;
@@ -3598,8 +3695,6 @@ els.tidyCopy.addEventListener('click', async () => {
     els.tidyCopy.textContent = 'Copier le plan';
   }, 1600);
 });
-
-els.myDecksBtn.addEventListener('click', showHome);
 
 els.toolbar.addEventListener('click', (event) => {
   const chip = event.target.closest('.chip');
@@ -3772,7 +3867,13 @@ els.buildBtn.addEventListener('click', () => {
   if (state.deck) openBuild(state.deck);
 });
 
-els.buildBack.addEventListener('click', () => showOnly(els.deck));
+/** Quitte le plan de montage vers là d'où il a été ouvert. */
+function leaveBuild() {
+  if (build.returnTo === 'tools' || !state.deck) showTools();
+  else showOnly(els.deck);
+}
+
+els.buildBack.addEventListener('click', leaveBuild);
 els.buildSetup.addEventListener('change', syncBuildMode);
 els.buildSetup.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -3836,19 +3937,25 @@ const params = new URLSearchParams(location.search);
 const initialDeck = params.get('deck');
 const initialLocation = params.get('location');
 
+state.tab = 'collection';
 loadDeckLocations().then(() => {
-  updateMyDecksButton();
   updateBuildButton();
+  if (!els.places.hidden) renderPlacesList();
 });
-loadLocations();
+loadLocations().then(() => {
+  if (!els.places.hidden) renderPlacesList();
+});
 renderBasket();
 
 if (initialDeck) {
   els.input.value = initialDeck;
+  state.tab = 'search';
   loadFabraryDeck(initialDeck);
 } else if (initialLocation) {
+  state.from = 'collection';
   loadCardnexusDeck(initialLocation);
-} else if (!getApiKey()) {
+} else {
+  showHome();
   // Premier lancement : la clé est le seul réglage, on le propose d'emblée.
-  openSettings();
+  if (!getApiKey()) openSettings();
 }
