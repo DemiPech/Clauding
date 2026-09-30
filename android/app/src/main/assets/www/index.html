@@ -81,18 +81,17 @@
         <section class="deck-head">
           <img class="hero-art" id="hero-art" alt="" />
           <div class="deck-meta">
-            <p class="eyebrow" id="deck-hero-line"></p>
-            <h1 id="deck-name"></h1>
+            <div class="deck-title-row">
+              <div class="deck-title">
+                <p class="eyebrow" id="deck-hero-line"></p>
+                <h1 id="deck-name"></h1>
+              </div>
+              <button type="button" class="icon-btn more-btn" id="more-btn" aria-label="Plus d'actions" title="Plus d'actions">⋯</button>
+            </div>
             <p class="byline" id="deck-byline"></p>
             <ul class="stat-row" id="deck-stats"></ul>
             <div class="deck-links">
-              <a id="fabrary-link" href="#" target="_blank" rel="noopener">Voir sur FaBrary ↗</a>
-              <button class="link-btn" id="copy-btn">Copier la decklist</button>
-              <button class="link-btn" id="build-btn" hidden>Monter dans CardNexus</button>
-              <button class="link-btn" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
-              <button class="link-btn" id="rename-btn" hidden>Renommer</button>
-              <button class="link-btn" id="untag-btn" hidden>Retirer les tags</button>
-              <button class="link-btn danger-btn" id="delete-btn" hidden>Supprimer l'emplacement</button>
+              <button class="primary-btn" id="build-btn" hidden>Monter dans CardNexus</button>
             </div>
           </div>
         </section>
@@ -115,14 +114,17 @@
               <option value="none">Rien</option>
             </select>
           </label>
-          <div class="toolbar-group" id="excess-group" hidden>
-            <button type="button" class="chip" id="excess-btn">Prendre au-delà de</button>
+          <div class="toolbar-group selection-group" id="selection-group" hidden>
+            <span class="toolbar-label">Prendre</span>
+            <button type="button" class="chip" id="select-all">Tout</button>
+            <button type="button" class="chip" id="excess-btn">Au-delà de</button>
             <select id="excess-keep" class="group-select" aria-label="Exemplaires à garder par carte">
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3" selected>3</option>
               <option value="4">4</option>
             </select>
+            <button type="button" class="chip" id="search-toggle">+ Depuis l'inventaire</button>
           </div>
         </nav>
 
@@ -401,9 +403,8 @@
       </div>
 
       <div class="movebar-row">
-        <button class="chip" id="select-all">Tout prendre</button>
-        <button class="chip" id="search-toggle">Ajouter depuis l'inventaire</button>
-        <button class="chip" id="basket-toggle">En main : <b id="basket-count">0</b></button>
+        <button class="chip" id="basket-toggle"><b id="basket-count">0</b> en main ▾</button>
+        <button class="chip" id="clear-basket">Tout reposer</button>
         <span class="movebar-spacer"></span>
         <label class="movebar-dest">
           <span id="destination-label">Sortir vers</span>
@@ -462,6 +463,23 @@
           <button type="submit" class="primary-btn">Enregistrer</button>
         </div>
       </form>
+    </div>
+
+    <div class="sheet-backdrop" id="actions" hidden>
+      <div class="sheet">
+        <div class="sheet-head">
+          <h2 id="actions-title">Actions</h2>
+          <button type="button" class="icon-btn" id="actions-close" aria-label="Fermer">×</button>
+        </div>
+        <div class="action-list" id="action-list">
+          <a class="action-item" id="fabrary-link" href="#" target="_blank" rel="noopener">Voir sur FaBrary ↗</a>
+          <button type="button" class="action-item" id="copy-btn">Copier la decklist</button>
+          <button type="button" class="action-item" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
+          <button type="button" class="action-item" id="rename-btn" hidden>Renommer</button>
+          <button type="button" class="action-item" id="untag-btn" hidden>Retirer les tags</button>
+          <button type="button" class="action-item danger" id="delete-btn" hidden>Supprimer l'emplacement</button>
+        </div>
+      </div>
     </div>
 
     <div class="sheet-backdrop" id="confirm" hidden>

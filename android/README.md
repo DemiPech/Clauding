@@ -33,6 +33,18 @@ Quatre onglets en bas de l'écran :
   (on y choisit le deck).
 - **Historique** : journal de l'app, changements entre photos, modifié récemment.
 
+Dans un deck ou un emplacement :
+
+- **En-tête compact** : nom, nombre de cartes, et un menu **⋯** qui regroupe les actions
+  secondaires (Voir sur FaBrary, Copier la decklist, Comparer, Renommer, Retirer les tags,
+  Supprimer l'emplacement). Seule l'action principale d'une liste FaBrary, « Monter dans
+  CardNexus », reste en vue.
+- **Options** : Vue et Grouper par sur une ligne. En dessous, **Prendre** : Tout, Au-delà de N,
+  + Depuis l'inventaire.
+- **Barre du bas contextuelle** : elle n'apparaît qu'avec des cartes en main (ou le panneau
+  « depuis l'inventaire » ouvert). Elle affiche « N en main », Tout reposer, la destination,
+  Déplacer et Supprimer.
+
 Un deck, un emplacement ou un plan de montage s'ouvre par-dessus l'onglet d'où l'on vient.
 Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis quitte l'app.
 

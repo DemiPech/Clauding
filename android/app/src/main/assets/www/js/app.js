@@ -112,7 +112,13 @@ const els = {
   confirmOk: $('#confirm-ok'),
   confirmCancel: $('#confirm-cancel'),
   confirmClose: $('#confirm-close'),
-  excessGroup: $('#excess-group'),
+  selectionGroup: $('#selection-group'),
+  moreBtn: $('#more-btn'),
+  actions: $('#actions'),
+  actionsTitle: $('#actions-title'),
+  actionsClose: $('#actions-close'),
+  actionList: $('#action-list'),
+  clearBasket: $('#clear-basket'),
   excessBtn: $('#excess-btn'),
   excessKeep: $('#excess-keep'),
   renameBtn: $('#rename-btn'),
@@ -458,7 +464,7 @@ function renderHeader(deck) {
   const tagged = taggedLines(deck);
   els.untagBtn.hidden = tagged.length === 0;
   els.untagBtn.textContent = `Retirer les tags (${tagged.length} ligne${tagged.length > 1 ? 's' : ''})`;
-  els.excessGroup.hidden = deck.source !== 'cardnexus';
+  els.selectionGroup.hidden = deck.source !== 'cardnexus';
   els.renameBtn.hidden = !realPlace;
   els.deleteBtn.hidden = !realPlace;
   // Grouper par extension n'a de sens que pour l'inventaire (FaBrary ne la donne pas).
@@ -727,8 +733,23 @@ function renderSections() {
   els.sections.replaceChildren(...groups.map(renderSection).filter(Boolean));
 }
 
+/** Le menu ⋯ n'a de sens que s'il contient au moins une action. */
+function updateMoreButton() {
+  els.moreBtn.hidden = ![...els.actionList.children].some((item) => !item.hidden);
+}
+
+function openActions() {
+  els.actionsTitle.textContent = state.deck?.name || 'Actions';
+  els.actions.hidden = false;
+}
+
+const closeActions = () => {
+  els.actions.hidden = true;
+};
+
 function renderDeck() {
   renderHeader(state.deck);
+  updateMoreButton();
   renderSections();
   markHeldCards();
   updateMovebar();
@@ -1037,10 +1058,13 @@ function setMovePanel(next) {
       els.moveSearchNote.textContent = `Les exemplaires pris ici entreront dans « ${currentDeckName()} ».`;
     }
   }
+  updateMovebar();
 }
 
 function renderBasket() {
   const total = basketTotal();
+  // Main vide : la liste « en main » n'a plus rien à montrer.
+  if (total === 0 && movePanel === 'basket') setMovePanel('none');
   els.basketCount.textContent = String(total);
   els.applyMove.disabled = total === 0;
   els.deleteCards.disabled = total === 0;
@@ -1094,6 +1118,7 @@ function renderBasket() {
     : "Rien en main. Prenez des cartes depuis le deck, ou cherchez-en dans l'inventaire.";
 
   updateDestinationField(entries);
+  updateMovebar();
 }
 
 /**
@@ -1132,11 +1157,12 @@ function renderDestinations() {
 function updateMovebar() {
   // Deux usages : sur un deck d'inventaire, et sur l'écran Emplacements, où il
   // n'y a pas de deck ouvert — tout ce qui est pris part vers la destination.
-  const onPlaces = !els.search.hidden && (Boolean(placesSearch.data?.cards?.length) || basketTotal() > 0);
-  const active = (state.deck?.source === 'cardnexus' && !els.deck.hidden) || onPlaces;
+  // Contextuelle : elle n'apparaît que quand on a des cartes en main (ou le
+  // panneau « depuis l'inventaire » ouvert), sur un deck d'inventaire ou dans Chercher.
+  const onPlaces = !els.search.hidden;
+  const context = (state.deck?.source === 'cardnexus' && !els.deck.hidden) || onPlaces;
+  const active = context && (basketTotal() > 0 || movePanel !== 'none');
   els.movebar.hidden = !active;
-  els.selectAll.hidden = onPlaces;
-  els.searchToggle.hidden = onPlaces;
   els.destinationLabel.dataset.mode = onPlaces ? 'places' : 'deck';
   updateDestinationField([...basket.values()]);
   document.body.classList.toggle('has-movebar', active);
@@ -3557,6 +3583,7 @@ function showHistory() {
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
   if (!els.compare.hidden) return closeCompare(), true;
+  if (!els.actions.hidden) return closeActions(), true;
   if (!els.confirm.hidden) return closeConfirm(false), true;
   if (!els.rename.hidden) return closeRename(), true;
   if (!els.delete.hidden) return closeDelete(), true;
@@ -3721,13 +3748,26 @@ els.copyBtn.addEventListener('click', async () => {
   if (!state.deck) return;
   try {
     await copyText(deckAsText(state.deck));
-    els.copyBtn.textContent = 'Copié !';
+    showToast('Decklist copiée dans le presse-papiers.');
   } catch {
-    els.copyBtn.textContent = 'Copie refusée';
+    showToast('Copie refusée par le téléphone.', { error: true });
   }
-  setTimeout(() => {
-    els.copyBtn.textContent = 'Copier la decklist';
-  }, 1600);
+});
+
+els.moreBtn.addEventListener('click', openActions);
+els.actionsClose.addEventListener('click', closeActions);
+els.actions.addEventListener('click', (event) => {
+  if (event.target === els.actions) closeActions();
+});
+// Une action choisie referme le menu (son propre gestionnaire a déjà agi).
+els.actionList.addEventListener('click', (event) => {
+  if (event.target.closest('.action-item')) closeActions();
+});
+els.clearBasket.addEventListener('click', () => {
+  basket.clear();
+  refreshBasketViews();
+  refreshOpenSteppers();
+  setMovePanel('none');
 });
 
 els.sections.addEventListener('pointerover', (event) => {
@@ -3799,6 +3839,7 @@ document.addEventListener('keydown', (event) => {
   closeRename();
   closeDelete();
   if (!els.confirm.hidden) closeConfirm(false);
+  closeActions();
 });
 
 els.deleteCards.addEventListener('click', deleteHeldCards);

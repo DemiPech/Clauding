@@ -1967,9 +1967,6 @@ body.has-movebar .toast {
   bottom: calc(var(--tabbar-h) + 120px);
 }
 
-.sheet {
-  padding-bottom: calc(22px + var(--tabbar-h));
-}
 
 /* ---------- En-têtes de vue et Collection ---------- */
 
@@ -2031,4 +2028,110 @@ body.has-movebar .toast {
 
 #places .picker {
   margin-top: 20px;
+}
+
+/* ---------- Étape 2 : en-tête compact, menu ⋯, barre contextuelle ---------- */
+
+.deck-head {
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+.hero-art {
+  width: 84px;
+}
+
+.deck-meta {
+  flex: 1;
+}
+
+.deck-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.deck-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.more-btn {
+  flex: none;
+  margin: -4px -8px 0 0;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+#deck-name {
+  font-size: 21px;
+}
+
+.deck-meta .stat-row {
+  margin-top: 10px;
+}
+
+.deck-links {
+  margin-top: 12px;
+}
+
+.deck-links:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.action-item {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.action-item:first-child {
+  border-top: 0;
+}
+
+.action-item:not([hidden]) ~ .action-item {
+  border-top: 1px solid var(--line);
+}
+
+.action-item.danger {
+  color: #e07a64;
+}
+
+.toolbar {
+  gap: 10px 18px;
+  padding-top: 12px;
+}
+
+.selection-group {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.movebar-row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+@media (min-width: 900px) {
+  .hero-art {
+    width: 140px;
+  }
 }
