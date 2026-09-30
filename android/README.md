@@ -87,6 +87,14 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
   exemplaires par carte (même nom, même pitch). Avec 5, 6 et 2 exemplaires, on en prend 2, 3 et 0.
   Partent d'abord les exemplaires en vente, puis les plus abîmés, puis les Standard : les foils
   restent sur place. On choisit ensuite la destination dans la barre du bas.
+- **Supprimer** (bouton rouge de la barre du bas) retire de la collection les cartes en main,
+  après confirmation. On choisit comme pour un déplacement : « Tout prendre » pour tout, toucher
+  une carte pour tous ses exemplaires, « + » pour un exemplaire à la fois. C'est définitif, et une
+  carte en vente perd son annonce. Retirer une partie d'une ligne passe par un lot de baisses de
+  quantité. Une ligne entière demande une requête `DELETE` à elle seule : l'API n'a pas de
+  suppression en lot.
+- Les tags s'affichent sur les exemplaires. **Retirer les tags** les enlève de toutes les
+  lignes de la vue, et les tags restent définis dans le compte.
 - La recherche trouve une carte dans toute la collection. On règle combien d'exemplaires
   prendre sur chaque ligne, puis on choisit la destination dans la barre du bas.
 

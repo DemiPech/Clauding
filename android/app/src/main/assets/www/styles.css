@@ -1447,6 +1447,18 @@ body.has-movebar .toast {
   font-size: 15px;
 }
 
+.confirm-list {
+  margin: 10px 0 0;
+  padding: 8px 12px 8px 28px;
+  max-height: 34vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* ---------- Outils de l'accueil ---------- */
 
 .home-tools {

@@ -19,6 +19,8 @@ import {
   countByLocation,
   renameLocation,
   deleteLocation,
+  deleteCards,
+  clearTags,
   isConfigured as cardnexusConfigured,
   CardnexusError,
 } from './cardnexus.js';
@@ -155,6 +157,22 @@ function handleMove(body) {
   }, "Impossible d'appliquer les deplacements pour le moment.");
 }
 
+function handleDeleteCards(body) {
+  return respond(async () => {
+    const result = await deleteCards(body.items);
+    invalidateCardnexusDecks();
+    return result;
+  }, 'Impossible de supprimer ces cartes pour le moment.');
+}
+
+function handleClearTags(body) {
+  return respond(async () => {
+    const result = await clearTags(body.ids);
+    invalidateCardnexusDecks();
+    return result;
+  }, 'Impossible de retirer les tags pour le moment.');
+}
+
 /** Un emplacement a change de nom ou disparu : tout ce qui est en cache peut le citer. */
 function forgetCardnexusCache() {
   for (const key of deckCache.keys()) {
@@ -198,6 +216,8 @@ const WRITE_ROUTES = {
   '/api/cardnexus/tidy': handleTidy,
   '/api/cardnexus/locations/rename': handleRenameLocation,
   '/api/cardnexus/locations/delete': handleDeleteLocation,
+  '/api/cardnexus/cards/delete': handleDeleteCards,
+  '/api/cardnexus/cards/untag': handleClearTags,
   '/api/cardnexus/locations/create': handleCreateLocation,
 };
 

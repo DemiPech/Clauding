@@ -88,6 +88,7 @@
               <button class="link-btn" id="build-btn" hidden>Monter dans CardNexus</button>
               <button class="link-btn" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
               <button class="link-btn" id="rename-btn" hidden>Renommer</button>
+              <button class="link-btn" id="untag-btn" hidden>Retirer les tags</button>
               <button class="link-btn danger-btn" id="delete-btn" hidden>Supprimer l'emplacement</button>
             </div>
           </div>
@@ -362,6 +363,7 @@
           <select id="destination" aria-label="Destination des cartes sorties du deck"></select>
         </label>
         <button class="primary-btn" id="apply-move" disabled>Déplacer</button>
+        <button class="primary-btn danger" id="delete-cards" disabled>Supprimer</button>
       </div>
     </div>
 
@@ -400,6 +402,22 @@
         <div class="sheet-actions">
           <button type="button" class="link-btn" id="settings-clear">Effacer</button>
           <button type="submit" class="primary-btn">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="sheet-backdrop" id="confirm" hidden>
+      <form class="sheet" id="confirm-form">
+        <div class="sheet-head">
+          <h2 id="confirm-title"></h2>
+          <button type="button" class="icon-btn" id="confirm-close" aria-label="Fermer">×</button>
+        </div>
+        <p id="confirm-text"></p>
+        <ul class="confirm-list" id="confirm-list"></ul>
+        <p class="move-note" id="confirm-note"></p>
+        <div class="sheet-actions">
+          <button type="button" class="link-btn" id="confirm-cancel">Annuler</button>
+          <button type="submit" class="primary-btn" id="confirm-ok"></button>
         </div>
       </form>
     </div>

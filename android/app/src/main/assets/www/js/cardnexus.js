@@ -224,6 +224,7 @@ function describeLine(line, product) {
     quantity: line.quantity,
     location: line.location || null,
     forSale: Boolean(line.forSale),
+    tags: line.tags || [],
   };
 }
 
@@ -989,6 +990,72 @@ export async function linesInPlaces(places) {
         },
       };
     });
+}
+
+// --- Suppression de cartes, retrait des tags --------------------------------
+
+const UPDATE_BATCH = 200;
+
+/** Applique des modifications par lots de 200 (plafond de bulk/update). */
+async function bulkUpdate(items) {
+  const results = [];
+  for (let i = 0; i < items.length; i += UPDATE_BATCH) {
+    const batch = items.slice(i, i + UPDATE_BATCH);
+    const res = await api('/inventory/bulk/update', {
+      method: 'POST',
+      body: { items: batch },
+      idempotencyKey: uuid(),
+    });
+    for (const result of res.results || []) results.push({ ...result, item: batch[result.index] });
+  }
+  return results;
+}
+
+/**
+ * Supprime des cartes de la collection. `items` : [{ inventoryId, count, max }].
+ * Une partie d'une ligne s'enleve en baissant sa quantite (par lots) ; une
+ * ligne entiere se supprime (une requete par ligne : l'API n'a pas de
+ * suppression en lot). C'est definitif ; une ligne en vente perd son annonce.
+ */
+export async function deleteCards(items) {
+  if (!Array.isArray(items) || !items.length) throw new CardnexusError('Aucune carte a supprimer.', 400);
+
+  const partial = items.filter((item) => item.count < item.max);
+  const whole = items.filter((item) => item.count >= item.max);
+  let removed = 0;
+  const failed = [];
+
+  const adjusted = await bulkUpdate(
+    partial.map(({ inventoryId, count }) => ({ inventoryId, quantity: { adjust: -count } })),
+  );
+  for (const result of adjusted) {
+    const item = partial.find((p) => p.inventoryId === result.item.inventoryId);
+    if (result.status === 'ok') removed += item.count;
+    else failed.push({ ...item, reason: ERROR_LABELS[result.code] || result.code });
+  }
+
+  for (const item of whole) {
+    try {
+      await api(`/inventory/${encodeURIComponent(item.inventoryId)}`, { method: 'DELETE' });
+      removed += item.count;
+    } catch (err) {
+      failed.push({ ...item, reason: err.message });
+    }
+  }
+
+  forgetInventorySearches();
+  return { removed, failed };
+}
+
+/** Retire tous les tags de ces lignes (elles restent ou elles sont). */
+export async function clearTags(inventoryIds) {
+  if (!Array.isArray(inventoryIds) || !inventoryIds.length) throw new CardnexusError('Aucune ligne.', 400);
+  const results = await bulkUpdate(inventoryIds.map((inventoryId) => ({ inventoryId, tags: { set: [] } })));
+  forgetInventorySearches();
+  return {
+    cleared: results.filter((r) => r.status === 'ok').length,
+    failed: results.filter((r) => r.status !== 'ok').map((r) => ({ ...r.item, reason: ERROR_LABELS[r.code] || r.code })),
+  };
 }
 
 /** Renomme un emplacement ; ses cartes restent en place. */

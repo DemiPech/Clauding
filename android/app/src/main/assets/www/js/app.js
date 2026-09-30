@@ -96,6 +96,17 @@ const els = {
   buildReset: $('#build-reset'),
 
   groupSelect: $('#group-select'),
+  deleteCards: $('#delete-cards'),
+  untagBtn: $('#untag-btn'),
+  confirm: $('#confirm'),
+  confirmForm: $('#confirm-form'),
+  confirmTitle: $('#confirm-title'),
+  confirmText: $('#confirm-text'),
+  confirmList: $('#confirm-list'),
+  confirmNote: $('#confirm-note'),
+  confirmOk: $('#confirm-ok'),
+  confirmCancel: $('#confirm-cancel'),
+  confirmClose: $('#confirm-close'),
   excessGroup: $('#excess-group'),
   excessBtn: $('#excess-btn'),
   excessKeep: $('#excess-keep'),
@@ -387,6 +398,12 @@ function isStoragePlace(deck = state.deck) {
   return deck?.source === 'cardnexus' && !deckLocations.some((loc) => loc.name === deck.deckId);
 }
 
+/** Lignes d'inventaire de la vue qui portent au moins un tag. */
+function taggedLines(deck) {
+  if (deck?.source !== 'cardnexus') return [];
+  return placeCards(deck).flatMap((card) => (card.printings || []).filter((line) => line.tags?.length));
+}
+
 /** Toutes les cartes d'un emplacement, héros compris, pour l'afficher à plat. */
 const placeCards = (deck) =>
   [deck.hero, ...deck.weapons, ...deck.equipment, ...deck.deck, ...deck.sideboard].filter(Boolean);
@@ -419,6 +436,9 @@ function renderPlaceHeader(deck) {
 function renderHeader(deck) {
   // Renommer et supprimer valent pour tout emplacement CardNexus, deck compris.
   const realPlace = deck.source === 'cardnexus' && !deck.unplaced;
+  const tagged = taggedLines(deck);
+  els.untagBtn.hidden = tagged.length === 0;
+  els.untagBtn.textContent = `Retirer les tags (${tagged.length} ligne${tagged.length > 1 ? 's' : ''})`;
   els.excessGroup.hidden = deck.source !== 'cardnexus';
   els.renameBtn.hidden = !realPlace;
   els.deleteBtn.hidden = !realPlace;
@@ -944,6 +964,7 @@ function lineRowNode(line, card, { showLocation = false, onChange, store, note, 
     showLocation ? lineLabel(line) : null,
     line.forSale ? 'en vente sur la marketplace' : null,
     note === 'deck' ? 'appartient à un autre deck' : null,
+    line.tags?.length ? `tags : ${line.tags.join(', ')}` : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1001,6 +1022,7 @@ function renderBasket() {
   const total = basketTotal();
   els.basketCount.textContent = String(total);
   els.applyMove.disabled = total === 0;
+  els.deleteCards.disabled = total === 0;
 
   els.basketList.replaceChildren(
     ...[...basket.values()].map((entry) => {
@@ -1331,6 +1353,21 @@ async function reloadCurrentDeck() {
   }
   if (state.deck?.source !== 'cardnexus') return;
   const res = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(state.deck.deckId)}`);
+  if (res.status === 404) {
+    // Plus aucune carte ici (tout déplacé ou supprimé) : on affiche l'emplacement vide.
+    state.deck = {
+      ...state.deck,
+      hero: null,
+      weapons: [],
+      equipment: [],
+      deck: [],
+      sideboard: [],
+      counts: { deck: 0, weapons: 0, equipment: 0, sideboard: 0, unique: 0 },
+    };
+    placeCounts.set(state.deck.deckId, 0);
+    renderDeck();
+    return;
+  }
   if (!res.ok) return;
   state.deck = await res.json();
   renderDeck();
@@ -2590,6 +2627,144 @@ async function applyTidy() {
   }
 }
 
+// --- Confirmation, suppression de cartes, retrait des tags ------------------------
+
+let confirmResolve = null;
+
+/**
+ * Demande confirmation dans un panneau (les boîtes de dialogue du navigateur
+ * ne s'affichent pas dans la WebView). Résout à true si l'on confirme.
+ */
+function askConfirm({ title, text, items = [], note = '', ok, danger = false }) {
+  els.confirmTitle.textContent = title;
+  els.confirmText.textContent = text;
+  els.confirmList.replaceChildren(
+    ...items.map((item) => Object.assign(document.createElement('li'), { textContent: item })),
+  );
+  els.confirmList.hidden = items.length === 0;
+  els.confirmNote.textContent = note;
+  els.confirmOk.textContent = ok;
+  els.confirmOk.classList.toggle('danger', danger);
+  els.confirmOk.disabled = false;
+  els.confirm.hidden = false;
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function closeConfirm(answer = false) {
+  els.confirm.hidden = true;
+  confirmResolve?.(answer);
+  confirmResolve = null;
+}
+
+/** Résumé lisible d'une sélection : une ligne par carte, du plus nombreux au moins nombreux. */
+function selectionSummary(entries, limit = 12) {
+  const byCard = new Map();
+  for (const entry of entries) {
+    const key = `${entry.cardName}|${entry.pitch ?? ''}`;
+    const item = byCard.get(key) || { name: entry.cardName, pitch: entry.pitch, count: 0 };
+    item.count += entry.count;
+    byCard.set(key, item);
+  }
+  const list = [...byCard.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const shown = list.slice(0, limit).map((item) => `${item.count}× ${cardLabel(item)}`);
+  if (list.length > limit) shown.push(`… et ${list.length - limit} autre${list.length - limit > 1 ? 's' : ''}`);
+  return shown;
+}
+
+/** Supprime de la collection tout ce qui est en main, après confirmation. */
+async function deleteHeldCards() {
+  const entries = [...basket.values()];
+  if (!entries.length) return;
+  const total = entries.reduce((sum, entry) => sum + entry.count, 0);
+  const forSale = entries.filter((entry) => entry.forSale).length;
+  const wholeLines = entries.filter((entry) => entry.count >= entry.max).length;
+
+  const confirmed = await askConfirm({
+    title: 'Supprimer de la collection',
+    text: `Supprimer définitivement ${total} carte${total > 1 ? 's' : ''} de votre collection CardNexus ?`,
+    items: selectionSummary(entries),
+    note: [
+      'Impossible à annuler.',
+      forSale ? `${forSale} ligne(s) en vente : leur annonce sera retirée.` : '',
+      wholeLines > 20 ? `${wholeLines} lignes entières à supprimer, une requête chacune : comptez environ ${Math.ceil(wholeLines / 55)} min.` : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+    ok: `Supprimer ${total} carte${total > 1 ? 's' : ''}`,
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  els.deleteCards.disabled = true;
+  els.deleteCards.textContent = 'Suppression…';
+  try {
+    const res = await fetch('/api/cardnexus/cards/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: entries.map(({ inventoryId, count, max }) => ({ inventoryId, count, max })) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+
+    const failedIds = new Set(data.failed.map((f) => f.inventoryId));
+    for (const entry of entries) if (!failedIds.has(entry.inventoryId)) basket.delete(entry.inventoryId);
+    renderBasket();
+    setMovePanel('none');
+    placeCounts.clear();
+    showToast(
+      `${data.removed} carte${data.removed > 1 ? 's' : ''} supprimée${data.removed > 1 ? 's' : ''} de la collection` +
+        (data.failed.length ? ` (${data.failed.length} échec(s) : ${data.failed[0].reason})` : ''),
+      { error: Boolean(data.failed.length) },
+    );
+    await reloadCurrentDeck();
+  } catch (err) {
+    showToast(err.message, { error: true });
+  } finally {
+    els.deleteCards.textContent = 'Supprimer';
+    els.deleteCards.disabled = basketTotal() === 0;
+  }
+}
+
+/** Retire les tags de toutes les lignes de la vue, après confirmation. */
+async function untagCurrentView() {
+  const lines = taggedLines(state.deck);
+  if (!lines.length) return;
+  const tagCounts = new Map();
+  for (const line of lines) for (const tag of line.tags) tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+
+  const confirmed = await askConfirm({
+    title: 'Retirer les tags',
+    text: `Retirer tous les tags de ${lines.length} ligne${lines.length > 1 ? 's' : ''} de « ${state.deck.name} » ?`,
+    items: [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).map(([tag, n]) => `${tag} — ${n} ligne${n > 1 ? 's' : ''}`),
+    note: 'Les cartes restent en place ; les tags eux-mêmes existent toujours dans votre compte.',
+    ok: 'Retirer les tags',
+  });
+  if (!confirmed) return;
+
+  els.untagBtn.disabled = true;
+  try {
+    const res = await fetch('/api/cardnexus/cards/untag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: lines.map((line) => line.inventoryId) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    showToast(
+      `Tags retirés de ${data.cleared} ligne${data.cleared > 1 ? 's' : ''}` +
+        (data.failed.length ? ` (${data.failed.length} échec(s))` : ''),
+      { error: Boolean(data.failed.length) },
+    );
+    await reloadCurrentDeck();
+  } catch (err) {
+    showToast(err.message, { error: true });
+  } finally {
+    els.untagBtn.disabled = false;
+  }
+}
+
 // --- Renommer / supprimer un emplacement -------------------------------------
 
 /** Le choix d'endroits à ranger est mémorisé par nom : il suit les renommages. */
@@ -2734,6 +2909,7 @@ async function submitDelete() {
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
   if (!els.compare.hidden) return closeCompare(), true;
+  if (!els.confirm.hidden) return closeConfirm(false), true;
   if (!els.rename.hidden) return closeRename(), true;
   if (!els.delete.hidden) return closeDelete(), true;
   if (!els.lightbox.hidden) return closeLightbox(), true;
@@ -2922,6 +3098,19 @@ document.addEventListener('keydown', (event) => {
   closeCompare();
   closeRename();
   closeDelete();
+  if (!els.confirm.hidden) closeConfirm(false);
+});
+
+els.deleteCards.addEventListener('click', deleteHeldCards);
+els.untagBtn.addEventListener('click', untagCurrentView);
+els.confirmForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  closeConfirm(true);
+});
+els.confirmCancel.addEventListener('click', () => closeConfirm(false));
+els.confirmClose.addEventListener('click', () => closeConfirm(false));
+els.confirm.addEventListener('click', (event) => {
+  if (event.target === els.confirm) closeConfirm(false);
 });
 
 els.renameBtn.addEventListener('click', openRename);
