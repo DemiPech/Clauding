@@ -206,14 +206,26 @@ Pas de serveur Node sur le téléphone : l'app est une WebView qui embarque l'in
 app/src/main/java/.../MainActivity.java   WebView + pont natif (HTTP, presse-papiers, liens)
 app/src/main/assets/www/
   index.html, styles.css                  interface, adaptée au mobile
-  js/app.js                               l'app.js du PC, avec quelques ajouts mobiles
+  js/app.js                               point d'entrée : retour Android, événements, démarrage
+  js/ui/                                  l'interface, un module par partie :
+    core.js                               éléments de la page, état partagé, libellés
+    nav.js                                onglets, barre du haut, liste des decks
+    deck-view.js                          affichage d'un deck ou d'un emplacement, menu ⋯
+    moves.js                              cartes en main, barre du bas, déplacements, annulation
+    build.js                              monter une liste, récap « où chercher »
+    deck-tools.js                         export texte, aperçu, réglages, comparer
+    places.js                             onglet Collection, tirer pour actualiser
+    tidy-view.js                          ranger les vracs
+    sheets.js                             confirmations, suppression, tags, renommer
+    history.js                            onglet Historique, photos de la collection
+  js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
   js/http.js                              requêtes sortantes via le pont natif
 ```
 
 - `api.js` intercepte les appels `fetch('/api/…')` et y répond localement, avec les mêmes
-  routes, handlers et cache que `server.js` : `app.js` reste presque identique au PC.
+  routes, handlers et cache que `server.js`.
 - Les appels vers CardNexus et FaBrary passent par Java (`AndroidApp.request`). Ils échappent
   ainsi au CORS du navigateur, et peuvent porter les en-têtes `Origin` / `Referer` /
   `User-Agent` exigés par le WAF de FaBrary.
@@ -229,6 +241,25 @@ Ajouts propres au mobile :
   où le toucher sert à prendre la carte) l'affiche en plein écran.
 - **Bouton retour** : ferme ce qui est ouvert, remonte d'une vue, et quitte depuis l'accueil.
 - **Liens externes** (« Voir sur FaBrary ») : ouverts dans le navigateur du téléphone.
+
+## Tests
+
+Les tests sont dans `tests/` et tournent sur GitHub à chaque push : si l'un échoue,
+l'APK n'est pas publié (l'ancien reste en ligne).
+
+- `tests/unit/` : les calculs seuls (`node:test`) — répartition des cartes à prendre
+  (le moins d'endroits possible), plan de rangement, comparaison des photos.
+- `tests/e2e/` : l'interface dans Chromium (Playwright), comme dans la WebView.
+  `helpers/mock-bridge.js` remplace le pont natif par un faux FaBrary et un faux
+  inventaire CardNexus en mémoire ; chaque test vérifie l'inventaire obtenu après ses
+  actions (prendre, déplacer, annuler, monter, comparer, ranger, supprimer, renommer…).
+
+```bash
+cd android/tests
+npm ci
+npx playwright install chromium   # une fois
+npm test                          # ou npm run test:unit / npm run test:e2e
+```
 
 ## Compiler soi-même
 
