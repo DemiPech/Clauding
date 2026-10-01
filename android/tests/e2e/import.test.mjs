@@ -48,11 +48,17 @@ test('compter les cartes d’une extension, triées par rareté, puis les ajoute
 
   // Par défaut, l'ordre des numéros de print.
   assert.equal(await page.$eval('#import-sort', (e) => e.value), 'number');
-  assert.deepEqual(await texts(page, '#import-list .import-meta'), ['HVY001 · C', 'HVY002 · C', 'HVY003 · R', 'HVY004 · S']);
+  assert.deepEqual(await texts(page, '#import-list .import-meta'), [
+    'HVY001 · C', 'HVY002 · C', 'HVY003 · R', 'HVY004 · S', 'HVY006 · T', 'HVY007 · B',
+  ]);
 
   // Sections par rareté, des communes aux plus rares ; « S » est reconnu comme Super Rare.
   await page.selectOption('#import-sort', 'rarity');
-  assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Common', 'Rare', 'Super Rare']);
+  // Tokens et basiques à part, même si CardNexus les dit « Common ».
+  assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Common', 'Rare', 'Super Rare', 'Basic', 'Token']);
+  await page.click('#import-rarities [data-rarity="common"]');
+  assert.deepEqual(await texts(page, '#import-list .import-name'), ['Pummel', 'Pummel']);
+  await page.click('#import-rarities [data-rarity="all"]');
   assert.deepEqual(await texts(page, '#import-finishes .chip'), ['Standard', 'Rainbow', 'Cold']);
   assert.equal(await page.isVisible('#importbar'), false);
 
@@ -158,10 +164,10 @@ test('ordre de la liste au choix, gardé ; ajout dans un emplacement créé sur 
   await chooseExpansion(page);
 
   await page.selectOption('#import-sort', 'pitch');
-  assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Pitch rouge', 'Pitch bleu']);
+  assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Pitch rouge', 'Pitch jaune', 'Pitch bleu', 'Sans pitch']);
   await page.selectOption('#import-sort', 'name');
   assert.deepEqual(await texts(page, '#import-list .import-name'), [
-    'Ancestral Empowerment', 'Beast Mode', 'Pummel', 'Pummel',
+    'Ancestral Empowerment', 'Beast Mode', 'Cracked Bauble', 'Might', 'Pummel', 'Pummel',
   ]);
 
   await card(page, 'Beast Mode').locator('[data-act="plus3"]').click();

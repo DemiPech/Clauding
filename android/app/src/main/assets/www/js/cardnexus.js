@@ -1265,8 +1265,24 @@ export const RARITIES = [
   { key: 'fabled', label: 'Fabled', code: 'F' },
   { key: 'marvel', label: 'Marvel', code: 'V' },
   { key: 'promo', label: 'Promo', code: 'P' },
+  { key: 'basic', label: 'Basic', code: 'B' },
   { key: 'token', label: 'Token', code: 'T' },
 ];
+
+// Ni les tokens ni les basiques ne sont des cartes de booster : on les met à part.
+const APART = ['token', 'basic'];
+
+/**
+ * Rareté d'une carte du catalogue. Un token se reconnaît à son type, même
+ * quand CardNexus lui donne la rareté « Common » ; un basique, à la rareté de
+ * ses attributs quand elle diffère de celle du produit.
+ */
+export function cardRarity(product) {
+  const attrs = product.attributes || {};
+  if ((attrs.types || []).includes('Token')) return 'token';
+  const keys = [attrs.rarity, product.rarity].map(rarityKey);
+  return keys.find((key) => APART.includes(key)) || keys.find((key) => key !== 'other') || 'other';
+}
 
 /** « Super Rare », « super-rare », « S » : la même rareté, sous sa clé. */
 export function rarityKey(value) {
@@ -1325,7 +1341,7 @@ export async function expansionCards(expansionId, progress = silent) {
       name: cleanName(product.name),
       pitch: attrs.pitch ?? null,
       printNumber: product.printNumber || null,
-      rarity: rarityKey(product.rarity || attrs.rarity),
+      rarity: cardRarity(product),
       finishes: product.finishes?.length ? product.finishes : ['Standard'],
       languages: product.languages || [],
       imageUrl: product.imageUrl || cardImageUrl(product.printNumber),

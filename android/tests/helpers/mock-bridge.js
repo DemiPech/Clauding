@@ -17,17 +17,24 @@
     P('pk1', 'Pikachu', 'pikachu', null, null, ['Pokemon']),
   ];
   // Une extension a importer : « Heavy Hitters » (id 7), raretes et finitions variees.
-  const E = (id, name, slug, pitch, rarity, printNumber, finishes) => ({
-    ...P(id, name, slug, `${slug}-${pitch}`, pitch, ['Action']),
-    expansion: { id: 7, name: 'Heavy Hitters', code: 'HVY' },
-    rarity, printNumber, finishes, languages: ['en', 'fr'], imageUrl: null,
-  });
+  const E = (id, name, slug, pitch, rarity, printNumber, finishes, attrs = {}) => {
+    const base = P(id, name, slug, `${slug}-${pitch}`, pitch, ['Action']);
+    return {
+      ...base,
+      attributes: { ...base.attributes, ...attrs },
+      expansion: { id: 7, name: 'Heavy Hitters', code: 'HVY' },
+      rarity, printNumber, finishes, languages: ['en', 'fr'], imageUrl: null,
+    };
+  };
   products.push(
     E('e1', 'Pummel (Red)', 'pummel', 1, 'Common', 'HVY001', ['Standard', 'Rainbow Foil']),
     E('e2', 'Pummel (Blue)', 'pummel', 3, 'Common', 'HVY002', ['Standard', 'Rainbow Foil']),
     E('e3', 'Beast Mode (Red)', 'beast-mode', 1, 'Rare', 'HVY003', ['Standard', 'Rainbow Foil']),
     E('e4', 'Ancestral Empowerment (Red)', 'ancestral-empowerment', 1, 'S', 'HVY004', ['Standard', 'Rainbow Foil', 'Cold Foil']),
     E('e5', 'Kayo, Armed and Dangerous', 'kayo', null, 'Majestic', 'HVY005', ['Cold Foil']),
+    // CardNexus classe tokens et basiques en « Common » : le type et les attributs les trahissent.
+    E('e6', 'Might', 'might', null, 'Common', 'HVY006', ['Standard'], { types: ['Token', 'Aura'] }),
+    E('e7', 'Cracked Bauble', 'cracked-bauble', 2, 'Common', 'HVY007', ['Standard'], { rarity: 'Basic', types: ['Resource'] }),
   );
   const expansions = [
     { id: 7, name: 'Heavy Hitters', code: 'HVY', releaseDate: '2023-11-03T00:00:00.000Z', cardCount: 5, languages: ['en', 'fr'] },
