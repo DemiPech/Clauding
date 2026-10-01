@@ -155,6 +155,24 @@ Le nombre de cartes d'un endroit s'affiche dès qu'il est connu (endroit ouvert,
 calculé). **Compter les cartes** compte toute la collection en un balayage (200 lignes par
 requête) et indique aussi combien de cartes n'ont aucun emplacement.
 
+## Importer des cartes
+
+Outils → **Importer des cartes**, pour saisir un booster ou un achat :
+
+- Choisir l'**extension** (de la plus récente à la plus ancienne), la **langue** et l'**état**.
+- Les cartes sont **groupées par rareté**, des communes aux plus rares (ou triées par numéro ou par
+  nom). Des filtres rapides n'affichent qu'une ou plusieurs raretés, et un champ filtre par nom
+  ou numéro.
+- **Toucher une carte** en ajoute un exemplaire. **+3**, **−1** et **Retirer** (✕) ajustent.
+- La **finition** (Standard, Rainbow, Cold, Gold) se choisit au-dessus de la liste et se compte à
+  part ; une carte rappelle ce qui est déjà compté dans les autres finitions.
+- La barre du bas affiche le total, l'emplacement de destination (ou « Sans emplacement ») et
+  **Ajouter**. Une carte déjà présente à l'identique au même endroit voit sa ligne grossir.
+- Le comptage est gardé sur le téléphone tant qu'il n'est pas ajouté : quitter l'écran ou l'app
+  ne le perd pas. **Tout effacer** demande confirmation.
+- Un import s'**annule** depuis le bandeau ou l'Historique : seuls les exemplaires ajoutés sont
+  retirés.
+
 ## Ranger les vracs
 
 **Ranger les vracs** propose un plan pour regrouper les cartes dans les endroits cochés.
@@ -234,6 +252,7 @@ app/src/main/assets/www/
     tidy-view.js                          ranger les vracs
     sheets.js                             confirmations, suppression, tags, renommer
     history.js                            onglet Historique, photos de la collection
+    import-view.js                        importer des cartes d'une extension
     progress-view.js                      barre de progression en haut
     collection-cache.js                   liste gardée pour le démarrage instantané
   js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)

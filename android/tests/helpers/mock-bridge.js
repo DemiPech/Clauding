@@ -16,6 +16,23 @@
     P('p5', 'Enlightened Strike (Red)', 'enlightened-strike', 'enlightened-strike-1', 1, ['Action'], ['Attack']),
     P('pk1', 'Pikachu', 'pikachu', null, null, ['Pokemon']),
   ];
+  // Une extension a importer : « Heavy Hitters » (id 7), raretes et finitions variees.
+  const E = (id, name, slug, pitch, rarity, printNumber, finishes) => ({
+    ...P(id, name, slug, `${slug}-${pitch}`, pitch, ['Action']),
+    expansion: { id: 7, name: 'Heavy Hitters', code: 'HVY' },
+    rarity, printNumber, finishes, languages: ['en', 'fr'], imageUrl: null,
+  });
+  products.push(
+    E('e1', 'Pummel (Red)', 'pummel', 1, 'Common', 'HVY001', ['Standard', 'Rainbow Foil']),
+    E('e2', 'Pummel (Blue)', 'pummel', 3, 'Common', 'HVY002', ['Standard', 'Rainbow Foil']),
+    E('e3', 'Beast Mode (Red)', 'beast-mode', 1, 'Rare', 'HVY003', ['Standard', 'Rainbow Foil']),
+    E('e4', 'Ancestral Empowerment (Red)', 'ancestral-empowerment', 1, 'S', 'HVY004', ['Standard', 'Rainbow Foil', 'Cold Foil']),
+    E('e5', 'Kayo, Armed and Dangerous', 'kayo', null, 'Majestic', 'HVY005', ['Cold Foil']),
+  );
+  const expansions = [
+    { id: 7, name: 'Heavy Hitters', code: 'HVY', releaseDate: '2023-11-03T00:00:00.000Z', cardCount: 5, languages: ['en', 'fr'] },
+    { id: 3, name: 'Welcome to Rathe', code: 'WTR', releaseDate: '2019-10-11T00:00:00.000Z', cardCount: 0, languages: ['en'] },
+  ];
   const L = (id, productId, quantity, location, extra = {}) =>
     ({ id, productId, quantity, location, finish: 'Standard', condition: 'NM', language: 'en', forSale: false, updatedAt: '2026-09-01', ...extra });
   const inv = window.__mockInv || [
@@ -65,11 +82,40 @@
     }
     if (path === '/inventory/locations' && method === 'GET') return locations;
     if (path === '/inventory/locations') { if (!locations.some((l) => l.name === body.name)) locations.push({ name: body.name, color: body.color, icon: body.icon }); return { name: body.name }; }
+    if (path === '/games/fab/expansions') return { data: expansions, pagination: { offset: 0, limit: 200, total: expansions.length, hasMore: false } };
+    if (path === '/inventory' && method === 'POST') {
+      const created = [];
+      const errors = [];
+      body.lines.forEach((req, index) => {
+        const product = products.find((p) => p.id === String(req.productId) || p.id === req.productId);
+        if (!product) return errors.push({ index, code: 'PRODUCT_NOT_FOUND' });
+        if (product.finishes && !product.finishes.includes(req.finish)) return errors.push({ index, code: 'INVALID_FINISH' });
+        if (req.location && !locations.some((l) => l.name === req.location)) return errors.push({ index, code: 'LOCATION_NOT_FOUND' });
+        const same = inv.find((l) => l.quantity > 0 && l.productId === product.id && l.finish === req.finish && l.condition === req.condition && l.language === req.language && (l.location ?? null) === (req.location ?? null));
+        if (same) {
+          same.quantity += req.quantity;
+          created.push({ ...same });
+        } else {
+          const line = { id: 'n' + (seq += 1), productId: product.id, finish: req.finish, condition: req.condition, language: req.language, quantity: req.quantity, location: req.location ?? null, forSale: false, tags: [], updatedAt: '2026-10-01T10:00:00Z' };
+          inv.push(line);
+          created.push({ ...line });
+        }
+      });
+      window.__addCalls = (window.__addCalls || 0) + 1;
+      return { created, errors };
+    }
     if (path === '/inventory') {
       const g = u.searchParams.get('game');
       return { data: inv.filter((l) => l.quantity > 0 && (!u.searchParams.has('location') || l.location === u.searchParams.get('location')) && (!g || (l.game || 'fab') === g)), pagination: {} };
     }
-    if (path === '/products/search') return { data: products.filter((p) => body.productIds.includes(p.id)) };
+    if (path === '/products/search') {
+      if (body.expansionId) {
+        const all = products.filter((p) => body.expansionId.includes(p.expansion?.id));
+        const offset = body.offset || 0, limit = body.limit || 50;
+        return { data: all.slice(offset, offset + limit), pagination: { offset, limit, total: all.length, hasMore: offset + limit < all.length } };
+      }
+      return { data: products.filter((p) => body.productIds.includes(p.id)) };
+    }
     if (path === '/inventory/search') {
       window.__searchCalls = (window.__searchCalls || 0) + 1;
       const hit = (p) => (body.nameSlug ? p.nameSlug === body.nameSlug : body.name ? p.name.toLowerCase().includes(body.name.toLowerCase()) : true);

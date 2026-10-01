@@ -6,6 +6,7 @@ import {
   placeCounts, renderPlacesList, renderPlacesSearch, showPlaces, updatePlaceNode,
 } from './places.js';
 import { scheduleAutoSnapshot, showHistory } from './history.js';
+import { importView, updateImportBar } from './import-view.js';
 import { saveCollectionCache } from './collection-cache.js';
 import { silent, startTask } from '../progress.js';
 
@@ -19,10 +20,17 @@ import { silent, startTask } from '../progress.js';
 // et le retour y ramène.
 
 /** Onglet auquel appartient chaque vue ; les autres gardent l'onglet courant. */
-const VIEW_TABS = { places: 'collection', 'search-view': 'search', 'tools-view': 'tools', history: 'history', tidy: 'tools' };
+const VIEW_TABS = {
+  places: 'collection',
+  'search-view': 'search',
+  'tools-view': 'tools',
+  history: 'history',
+  tidy: 'tools',
+  import: 'tools',
+};
 
 function showOnly(el) {
-  const views = [els.search, els.tools, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history];
+  const views = [els.search, els.tools, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history, importView];
   for (const node of views) node.hidden = node !== el;
   if (VIEW_TABS[el.id]) state.tab = VIEW_TABS[el.id];
   for (const tab of els.tabbar.querySelectorAll('[data-tab]')) {
@@ -30,6 +38,7 @@ function showOnly(el) {
   }
   updateAppBar();
   updateMovebar();
+  updateImportBar();
   window.scrollTo(0, 0);
 }
 
@@ -41,13 +50,14 @@ const ROOT_TITLES = { places: 'Collection', 'search-view': 'Chercher', 'tools-vi
  * flèche retour et le titre de l'écran ouvert par-dessus.
  */
 function updateAppBar() {
-  const views = [els.places, els.search, els.tools, els.history, els.deck, els.build, els.tidy, els.loading, els.error];
+  const views = [els.places, els.search, els.tools, els.history, els.deck, els.build, els.tidy, importView, els.loading, els.error];
   const current = views.find((view) => !view.hidden);
   const root = current && ROOT_TITLES[current.id];
   let title = root || '';
   if (current === els.deck) title = state.deck?.name || '';
   else if (current === els.build) title = els.buildEyebrow.textContent.startsWith('Comparer') ? 'Comparer' : 'Monter un deck';
   else if (current === els.tidy) title = 'Ranger les vracs';
+  else if (current === importView) title = 'Importer';
   else if (current === els.loading) title = 'Chargement…';
   else if (current === els.error) title = 'Indisponible';
   els.appTitle.textContent = title;

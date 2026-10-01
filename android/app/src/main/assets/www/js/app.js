@@ -36,6 +36,7 @@ import {
 } from './ui/history.js';
 import { readCollectionCache } from './ui/collection-cache.js';
 import { listenForProgress } from './ui/progress-view.js';
+import { importView, showImport } from './ui/import-view.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -55,6 +56,7 @@ window.__appBack = () => {
   if (movePanel !== 'none') return setMovePanel('none'), true;
   if (!els.build.hidden) return leaveBuild(), true;
   if (!els.tidy.hidden) return showTools(), true;
+  if (!importView.hidden) return showTools(), true;
   if (!els.deck.hidden || !els.error.hidden || !els.loading.hidden) return returnToTab(), true;
   if (els.places.hidden) return showHome(), true;
   return false;
@@ -121,6 +123,7 @@ els.toolBuild.addEventListener('click', () => {
   els.input.focus();
 });
 els.toolCompare.addEventListener('click', () => openCompare({ pick: true }));
+document.querySelector('#tool-import').addEventListener('click', showImport);
 els.historyTabs.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-history-tab]');
   if (chip) setHistoryTab(chip.dataset.historyTab);

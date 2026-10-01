@@ -2438,3 +2438,192 @@ main {
   font-size: 20px;
   color: var(--text-muted);
 }
+
+/* ---------- Importer des cartes ---------- */
+
+.import-setup {
+  align-items: stretch;
+  gap: 10px 14px;
+}
+
+.import-setup .field {
+  flex: 1 1 140px;
+  margin: 0;
+}
+
+.import-setup .import-expansion-field {
+  flex-basis: 100%;
+}
+
+.import-setup select {
+  width: 100%;
+  min-width: 0;
+}
+
+.import-finishes {
+  margin: 18px 0 0;
+  max-width: none;
+}
+
+.import-filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.import-filters .collection-filter {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-filters select {
+  flex: none;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.import-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Toute la carte est un bouton : un toucher = un exemplaire de plus. */
+.import-card-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.import-card-main:active .import-art {
+  transform: scale(0.94);
+}
+
+.import-art {
+  flex: none;
+  width: 42px;
+  aspect-ratio: var(--card-ratio);
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  object-fit: cover;
+  transition: transform 0.08s ease-out;
+}
+
+.import-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.import-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.import-meta {
+  color: var(--text-faint);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.import-count {
+  flex: none;
+  min-width: 36px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-card.has-count .import-count {
+  background: var(--accent);
+  color: #fff;
+}
+
+.import-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.import-actions button {
+  min-width: 40px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.import-actions button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.import-actions .import-remove {
+  color: #e07a64;
+}
+
+.import-total {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+body.has-importbar main {
+  padding-bottom: calc(var(--tabbar-h) + 160px);
+}
+
+body.has-importbar .toast {
+  bottom: calc(var(--tabbar-h) + 120px);
+}
+
+/* Sur petit écran, Retirer devient une croix pour garder la place du nom. */
+@media (max-width: 420px) {
+  .import-actions .import-remove {
+    font-size: 0;
+  }
+
+  .import-actions .import-remove::before {
+    content: '✕';
+    font-size: 14px;
+  }
+}

@@ -1249,3 +1249,150 @@ export async function ensureLocation(name, { color = 'blue', icon = DECK_ICON } 
     idempotencyKey: uuid(),
   });
 }
+
+// --- Import d'une extension -----------------------------------------------
+
+const EXPANSIONS_PAGE = 200;
+const IMPORT_BATCH = 1000;
+
+/** Raretés Flesh and Blood, dans l'ordre d'un booster : des communes aux plus rares. */
+export const RARITIES = [
+  { key: 'common', label: 'Common', code: 'C' },
+  { key: 'rare', label: 'Rare', code: 'R' },
+  { key: 'super rare', label: 'Super Rare', code: 'S' },
+  { key: 'majestic', label: 'Majestic', code: 'M' },
+  { key: 'legendary', label: 'Legendary', code: 'L' },
+  { key: 'fabled', label: 'Fabled', code: 'F' },
+  { key: 'marvel', label: 'Marvel', code: 'V' },
+  { key: 'promo', label: 'Promo', code: 'P' },
+  { key: 'token', label: 'Token', code: 'T' },
+];
+
+/** « Super Rare », « super-rare », « S » : la même rareté, sous sa clé. */
+export function rarityKey(value) {
+  const text = String(value || '').trim().toLowerCase().replace(/[-_]/g, ' ');
+  if (!text) return 'other';
+  const found = RARITIES.find((r) => r.key === text || r.code.toLowerCase() === text);
+  return found ? found.key : 'other';
+}
+
+/** Les extensions Flesh and Blood, des plus récentes aux plus anciennes. */
+export async function listExpansions() {
+  const all = [];
+  for (let offset = 0; offset < 5000; offset += EXPANSIONS_PAGE) {
+    const res = await api(`/games/${GAME}/expansions?limit=${EXPANSIONS_PAGE}&offset=${offset}`);
+    all.push(...(res.data || []));
+    if (!res.pagination?.hasMore) break;
+  }
+  return all.map(({ id, name, code, releaseDate, cardCount, languages }) => ({
+    id,
+    name,
+    code: code || null,
+    releaseDate: releaseDate || null,
+    cardCount: cardCount ?? null,
+    languages: languages || [],
+  }));
+}
+
+/** Les cartes d'une extension, prêtes pour la page d'import. */
+export async function expansionCards(expansionId, progress = silent) {
+  const id = Number(expansionId);
+  if (!Number.isInteger(id)) throw new CardnexusError('Extension invalide.', 400);
+
+  const products = [];
+  for (let offset = 0; offset < SEARCH_WINDOW; offset += PRODUCT_BATCH) {
+    const res = await api('/products/search', {
+      method: 'POST',
+      body: {
+        expansionId: [id],
+        productType: { op: 'or', values: ['card'] },
+        gameFilters: FAB_ONLY,
+        limit: PRODUCT_BATCH,
+        offset,
+      },
+    });
+    products.push(...(res.data || []));
+    const total = res.pagination?.total;
+    if (total) progress.report(products.length / total, `${formatCount(products.length)} / ${formatCount(total)} cartes`);
+    if (!res.pagination?.hasMore) break;
+  }
+
+  return products.map((product) => {
+    productCache.set(product.id, product);
+    const attrs = product.attributes || {};
+    return {
+      productId: product.id,
+      name: cleanName(product.name),
+      pitch: attrs.pitch ?? null,
+      printNumber: product.printNumber || null,
+      rarity: rarityKey(product.rarity || attrs.rarity),
+      finishes: product.finishes?.length ? product.finishes : ['Standard'],
+      languages: product.languages || [],
+      imageUrl: product.imageUrl || cardImageUrl(product.printNumber),
+      types: attrs.types || [],
+    };
+  });
+}
+
+const IMPORT_ERRORS = {
+  PRODUCT_NOT_FOUND: 'carte introuvable au catalogue',
+  INVALID_LANGUAGE: 'carte non imprimée dans cette langue',
+  INVALID_FINISH: 'carte non imprimée dans cette finition',
+  INVALID_QUANTITY: 'quantité invalide',
+  CONDITION_REQUIRED: 'état manquant',
+  LOCATION_NOT_FOUND: "cet emplacement n'existe pas",
+};
+
+/**
+ * Ajoute des cartes à la collection. `lines` : [{ productId, finish, quantity }],
+ * avec `language`, `condition` et `location` communs à toutes. Une carte déjà
+ * présente à l'identique (même état, langue, finition) voit sa ligne grossir.
+ *
+ * Renvoie `added` (cartes ajoutées), `failed`, et `undo` : de quoi retirer
+ * exactement ce qui a été ajouté — une ligne créée se supprime, une ligne
+ * existante perd seulement les exemplaires ajoutés.
+ */
+export async function addCards({ lines, language = 'en', condition = 'NM', location = null }, progress = silent) {
+  if (!Array.isArray(lines) || !lines.length) throw new CardnexusError('Aucune carte à ajouter.', 400);
+
+  const requests = lines.map(({ productId, finish, quantity }) => {
+    if (!Number.isInteger(quantity) || quantity < 1) throw new CardnexusError('Quantité invalide.', 400);
+    return {
+      // L'API attend un nombre ; l'interface les manipule souvent en texte.
+      productId: /^\d+$/.test(String(productId)) ? Number(productId) : productId,
+      finish: finish || 'Standard',
+      condition,
+      language,
+      quantity,
+      ...(location ? { location } : {}),
+    };
+  });
+
+  let added = 0;
+  const failed = [];
+  const undo = [];
+  for (let i = 0; i < requests.length; i += IMPORT_BATCH) {
+    progress.report(i / requests.length, `${formatCount(i)} / ${formatCount(requests.length)} cartes envoyées`);
+    const batch = requests.slice(i, i + IMPORT_BATCH);
+    const res = await api('/inventory', { method: 'POST', body: { lines: batch }, idempotencyKey: uuid() });
+
+    const rejected = new Map((res.errors || []).map((error) => [error.index, error.code]));
+    for (const [index, code] of rejected) {
+      failed.push({ ...batch[index], reason: IMPORT_ERRORS[code] || code });
+    }
+    // Chaque carte envoyée est unique (produit + finition) : on retrouve sa ligne.
+    for (const line of res.created || []) {
+      const sent = batch.find(
+        (req, index) =>
+          !rejected.has(index) && String(req.productId) === String(line.productId) && req.finish === line.finish,
+      );
+      if (!sent) continue;
+      added += sent.quantity;
+      undo.push({ inventoryId: line.id, count: sent.quantity, max: line.quantity, remove: true });
+    }
+  }
+  progress.report(1);
+
+  forgetInventorySearches();
+  return { added, failed, undo };
+}

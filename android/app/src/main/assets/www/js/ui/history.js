@@ -3,7 +3,7 @@ import { UNPLACED } from '../cardnexus.js';
 import { diffSnapshots, snapshotTotal } from '../snapshots.js';
 import { PITCH_COLORS, els, state } from './core.js';
 import { showOnly } from './nav.js';
-import { lineLabel, showToast, undoMoves } from './moves.js';
+import { lineLabel, showToast, undoMoves, undoneMessage } from './moves.js';
 import { allocationFor, build, cardLabel, removedFor } from './build.js';
 import { placeCounts } from './places.js';
 import { askConfirm } from './sheets.js';
@@ -28,6 +28,7 @@ const LOG_KINDS = {
   untag: 'Retrait des tags',
   rename: 'Renommage',
   deleteLocation: "Suppression d'emplacement",
+  import: 'Import de cartes',
   undo: 'Annulation',
 };
 
@@ -146,7 +147,7 @@ function journalEntryNode(entry) {
     const undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'link-btn';
-    undo.textContent = 'Annuler ce déplacement';
+    undo.textContent = entry.kind === 'import' ? 'Annuler cet import' : 'Annuler ce déplacement';
     undo.addEventListener('click', () => undoJournalEntry(entry, undo));
     details.append(undo);
   }
@@ -188,22 +189,34 @@ function renderJournal() {
 }
 
 async function undoJournalEntry(entry, button) {
-  const confirmed = await askConfirm({
-    title: 'Annuler ce déplacement',
-    text: `Remettre chaque carte là où elle était avant : « ${entry.summary} » ?`,
-    items: entry.details.slice(0, 12),
-    note: "Si des cartes ont bougé depuis, elles seront quand même renvoyées à leur emplacement d'origine.",
-    ok: 'Annuler le déplacement',
-  });
+  const isImport = entry.kind === 'import';
+  const confirmed = await askConfirm(
+    isImport
+      ? {
+          title: 'Annuler cet import',
+          text: `Retirer de la collection les cartes ajoutées : « ${entry.summary} » ?`,
+          items: entry.details.slice(0, 12),
+          note: 'Seuls les exemplaires ajoutés par cet import sont retirés.',
+          ok: "Annuler l'import",
+        }
+      : {
+          title: 'Annuler ce déplacement',
+          text: `Remettre chaque carte là où elle était avant : « ${entry.summary} » ?`,
+          items: entry.details.slice(0, 12),
+          note: "Si des cartes ont bougé depuis, elles seront quand même renvoyées à leur emplacement d'origine.",
+          ok: 'Annuler le déplacement',
+        },
+  );
   if (!confirmed) return;
 
   button.disabled = true;
   try {
-    const { restored, failed } = await undoMoves(entry.undo);
+    const result = await undoMoves(entry.undo);
+    const { failed } = result;
     markUndone(entry.id);
     placeCounts.clear();
     showToast(
-      `${restored} carte${restored > 1 ? 's' : ''} remise${restored > 1 ? 's' : ''} en place` +
+      undoneMessage(result) +
         (failed.length ? ` (${failed.length} échec(s) : ${failed[0].reason})` : ''),
       { error: Boolean(failed.length), log: { kind: 'undo', details: [`Annule : ${entry.summary}`] } },
     );

@@ -62,6 +62,10 @@
           <h1>Outils</h1>
         </header>
         <nav class="home-tools">
+          <button type="button" class="tool-card" id="tool-import">
+            <b>Importer des cartes</b>
+            <span>Ajouter un booster ou un achat : choisir l'extension, puis toucher chaque carte</span>
+          </button>
           <button type="button" class="tool-card" id="open-tidy">
             <b>Ranger les vracs</b>
             <span>Regrouper les cartes par nom, classe, talent ou extension</span>
@@ -328,6 +332,63 @@
         </div>
       </section>
 
+      <section id="import" hidden>
+        <header class="build-head">
+          <p class="eyebrow">Importer des cartes</p>
+          <h1>Ajouter à la collection</h1>
+          <p class="byline">
+            Choisissez l'extension, puis touchez une carte pour en ajouter un exemplaire. Les boutons
+            −1 et +3 ajustent, Retirer remet à zéro.
+          </p>
+        </header>
+
+        <div class="build-setup import-setup">
+          <label class="field import-expansion-field">
+            <span>Extension</span>
+            <select id="import-expansion">
+              <option value="">Chargement des extensions…</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Langue</span>
+            <select id="import-language"></select>
+          </label>
+          <label class="field">
+            <span>État</span>
+            <select id="import-condition">
+              <option value="NM">Near Mint</option>
+              <option value="LP">Lightly Played</option>
+              <option value="MP">Moderately Played</option>
+              <option value="HP">Heavily Played</option>
+              <option value="DMG">Damaged</option>
+            </select>
+          </label>
+        </div>
+
+        <p class="move-note" id="import-note"></p>
+
+        <div id="import-body" hidden>
+          <div class="segmented import-finishes" id="import-finishes" role="group" aria-label="Finition"></div>
+          <div class="import-filters">
+            <input
+              class="collection-filter"
+              id="import-filter"
+              type="search"
+              placeholder="Filtrer par nom ou numéro…"
+              aria-label="Filtrer les cartes"
+              autocomplete="off"
+            />
+            <select id="import-sort" aria-label="Trier">
+              <option value="rarity">Par rareté</option>
+              <option value="number">Par numéro</option>
+              <option value="name">Par nom</option>
+            </select>
+          </div>
+          <div class="collection-kinds" id="import-rarities" role="group" aria-label="Raretés"></div>
+          <div id="import-list"></div>
+        </div>
+      </section>
+
       <section id="history" hidden>
         <header class="build-head">
           <p class="eyebrow">Collection CardNexus</p>
@@ -390,6 +451,18 @@
       </div>
       <ul class="line-list" id="line-picker-list"></ul>
       <p class="line-picker-hint">Réglez combien d'exemplaires prendre sur chaque ligne.</p>
+    </div>
+
+    <div class="movebar importbar" id="importbar" hidden>
+      <div class="movebar-row">
+        <span class="import-total" id="import-total"></span>
+        <button type="button" class="link-btn" id="import-clear">Tout effacer</button>
+        <label class="movebar-dest">
+          <span>Vers</span>
+          <select id="import-destination"></select>
+        </label>
+        <button type="button" class="primary-btn" id="import-apply">Ajouter</button>
+      </div>
     </div>
 
     <div class="movebar" id="movebar" hidden>

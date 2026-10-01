@@ -645,15 +645,19 @@ async function applyBasket() {
  * plusieurs origines : un envoi par origine, par lots de 200.
  */
 async function undoMoves(items) {
+  // Un import s'annule en retirant les cartes ajoutées ; le reste, en les renvoyant.
+  const removals = items.filter((item) => item.remove);
   const byOrigin = new Map();
   for (const item of items) {
+    if (item.remove) continue;
     if (!byOrigin.has(item.back)) byOrigin.set(item.back, []);
     byOrigin.get(item.back).push({ inventoryId: item.inventoryId, count: item.count });
   }
   let restored = 0;
+  let removed = 0;
   const failed = [];
   let sent = 0;
-  return track('Annulation du déplacement', async (progress) => {
+  return track('Annulation', async (progress) => {
     for (const [origin, moves] of byOrigin) {
       for (let i = 0; i < moves.length; i += 200) {
         const batch = moves.slice(i, i + 200);
@@ -665,8 +669,31 @@ async function undoMoves(items) {
         failed.push(...result.failed);
       }
     }
-    return { restored, failed };
+    if (removals.length) {
+      const res = await fetch('/api/cardnexus/cards/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: removals.map(({ inventoryId, count, max }) => ({ inventoryId, count, max })),
+        }),
+        progress: progress.sub(sent / items.length, 1),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+      removed = data.removed;
+      failed.push(...data.failed);
+    }
+    return { restored, removed, failed };
   });
+}
+
+/** « 3 cartes remises en place », « 12 cartes retirées », ou les deux. */
+function undoneMessage({ restored = 0, removed = 0 }) {
+  const plural = (n) => (n > 1 ? 's' : '');
+  const parts = [];
+  if (restored || !removed) parts.push(`${restored} carte${plural(restored)} remise${plural(restored)} en place`);
+  if (removed) parts.push(`${removed} carte${plural(removed)} retirée${plural(removed)} de la collection`);
+  return parts.join(' · ');
 }
 
 async function undoLastMove() {
@@ -674,13 +701,12 @@ async function undoLastMove() {
 
   els.toastUndo.disabled = true;
   try {
-    const { restored } = await undoMoves(lastMove);
+    const result = await undoMoves(lastMove);
     const logId = lastLogId;
     lastMove = null;
     markUndone(logId);
-    showToast(`${restored} carte${restored > 1 ? 's' : ''} remise${restored > 1 ? 's' : ''} en place.`, {
-      log: { kind: 'undo' },
-    });
+    placeCounts.clear();
+    showToast(`${undoneMessage(result)}.`, { log: { kind: 'undo' } });
     await reloadCurrentDeck();
   } catch (err) {
     showToast(`Annulation impossible : ${err.message}`, { error: true });
@@ -752,5 +778,5 @@ export {
   lineLabel, lineRowNode, loadLocations, locations, restoreLocations, markHeldCards, movePanel, openLinePicker,
   postMoves, refreshBasketViews, refreshOpenSteppers, reloadCurrentDeck, renderBasket,
   runInventorySearch, setMovePanel, showToast, takeExcess, toggleCard, toggleSelectAll,
-  undoLastMove, undoMoves, updateMovebar,
+  undoLastMove, undoMoves, undoneMessage, updateMovebar,
 };

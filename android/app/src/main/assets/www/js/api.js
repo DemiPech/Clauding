@@ -25,6 +25,9 @@ import {
   otherGameLines,
   allCollectionLines,
   productNames,
+  listExpansions,
+  expansionCards,
+  addCards,
   isConfigured as cardnexusConfigured,
   CardnexusError,
   UNPLACED,
@@ -219,7 +222,17 @@ function handleTidy(body, progress) {
   }, 'Impossible de calculer le rangement pour le moment.');
 }
 
+/** Ajoute des cartes (page d'import) ; les decks en cache ne sont plus à jour. */
+function handleAddCards(body, progress) {
+  return respond(async () => {
+    const result = await addCards(body, progress);
+    invalidateCardnexusDecks();
+    return result;
+  }, "Impossible d'ajouter ces cartes pour le moment.");
+}
+
 const WRITE_ROUTES = {
+  '/api/cardnexus/cards/add': handleAddCards,
   '/api/cardnexus/move': handleMove,
   '/api/cardnexus/plan': handlePlan,
   '/api/cardnexus/tidy': handleTidy,
@@ -259,6 +272,20 @@ async function route(url, init, progress) {
         () => cached('cardnexus:locations:all', listLocations),
         'Impossible de contacter CardNexus pour le moment.',
       );
+
+    case '/api/cardnexus/expansions':
+      return respond(
+        () => cached('cardnexus:expansions', listExpansions),
+        'Impossible de lire les extensions pour le moment.',
+      );
+
+    case '/api/cardnexus/expansion-cards': {
+      const id = params.get('id');
+      return respond(
+        () => cached(`cardnexus:expansion:${id}`, () => expansionCards(id, progress)),
+        "Impossible de lire les cartes de l'extension pour le moment.",
+      );
+    }
 
     case '/api/cardnexus/recent':
       return respond(
@@ -334,6 +361,9 @@ const STATIC_LABELS = {
   '/api/cardnexus/cards/delete': 'Suppression des cartes',
   '/api/cardnexus/cards/untag': 'Retrait des tags',
   '/api/cardnexus/products/names': 'Lecture du catalogue',
+  '/api/cardnexus/expansions': 'Lecture des extensions',
+  '/api/cardnexus/expansion-cards': "Lecture des cartes de l'extension",
+  '/api/cardnexus/cards/add': 'Ajout des cartes',
 };
 
 function progressLabel(url) {
