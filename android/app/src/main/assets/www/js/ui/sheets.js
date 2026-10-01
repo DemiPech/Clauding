@@ -10,6 +10,7 @@ import { cardLabel, postMovesInBatches } from './build.js';
 import { byPlaceName, placeCounts } from './places.js';
 import { TIDY_STORAGE } from './tidy-view.js';
 import { placeLabel } from './history.js';
+import { startTask } from '../progress.js';
 
 // --- Confirmation, suppression de cartes, retrait des tags ------------------------
 
@@ -265,6 +266,7 @@ async function submitDelete() {
   const target = els.deleteTarget.value || null;
 
   els.deleteSubmit.disabled = true;
+  const progress = startTask(`Suppression de « ${name} »`);
   try {
     // Les cartes d'abord, si on a choisi où les mettre : après, l'emplacement n'existe plus.
     let moved = 0;
@@ -278,7 +280,7 @@ async function submitDelete() {
           moves.push({ inventoryId: line.inventoryId, count: line.quantity });
         }
       }
-      const result = await postMovesInBatches(moves, target, origins);
+      const result = await postMovesInBatches(moves, target, origins, progress.sub(0, 0.9));
       moved = result.moved;
       if (result.failed.length) {
         throw new Error(`${result.failed.length} ligne(s) n'ont pas pu être déplacées (${result.failed[0].reason}). Rien n'a été supprimé.`);
@@ -290,6 +292,7 @@ async function submitDelete() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
+      progress: progress.sub(0.9, 1),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
@@ -306,6 +309,8 @@ async function submitDelete() {
   } catch (err) {
     els.deleteNote.textContent = err.message;
     els.deleteSubmit.disabled = false;
+  } finally {
+    progress.end();
   }
 }
 

@@ -2,7 +2,8 @@
 import { UNPLACED, UNPLACED_LABEL, getApiKey } from '../cardnexus.js';
 import { LOCATION_COLORS, PITCH_COLORS, els, escapeHtml, state } from './core.js';
 import {
-  cardnexusReady, deckInfo, deckLocations, enrichDecks, loadDeckLocations, showOnly,
+  cardnexusReady, deckInfo, deckLocations, enrichDecks, forgetRefreshedDecks, loadDeckLocations,
+  showOnly,
 } from './nav.js';
 import { lineRowNode, loadLocations, locations, showToast, updateMovebar } from './moves.js';
 
@@ -174,7 +175,8 @@ async function refreshCollection() {
   try {
     await fetch('/api/cardnexus/refresh');
     placeCounts.clear();
-    deckInfo.clear();
+    // Les héros restent affichés pendant que chaque deck est relu.
+    forgetRefreshedDecks();
     await Promise.all([loadDeckLocations(), loadLocations()]);
     renderPlacesList();
     enrichDecks();
@@ -236,7 +238,7 @@ function listenForPull() {
 /** Compte toutes les cartes de la collection, endroit par endroit, en un balayage. */
 async function countAllPlaces() {
   els.placesCount.disabled = true;
-  els.placesNote.textContent = 'Comptage de toute la collection… (quelques secondes par tranche de 200 lignes)';
+  els.placesNote.textContent = 'Comptage de toute la collection…';
   try {
     const res = await fetch('/api/cardnexus/counts');
     const data = await res.json();

@@ -20,6 +20,13 @@
       <div class="topbar-actions">
         <button class="icon-btn settings-btn" id="settings-btn" aria-label="Réglages" title="Réglages">⚙</button>
       </div>
+      <div class="progress" id="progress" role="status" aria-live="polite" hidden>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <p class="progress-text">
+          <span class="progress-label" id="progress-label"></span>
+          <span class="progress-detail" id="progress-detail"></span>
+        </p>
+      </div>
     </header>
 
     <main id="main">
@@ -73,6 +80,7 @@
       <section class="state" id="state-loading" hidden>
         <div class="spinner" aria-hidden="true"></div>
         <p>Récupération du deck…</p>
+        <p class="state-progress" id="state-loading-progress"></p>
       </section>
 
       <section class="state state-error" id="state-error" hidden>

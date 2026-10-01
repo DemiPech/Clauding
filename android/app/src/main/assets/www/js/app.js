@@ -3,14 +3,14 @@
 import { getApiKey } from './cardnexus.js';
 import { els, state } from './ui/core.js';
 import {
-  cardnexusReady, loadCardnexusDeck, loadDeckLocations, loadFabraryDeck, returnToTab, showHome,
-  showOnly, showSearch, showTab, showTools, updateBuildButton,
+  cardnexusReady, loadCardnexusDeck, loadDeckLocations, loadFabraryDeck, restoreDecks, returnToTab,
+  showHome, showOnly, showSearch, showTab, showTools, updateBuildButton,
 } from './ui/nav.js';
 import { closeActions, openActions, renderSectionsAndMarks } from './ui/deck-view.js';
 import {
   allDeckCards, applyBasket, basket, closeLinePicker, hideToast, loadLocations, movePanel,
-  openLinePicker, refreshBasketViews, refreshOpenSteppers, renderBasket, runInventorySearch,
-  setMovePanel, showToast, takeExcess, toggleCard, toggleSelectAll, undoLastMove,
+  openLinePicker, refreshBasketViews, refreshOpenSteppers, renderBasket, restoreLocations,
+  runInventorySearch, setMovePanel, showToast, takeExcess, toggleCard, toggleSelectAll, undoLastMove,
 } from './ui/moves.js';
 import {
   applyBuild, build, computePlan, openBuild, pickupAsText, resetAllocation, syncBuildMode,
@@ -34,6 +34,8 @@ import {
   INTERVAL_STORAGE, loadRecent, renderJournal, setHistoryTab, takeSnapshot, writeJournal,
   writeStored,
 } from './ui/history.js';
+import { readCollectionCache } from './ui/collection-cache.js';
+import { listenForProgress } from './ui/progress-view.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -444,11 +446,20 @@ const initialDeck = params.get('deck');
 const initialLocation = params.get('location');
 
 state.tab = 'collection';
-loadDeckLocations().then(() => {
+listenForProgress();
+
+// Démarrage instantané : la liste de la dernière fois s'affiche tout de suite,
+// puis se met à jour en arrière-plan (la barre du haut montre l'avancement).
+const cache = readCollectionCache();
+if (cache) {
+  restoreLocations(cache.locations);
+  if (cache.decks) restoreDecks(cache.decks, cache.deckInfo);
+}
+loadDeckLocations({ background: Boolean(cache) }).then(() => {
   updateBuildButton();
   if (!els.places.hidden) renderPlacesList();
 });
-loadLocations().then(() => {
+loadLocations({ background: Boolean(cache) }).then(() => {
   if (!els.places.hidden) renderPlacesList();
 });
 renderBasket();

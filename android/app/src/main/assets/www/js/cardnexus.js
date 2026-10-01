@@ -12,6 +12,7 @@
  */
 import { cardImageUrl } from './fabrary.js';
 import { httpFetch, uuid } from './http.js';
+import { silent, pauseFor, formatCount } from './progress.js';
 
 const BASE = 'https://public-api.cardnexus.com/v1';
 const DECK_ICON = 'deck';
@@ -63,6 +64,7 @@ async function throttle() {
       return;
     }
     const waitMs = RATE_WINDOW_MS - (now - recentCalls[0]) + 50;
+    pauseFor(waitMs, 'CardNexus accepte 60 requêtes par minute');
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
 }
@@ -95,6 +97,7 @@ async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
     if (res.status === 429) {
       const retry = Number(res.headers.get('Retry-After')) || 10;
       if (attempt < MAX_RATE_RETRIES) {
+        pauseFor((retry + 1) * 1000, 'Quota CardNexus atteint');
         await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 1000));
         continue;
       }
@@ -123,8 +126,14 @@ const FAB_ONLY = { game: GAME };
 const SEARCH_WINDOW = 10_000;
 const LOCATIONS_PER_QUERY = 50;
 
+/** Où en est une lecture de lignes : « 400 / 1 234 lignes ». */
+function reportLines(progress, read, total) {
+  if (total) progress.report(read / total, `${formatCount(read)} / ${formatCount(total)} lignes`);
+  else progress.detail(`${formatCount(read)} lignes lues`);
+}
+
 /** Toutes les lignes repondant a ce filtre de recherche, page apres page. */
-async function searchAllLines(filters) {
+async function searchAllLines(filters, progress = silent) {
   const lines = [];
   for (let offset = 0; offset < SEARCH_WINDOW; offset += LINES_PAGE) {
     const res = await api('/inventory/search', {
@@ -132,6 +141,8 @@ async function searchAllLines(filters) {
       body: { ...filters, gameFilters: FAB_ONLY, limit: LINES_PAGE, offset, sortBy: 'name' },
     });
     lines.push(...(res.data || []));
+    // L'API donne le nombre total de lignes : de quoi afficher un vrai pourcentage.
+    reportLines(progress, lines.length, res.pagination?.total);
     if (!res.pagination?.hasMore) return lines;
   }
   throw new CardnexusError(
@@ -141,11 +152,13 @@ async function searchAllLines(filters) {
 }
 
 /** Les lignes rangees dans ces endroits (par lots de 50 noms, limite de l'API). */
-async function linesAtLocations(names) {
+async function linesAtLocations(names, progress = silent) {
   const lines = [];
+  const chunks = Math.max(1, Math.ceil(names.length / LOCATIONS_PER_QUERY));
   for (let i = 0; i < names.length; i += LOCATIONS_PER_QUERY) {
     const values = names.slice(i, i + LOCATIONS_PER_QUERY);
-    lines.push(...(await searchAllLines({ location: { op: 'or', values } })));
+    const part = i / LOCATIONS_PER_QUERY;
+    lines.push(...(await searchAllLines({ location: { op: 'or', values } }, progress.sub(part / chunks, (part + 1) / chunks))));
   }
   return lines;
 }
@@ -154,7 +167,9 @@ async function linesAtLocations(names) {
  * Toute la collection, sans plafond : GET /inventory au curseur (100 lignes
  * par page). Plus lent que la recherche, mais va au-dela de 10 000 lignes.
  */
-async function walkAllLines() {
+async function walkAllLines(progress = silent) {
+  // Le curseur ne dit pas combien il reste : on s'appuie sur la derniere lecture.
+  const estimate = Number(readStored(LINES_ESTIMATE_STORAGE)) || 0;
   const lines = [];
   let cursor = null;
   for (let page = 0; page < 2000; page += 1) {
@@ -162,28 +177,50 @@ async function walkAllLines() {
     if (cursor) qs.set('cursor', cursor);
     const res = await api(`/inventory?${qs}`);
     lines.push(...(res.data || []));
+    if (estimate > lines.length) {
+      progress.report(lines.length / estimate, `${formatCount(lines.length)} / ≈ ${formatCount(estimate)} lignes`);
+    } else {
+      progress.detail(`${formatCount(lines.length)} lignes lues`);
+    }
     cursor = res.pagination?.nextCursor;
     if (!cursor) break;
   }
   return lines;
 }
 
+const LINES_ESTIMATE_STORAGE = 'collection_lines_estimate';
+
+function readStored(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Photo de toute la collection : les lignes, par la recherche (200 par page),
  * ou au curseur si la collection depasse ce que la recherche sait paginer.
  */
-export async function allCollectionLines() {
+export async function allCollectionLines(progress = silent) {
+  let lines;
   try {
-    return await searchAllLines({});
+    lines = await searchAllLines({}, progress);
   } catch (err) {
     if (err.status !== 400) throw err;
-    return walkAllLines();
+    lines = await walkAllLines(progress);
   }
+  try {
+    localStorage.setItem(LINES_ESTIMATE_STORAGE, String(lines.length));
+  } catch {
+    // Sans stockage, la prochaine lecture au curseur n'aura pas de pourcentage.
+  }
+  return lines;
 }
 
 /** Nom et pitch de ces produits, pour decrire des changements. */
-export async function productNames(productIds) {
-  const products = await resolveProducts(productIds);
+export async function productNames(productIds, progress = silent) {
+  const products = await resolveProducts(productIds, progress);
   return Object.fromEntries(
     [...products].map(([id, product]) => [
       id,
@@ -197,9 +234,9 @@ export async function productNames(productIds) {
  * (quelques dizaines de requetes). Les lignes sans endroit sont comptees sous
  * la cle `null`.
  */
-export async function countByLocation() {
+export async function countByLocation(progress = silent) {
   const counts = new Map();
-  for (const line of await searchAllLines({})) {
+  for (const line of await searchAllLines({}, progress)) {
     const place = line.location ?? null;
     counts.set(place, (counts.get(place) || 0) + line.quantity);
   }
@@ -210,16 +247,18 @@ export async function countByLocation() {
 // on garde les produits en memoire pour le temps de vie de l'app.
 const productCache = new Map();
 
-async function resolveProducts(productIds) {
+async function resolveProducts(productIds, progress = silent) {
   const missing = [...new Set(productIds)].filter((id) => !productCache.has(id));
 
   for (let i = 0; i < missing.length; i += PRODUCT_BATCH) {
+    progress.report(i / missing.length, `Catalogue : ${formatCount(i)} / ${formatCount(missing.length)} cartes`);
     const res = await api('/products/search', {
       method: 'POST',
       body: { productIds: missing.slice(i, i + PRODUCT_BATCH), limit: PRODUCT_BATCH },
     });
     for (const product of res.data || []) productCache.set(product.id, product);
   }
+  progress.report(1);
 
   return new Map(productIds.map((id) => [id, productCache.get(id)]).filter(([, p]) => p));
 }
@@ -340,9 +379,9 @@ const byNameThenPitch = (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0)
 export const UNPLACED = '__sans_emplacement__';
 export const UNPLACED_LABEL = 'Sans emplacement';
 
-export async function fetchDeckFromLocation(locationName) {
+export async function fetchDeckFromLocation(locationName, progress = silent) {
   const unplaced = locationName === UNPLACED;
-  const lines = await linesAtLocations([unplaced ? null : locationName]);
+  const lines = await linesAtLocations([unplaced ? null : locationName], progress.sub(0, 0.8));
   if (!lines.length) {
     throw new CardnexusError(
       unplaced ? 'Toutes vos cartes ont un emplacement.' : `Aucune carte dans la location "${locationName}".`,
@@ -350,7 +389,7 @@ export async function fetchDeckFromLocation(locationName) {
     );
   }
 
-  const products = await resolveProducts(lines.map((l) => l.productId));
+  const products = await resolveProducts(lines.map((l) => l.productId), progress.sub(0.8, 1));
 
   // Une carte = plusieurs lignes possibles (finitions, editions, etats).
   const groups = new Map();
@@ -450,7 +489,7 @@ const SEARCH_LIMIT = 60;
  * C'est le sens "ramener une carte dans le deck" : on voit ou sont les
  * exemplaires avant d'en prendre.
  */
-export async function searchInventoryLines(query, { game = 'fab' } = {}) {
+export async function searchInventoryLines(query, { game = 'fab', progress = silent } = {}) {
   const term = String(query || '').trim();
   if (term.length < 2) {
     throw new CardnexusError('Tapez au moins deux caracteres.', 400);
@@ -462,7 +501,8 @@ export async function searchInventoryLines(query, { game = 'fab' } = {}) {
   });
 
   const lines = res.data || [];
-  const products = await resolveProducts(lines.map((l) => l.productId));
+  progress.report(0.5);
+  const products = await resolveProducts(lines.map((l) => l.productId), progress.sub(0.5, 1));
 
   // Une entree par carte, ses lignes en dessous : meme lecture que dans un deck.
   const groups = new Map();
@@ -837,9 +877,9 @@ function removalOrder(a, b) {
  * liste, ou presentes en plus grand nombre. C'est l'autre moitie d'une
  * comparaison — le plan dit quoi faire entrer, ceci dit quoi faire sortir.
  */
-async function surplusInLocation(wanted, destination) {
-  const lines = await linesAtLocations([destination]);
-  const products = await resolveProducts(lines.map((l) => l.productId));
+async function surplusInLocation(wanted, destination, progress = silent) {
+  const lines = await linesAtLocations([destination], progress.sub(0, 0.6));
+  const products = await resolveProducts(lines.map((l) => l.productId), progress.sub(0.6, 1));
 
   const wantedByKey = new Map(wanted.map((card) => [fabKey(card.name, card.pitch), card.quantity]));
 
@@ -914,18 +954,31 @@ function mergeWanted(wanted) {
  * `wanted` : [{ name, pitch, quantity, imageUrl, types }] — issu d'une liste
  * FaBrary. `destination` : la location ou le deck doit finir.
  */
-export async function planDeckBuild(rawWanted, destination, { existing = false, protectDecks = true } = {}) {
+export async function planDeckBuild(
+  rawWanted,
+  destination,
+  { existing = false, protectDecks = true, progress = silent } = {},
+) {
   if (!Array.isArray(rawWanted) || !rawWanted.length) {
     throw new CardnexusError('Liste de cartes vide.', 400);
   }
   const wanted = mergeWanted(rawWanted);
 
   const slugs = [...new Set(wanted.map((card) => slugifyName(card.name)))];
-  const pages = await mapWithConcurrency(slugs, 3, linesForSlug);
+  // Une recherche par nom de carte : c'est l'essentiel de l'attente.
+  const searching = progress.sub(0, 0.8);
+  let searched = 0;
+  const pages = await mapWithConcurrency(slugs, 3, async (slug) => {
+    const lines = await linesForSlug(slug);
+    searched += 1;
+    searching.report(searched / slugs.length, `${searched} / ${slugs.length} cartes cherchées`);
+    return lines;
+  });
   const allLines = pages.flat();
 
-  const products = await resolveProducts(allLines.map((l) => l.productId));
+  const products = await resolveProducts(allLines.map((l) => l.productId), progress.sub(0.8, 0.9));
   const deckLocations = new Set((await listDeckLocations()).map((l) => l.name));
+  progress.report(0.92);
 
   // Lignes disponibles, rangees par cle de carte.
   const byKey = new Map();
@@ -989,7 +1042,8 @@ export async function planDeckBuild(rawWanted, destination, { existing = false, 
     row.missing = Math.max(0, row.needed - row.already - row.picked);
   });
 
-  const surplus = existing ? await surplusInLocation(wanted, destination) : [];
+  const surplus = existing ? await surplusInLocation(wanted, destination, progress.sub(0.92, 1)) : [];
+  progress.report(1);
 
   const sum = (field) => rows.reduce((total, row) => total + row[field], 0);
   return {
@@ -1017,9 +1071,9 @@ export async function planDeckBuild(rawWanted, destination, { existing = false, 
  * Toutes les lignes de ces endroits, chacune avec la carte qu'elle porte (nom,
  * classes, extension) : la matiere premiere d'un plan de rangement.
  */
-export async function linesInPlaces(places) {
-  const lines = await linesAtLocations(places);
-  const products = await resolveProducts(lines.map((line) => line.productId));
+export async function linesInPlaces(places, progress = silent) {
+  const lines = await linesAtLocations(places, progress.sub(0, 0.8));
+  const products = await resolveProducts(lines.map((line) => line.productId), progress.sub(0.8, 1));
 
   return lines
     .filter((line) => products.has(line.productId))
@@ -1049,13 +1103,14 @@ const RECENT_PAGE = 100;
  * ancienne. L'API ne dit pas ce qui a change, seulement quand : c'est le seul
  * historique qu'elle expose, et il couvre aussi ce qui est fait sur le site.
  */
-export async function recentLines(offset = 0) {
+export async function recentLines(offset = 0, progress = silent) {
   const res = await api('/inventory/search', {
     method: 'POST',
     body: { limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc', gameFilters: FAB_ONLY },
   });
   const lines = res.data || [];
-  const products = await resolveProducts(lines.map((line) => line.productId));
+  progress.report(0.5);
+  const products = await resolveProducts(lines.map((line) => line.productId), progress.sub(0.5, 1));
 
   return {
     total: res.pagination?.total ?? lines.length,
@@ -1079,9 +1134,10 @@ export async function recentLines(offset = 0) {
 const UPDATE_BATCH = 200;
 
 /** Applique des modifications par lots de 200 (plafond de bulk/update). */
-async function bulkUpdate(items) {
+async function bulkUpdate(items, progress = silent) {
   const results = [];
   for (let i = 0; i < items.length; i += UPDATE_BATCH) {
+    progress.report(i / items.length, `${formatCount(i)} / ${formatCount(items.length)} lignes`);
     const batch = items.slice(i, i + UPDATE_BATCH);
     const res = await api('/inventory/bulk/update', {
       method: 'POST',
@@ -1090,6 +1146,7 @@ async function bulkUpdate(items) {
     });
     for (const result of res.results || []) results.push({ ...result, item: batch[result.index] });
   }
+  progress.report(1);
   return results;
 }
 
@@ -1099,7 +1156,7 @@ async function bulkUpdate(items) {
  * ligne entiere se supprime (une requete par ligne : l'API n'a pas de
  * suppression en lot). C'est definitif ; une ligne en vente perd son annonce.
  */
-export async function deleteCards(items) {
+export async function deleteCards(items, progress = silent) {
   if (!Array.isArray(items) || !items.length) throw new CardnexusError('Aucune carte a supprimer.', 400);
 
   const partial = items.filter((item) => item.count < item.max);
@@ -1107,8 +1164,12 @@ export async function deleteCards(items) {
   let removed = 0;
   const failed = [];
 
+  // Une requete par lot de lignes entamees, puis une par ligne entiere.
+  const steps = Math.ceil(partial.length / UPDATE_BATCH) + whole.length;
+  const share = steps ? Math.ceil(partial.length / UPDATE_BATCH) / steps : 0;
   const adjusted = await bulkUpdate(
     partial.map(({ inventoryId, count }) => ({ inventoryId, quantity: { adjust: -count } })),
+    progress.sub(0, share),
   );
   for (const result of adjusted) {
     const item = partial.find((p) => p.inventoryId === result.item.inventoryId);
@@ -1116,7 +1177,9 @@ export async function deleteCards(items) {
     else failed.push({ ...item, reason: ERROR_LABELS[result.code] || result.code });
   }
 
-  for (const item of whole) {
+  const deleting = progress.sub(share, 1);
+  for (const [index, item] of whole.entries()) {
+    deleting.report(index / whole.length, `${index} / ${whole.length} lignes supprimées`);
     try {
       await api(`/inventory/${encodeURIComponent(item.inventoryId)}`, { method: 'DELETE' });
       removed += item.count;
@@ -1130,9 +1193,12 @@ export async function deleteCards(items) {
 }
 
 /** Retire tous les tags de ces lignes (elles restent ou elles sont). */
-export async function clearTags(inventoryIds) {
+export async function clearTags(inventoryIds, progress = silent) {
   if (!Array.isArray(inventoryIds) || !inventoryIds.length) throw new CardnexusError('Aucune ligne.', 400);
-  const results = await bulkUpdate(inventoryIds.map((inventoryId) => ({ inventoryId, tags: { set: [] } })));
+  const results = await bulkUpdate(
+    inventoryIds.map((inventoryId) => ({ inventoryId, tags: { set: [] } })),
+    progress,
+  );
   forgetInventorySearches();
   return {
     cleared: results.filter((r) => r.status === 'ok').length,

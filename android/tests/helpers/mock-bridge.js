@@ -2,7 +2,8 @@
 // Cognito, FaBrary (une liste « Liste test ») et l'API CardNexus sur un
 // inventaire en memoire. Les tests le parametrent avant chargement via
 // window.__mockInv, __mockLocations, __mockClasses, __mockTalents, __mockExp,
-// __mock429 (nombre de 429 a renvoyer), et l'inspectent via window.__inv.
+// __mock429 (nombre de 429 a renvoyer), __mockDelay (latence de chaque
+// requete, en ms), et l'inspectent via window.__inv.
 (() => {
   localStorage.setItem('cardnexus_api_key', 'cnk_test');
   const P = (id, name, nameSlug, fabId, pitch, types, subTypes = []) =>
@@ -124,7 +125,7 @@
         } catch (e) {
           window.__androidHttpDone(id, 500, '{}', String(e.message), '');
         }
-      }, 5);
+      }, window.__mockDelay ?? 5);
     },
     copyText: () => true,
     openExternal: () => {},

@@ -4,6 +4,7 @@ import { showOnly } from './nav.js';
 import { lineLabel, loadLocations, locations, showToast } from './moves.js';
 import { byCardName, cardLabel, pickupPlaceNode, postMovesInBatches } from './build.js';
 import { PLACE_KINDS, byPlaceName, placeCounts, placeKind } from './places.js';
+import { formatCount, startTask } from '../progress.js';
 
 // --- Ranger les vracs --------------------------------------------------------
 
@@ -182,12 +183,18 @@ async function applyTidy() {
 
   els.tidyApply.disabled = true;
   els.tidyApply.textContent = 'Déplacement…';
+  const progress = startTask('Rangement des cartes');
+  const total = tidy.plan.moves.length;
+  let sent = 0;
   try {
     let moved = 0;
     const failed = [];
     const undo = [];
     for (const [destination, moves] of byDestination) {
-      const result = await postMovesInBatches(moves, destination, origins);
+      const step = progress.sub(sent / total, (sent + moves.length) / total);
+      const result = await postMovesInBatches(moves, destination, origins, step);
+      sent += moves.length;
+      progress.detail(`${formatCount(sent)} / ${formatCount(total)} lignes rangées`);
       moved += result.moved;
       failed.push(...result.failed);
       undo.push(...result.undo);
@@ -214,6 +221,7 @@ async function applyTidy() {
     showToast(err.message, { error: true });
     els.tidyApply.disabled = false;
   } finally {
+    progress.end();
     if (!els.tidyResult.hidden) renderTidy();
   }
 }

@@ -27,7 +27,10 @@ import {
   productNames,
   isConfigured as cardnexusConfigured,
   CardnexusError,
+  UNPLACED,
+  UNPLACED_LABEL,
 } from './cardnexus.js';
+import { startTask } from './progress.js';
 import { planTidy, TIDY_MODES } from './tidy.js';
 import { countLines } from './snapshots.js';
 
@@ -81,7 +84,7 @@ function readJsonBody(init) {
   return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
-function handleFabraryDeck(rawId) {
+function handleFabraryDeck(rawId, progress) {
   const deckId = parseDeckId(rawId);
   if (!deckId) {
     return json(400, {
@@ -89,15 +92,15 @@ function handleFabraryDeck(rawId) {
     });
   }
   return respond(
-    () => cached(`fabrary:${deckId}`, () => fetchDeck(deckId)),
+    () => cached(`fabrary:${deckId}`, () => fetchDeck(deckId, progress)),
     'Impossible de contacter FaBrary pour le moment.',
   );
 }
 
-function handleCardnexusDeck(locationName) {
+function handleCardnexusDeck(locationName, progress) {
   if (!locationName) return json(400, { error: 'Nom de location manquant.' });
   return respond(
-    () => cached(`cardnexus:deck:${locationName}`, () => fetchDeckFromLocation(locationName)),
+    () => cached(`cardnexus:deck:${locationName}`, () => fetchDeckFromLocation(locationName, progress)),
     'Impossible de contacter CardNexus pour le moment.',
   );
 }
@@ -122,17 +125,18 @@ function wantedFromDeck(deck, { includeSideboard }) {
 }
 
 /** Calcule le plan de montage d'une liste FaBrary vers une location. */
-function handlePlan(body) {
+function handlePlan(body, progress) {
   const deckId = parseDeckId(body.deckId);
   if (!deckId) return json(400, { error: 'Identifiant de deck FaBrary invalide.' });
   if (!body.destination) return json(400, { error: 'Destination manquante.' });
 
   return respond(async () => {
-    const deck = await cached(`fabrary:${deckId}`, () => fetchDeck(deckId));
+    const deck = await cached(`fabrary:${deckId}`, () => fetchDeck(deckId, progress.sub(0, 0.1)));
     const wanted = wantedFromDeck(deck, { includeSideboard: Boolean(body.includeSideboard) });
     const plan = await planDeckBuild(wanted, body.destination, {
       existing: Boolean(body.existing),
       protectDecks: body.protectDecks !== false,
+      progress: progress.sub(0.1, 1),
     });
     return { ...plan, deck: { name: deck.name, hero: deck.hero?.name || null, format: deck.format } };
   }, 'Impossible de calculer le plan pour le moment.');
@@ -162,17 +166,17 @@ function handleMove(body) {
   }, "Impossible d'appliquer les deplacements pour le moment.");
 }
 
-function handleDeleteCards(body) {
+function handleDeleteCards(body, progress) {
   return respond(async () => {
-    const result = await deleteCards(body.items);
+    const result = await deleteCards(body.items, progress);
     invalidateCardnexusDecks();
     return result;
   }, 'Impossible de supprimer ces cartes pour le moment.');
 }
 
-function handleClearTags(body) {
+function handleClearTags(body, progress) {
   return respond(async () => {
-    const result = await clearTags(body.ids);
+    const result = await clearTags(body.ids, progress);
     invalidateCardnexusDecks();
     return result;
   }, 'Impossible de retirer les tags pour le moment.');
@@ -204,13 +208,13 @@ function handleDeleteLocation(body) {
 }
 
 /** Plan de rangement des endroits choisis (lecture seule : rien ne bouge ici). */
-function handleTidy(body) {
+function handleTidy(body, progress) {
   const places = Array.isArray(body.places) ? body.places.filter((p) => typeof p === 'string' && p) : [];
   if (places.length < 2) return json(400, { error: 'Choisissez au moins deux endroits à ranger.' });
   const mode = TIDY_MODES.includes(body.mode) ? body.mode : 'name';
 
   return respond(async () => {
-    const lines = await linesInPlaces(places);
+    const lines = await linesInPlaces(places, progress);
     return planTidy(lines, places, mode);
   }, 'Impossible de calculer le rangement pour le moment.');
 }
@@ -223,12 +227,15 @@ const WRITE_ROUTES = {
   '/api/cardnexus/locations/delete': handleDeleteLocation,
   '/api/cardnexus/cards/delete': handleDeleteCards,
   '/api/cardnexus/cards/untag': handleClearTags,
-  '/api/cardnexus/products/names': (body) =>
-    respond(() => productNames((body.ids || []).slice(0, 5000)), 'Impossible de lire le catalogue pour le moment.'),
+  '/api/cardnexus/products/names': (body, progress) =>
+    respond(
+      () => productNames((body.ids || []).slice(0, 5000), progress),
+      'Impossible de lire le catalogue pour le moment.',
+    ),
   '/api/cardnexus/locations/create': handleCreateLocation,
 };
 
-async function route(url, init = {}) {
+async function route(url, init, progress) {
   const method = (init.method || 'GET').toUpperCase();
   const params = url.searchParams;
 
@@ -241,7 +248,7 @@ async function route(url, init = {}) {
     } catch {
       return json(400, { error: 'Corps de requete JSON invalide.' });
     }
-    return writeRoute(body);
+    return writeRoute(body, progress);
   }
 
   if (method !== 'GET') return json(405, { error: 'Methode non autorisee' });
@@ -255,13 +262,13 @@ async function route(url, init = {}) {
 
     case '/api/cardnexus/recent':
       return respond(
-        () => recentLines(Math.max(0, Number(params.get('offset')) || 0)),
+        () => recentLines(Math.max(0, Number(params.get('offset')) || 0), progress),
         'Impossible de lire les dernières modifications pour le moment.',
       );
 
     case '/api/cardnexus/snapshot':
       return respond(async () => {
-        const lines = await allCollectionLines();
+        const lines = await allCollectionLines(progress);
         return { at: new Date().toISOString(), lines: lines.length, counts: countLines(lines) };
       }, 'Impossible de photographier la collection pour le moment.');
 
@@ -278,18 +285,18 @@ async function route(url, init = {}) {
 
     case '/api/cardnexus/counts':
       return respond(
-        async () => [...(await countByLocation()).entries()].map(([name, count]) => ({ name, count })),
+        async () => [...(await countByLocation(progress)).entries()].map(([name, count]) => ({ name, count })),
         'Impossible de compter les cartes pour le moment.',
       );
 
     case '/api/cardnexus/search':
       return respond(
-        () => searchInventoryLines(params.get('q')),
+        () => searchInventoryLines(params.get('q'), { progress }),
         'Impossible de contacter CardNexus pour le moment.',
       );
 
     case '/api/deck':
-      return handleFabraryDeck(params.get('id') || params.get('url'));
+      return handleFabraryDeck(params.get('id') || params.get('url'), progress);
 
     case '/api/cardnexus/decks':
       if (!cardnexusConfigured()) return json(200, { configured: false, decks: [] });
@@ -299,7 +306,7 @@ async function route(url, init = {}) {
       );
 
     case '/api/cardnexus/deck':
-      return handleCardnexusDeck(params.get('location'));
+      return handleCardnexusDeck(params.get('location'), progress);
 
     default:
       return json(404, { error: 'Route inconnue' });
@@ -308,12 +315,51 @@ async function route(url, init = {}) {
 
 // --- Interception de fetch -------------------------------------------------
 
+// Ce que l'écran affiche pendant chaque appel (barre de progression en haut).
+const STATIC_LABELS = {
+  '/api/deck': 'Lecture de la liste FaBrary',
+  '/api/cardnexus/decks': 'Lecture des emplacements',
+  '/api/cardnexus/locations': 'Lecture des emplacements',
+  '/api/cardnexus/counts': 'Comptage des cartes',
+  '/api/cardnexus/search': "Recherche dans l'inventaire",
+  '/api/cardnexus/recent': 'Lecture des dernières modifications',
+  '/api/cardnexus/snapshot': 'Photo de la collection',
+  '/api/cardnexus/other-games': 'Vérification des autres jeux',
+  '/api/cardnexus/move': 'Déplacement des cartes',
+  '/api/cardnexus/plan': 'Calcul du plan de montage',
+  '/api/cardnexus/tidy': 'Calcul du rangement',
+  '/api/cardnexus/locations/create': "Création de l'emplacement",
+  '/api/cardnexus/locations/rename': "Renommage de l'emplacement",
+  '/api/cardnexus/locations/delete': "Suppression de l'emplacement",
+  '/api/cardnexus/cards/delete': 'Suppression des cartes',
+  '/api/cardnexus/cards/untag': 'Retrait des tags',
+  '/api/cardnexus/products/names': 'Lecture du catalogue',
+};
+
+function progressLabel(url) {
+  if (url.pathname === '/api/cardnexus/deck') {
+    const name = url.searchParams.get('location');
+    return `Lecture de « ${name === UNPLACED ? UNPLACED_LABEL : name} »`;
+  }
+  return STATIC_LABELS[url.pathname] || 'Chargement';
+}
+
 const nativeFetch = window.fetch.bind(window);
 
-window.fetch = (input, init) => {
+/**
+ * `init.progress` : un rapporteur fourni par l'appelant (une étape d'une tâche
+ * plus large) ; sinon l'appel a sa propre tâche. `init.background` : la tâche
+ * ne s'affiche que si rien d'autre n'est en cours.
+ */
+window.fetch = async (input, init = {}) => {
   const raw = typeof input === 'string' ? input : input?.url;
-  if (typeof raw === 'string' && raw.startsWith('/api/')) {
-    return route(new URL(raw, 'https://app.local'), init);
+  if (typeof raw !== 'string' || !raw.startsWith('/api/')) return nativeFetch(input, init);
+
+  const url = new URL(raw, 'https://app.local');
+  const own = init.progress ? null : startTask(progressLabel(url), { background: Boolean(init.background) });
+  try {
+    return await route(url, init, init.progress || own);
+  } finally {
+    own?.end();
   }
-  return nativeFetch(input, init);
 };

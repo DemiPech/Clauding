@@ -7,6 +7,8 @@ import {
   placeCounts, placesSearch, renderPlacesList, renderPlacesSearch, runPlacesSearch,
 } from './places.js';
 import { logAction, markUndone, placeLabel } from './history.js';
+import { saveCollectionCache } from './collection-cache.js';
+import { startTask, track } from '../progress.js';
 
 // --- Panier de déplacements ------------------------------------------------
 //
@@ -511,11 +513,13 @@ function showToast(message, { error = false, undo = null, log = null } = {}) {
   showToast.timer = setTimeout(hideToast, undo ? 12000 : 6000);
 }
 
-async function postMoves(moves, destination) {
+/** Un envoi de déplacements ; `progress` : l'étape d'une tâche plus large, s'il y en a une. */
+async function postMoves(moves, destination, progress) {
   const res = await fetch('/api/cardnexus/move', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ moves, destination }),
+    ...(progress ? { progress } : {}),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
@@ -570,18 +574,24 @@ async function applyBasket() {
 
   els.applyMove.disabled = true;
   els.applyMove.textContent = 'Déplacement…';
+  const progress = startTask('Déplacement des cartes');
 
   try {
     let moved = 0;
     const failed = [];
     const undo = [];
     const places = [];
+    const steps = byDestination.size;
+    let step = 0;
 
     for (const [destination, entries] of byDestination) {
       const result = await postMoves(
         entries.map(({ inventoryId, count }) => ({ inventoryId, count })),
         destination,
+        progress.sub(step / steps, (step + 1) / steps),
       );
+      step += 1;
+      progress.report(step / steps, `${step} / ${steps} destinations`);
 
       moved += result.applied.reduce((sum, m) => sum + m.count, 0);
       failed.push(...result.failed);
@@ -619,6 +629,7 @@ async function applyBasket() {
   } catch (err) {
     showToast(err.message, { error: true });
   } finally {
+    progress.end();
     els.applyMove.textContent = 'Déplacer';
     els.applyMove.disabled = basketTotal() === 0;
   }
@@ -641,14 +652,21 @@ async function undoMoves(items) {
   }
   let restored = 0;
   const failed = [];
-  for (const [origin, moves] of byOrigin) {
-    for (let i = 0; i < moves.length; i += 200) {
-      const result = await postMoves(moves.slice(i, i + 200), origin);
-      restored += result.applied.reduce((sum, m) => sum + m.count, 0);
-      failed.push(...result.failed);
+  let sent = 0;
+  return track('Annulation du déplacement', async (progress) => {
+    for (const [origin, moves] of byOrigin) {
+      for (let i = 0; i < moves.length; i += 200) {
+        const batch = moves.slice(i, i + 200);
+        const step = progress.sub(sent / items.length, (sent + batch.length) / items.length);
+        const result = await postMoves(batch, origin, step);
+        sent += batch.length;
+        progress.report(sent / items.length, `${sent} / ${items.length} lignes`);
+        restored += result.applied.reduce((sum, m) => sum + m.count, 0);
+        failed.push(...result.failed);
+      }
     }
-  }
-  return { restored, failed };
+    return { restored, failed };
+  });
 }
 
 async function undoLastMove() {
@@ -706,21 +724,32 @@ async function reloadCurrentDeck() {
   renderDeck();
 }
 
-async function loadLocations() {
+async function loadLocations({ background = false } = {}) {
   try {
-    const res = await fetch('/api/cardnexus/locations');
+    const res = await fetch('/api/cardnexus/locations', { background });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     locations = data;
+    saveCollectionCache({ locations: data });
     renderDestinations();
   } catch {
-    locations = [];
+    // Hors ligne : la liste gardée du dernier démarrage reste affichée.
+    if (!restoredLocations) locations = [];
   }
+}
+
+let restoredLocations = false;
+
+/** Remet la liste des emplacements gardée la dernière fois, avant toute requête. */
+function restoreLocations(list) {
+  locations = list;
+  restoredLocations = true;
+  renderDestinations();
 }
 
 export {
   NO_LOCATION, allDeckCards, applyBasket, basket, basketTotal, closeLinePicker, hideToast,
-  lineLabel, lineRowNode, loadLocations, locations, markHeldCards, movePanel, openLinePicker,
+  lineLabel, lineRowNode, loadLocations, locations, restoreLocations, markHeldCards, movePanel, openLinePicker,
   postMoves, refreshBasketViews, refreshOpenSteppers, reloadCurrentDeck, renderBasket,
   runInventorySearch, setMovePanel, showToast, takeExcess, toggleCard, toggleSelectAll,
   undoLastMove, undoMoves, updateMovebar,

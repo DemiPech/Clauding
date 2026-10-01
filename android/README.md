@@ -54,6 +54,22 @@ choix exclusifs (Grille/Liste, les vues de l'Historique) sont des contrôles seg
 Un deck, un emplacement ou un plan de montage s'ouvre par-dessus l'onglet d'où l'on vient.
 Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis quitte l'app.
 
+## Démarrage instantané et progression
+
+- **Démarrage instantané** : l'app garde sur le téléphone la dernière liste des emplacements et
+  des decks (héros, nombre de cartes). À l'ouverture, la Collection s'affiche tout de suite avec
+  cette liste, puis se met à jour en arrière-plan, deck par deck. Hors ligne, la liste reste
+  affichée. Elle est liée à la clé d'API : changer de compte ne montre pas l'ancien.
+- **Progression** : tout chargement de plus d'un instant affiche une barre sous la barre du haut,
+  avec ce qui se charge et le pourcentage : « Lecture de « Vrac 5 » · 45 % » puis
+  « 200 / 450 lignes ». C'est le cas pour ouvrir un emplacement, compter les cartes, chercher,
+  calculer un plan ou un rangement, déplacer ou supprimer des cartes, prendre une photo, etc.
+  L'API CardNexus donne le nombre total de lignes, donc le pourcentage est exact.
+- Quand CardNexus impose une pause (60 requêtes par minute), la barre l'indique avec un décompte :
+  « Quota CardNexus atteint : reprise dans 8 s ».
+- Une mise à jour en arrière-plan (au démarrage, photo automatique) s'affiche en plus discret,
+  et l'écran reste utilisable pendant ce temps.
+
 ## Monter un deck : où chercher les cartes
 
 La répartition proposée cherche à **visiter le moins d'endroits possible** :
@@ -218,7 +234,10 @@ app/src/main/assets/www/
     tidy-view.js                          ranger les vracs
     sheets.js                             confirmations, suppression, tags, renommer
     history.js                            onglet Historique, photos de la collection
+    progress-view.js                      barre de progression en haut
+    collection-cache.js                   liste gardée pour le démarrage instantané
   js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)
+  js/progress.js                          avancement des chargements (tâches, pourcentages)
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
   js/http.js                              requêtes sortantes via le pont natif

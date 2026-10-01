@@ -5,6 +5,7 @@ import {
   NO_LOCATION, lineLabel, lineRowNode, loadLocations, locations, postMoves, showToast,
 } from './moves.js';
 import { buildDetails } from './history.js';
+import { formatCount, silent, startTask } from '../progress.js';
 
 // --- Montage d'un deck FaBrary dans CardNexus ------------------------------
 //
@@ -627,14 +628,20 @@ async function computePlan() {
   }
 }
 
-/** Envoie des déplacements par lots de 200 (plafond de l'API) et cumule les résultats. */
-async function postMovesInBatches(moves, destination, origins) {
+/**
+ * Envoie des déplacements par lots de 200 (plafond de l'API) et cumule les
+ * résultats. `progress` : l'étape d'une tâche affichée, avancée lot par lot.
+ */
+async function postMovesInBatches(moves, destination, origins, progress = silent) {
   let moved = 0;
   const failed = [];
   const undo = [];
 
   for (let i = 0; i < moves.length; i += 200) {
-    const result = await postMoves(moves.slice(i, i + 200), destination);
+    const batch = moves.slice(i, i + 200);
+    const done = i + batch.length;
+    const result = await postMoves(batch, destination, progress.sub(i / moves.length, done / moves.length));
+    progress.report(done / moves.length, `${formatCount(done)} / ${formatCount(moves.length)} lignes`);
     moved += result.applied.reduce((sum, m) => sum + m.count, 0);
     failed.push(...result.failed);
     for (const applied of result.applied) {
@@ -687,6 +694,9 @@ async function applyBuild() {
   els.buildNote.textContent = '';
   els.buildApply.disabled = true;
   els.buildApply.textContent = 'Déplacement…';
+  const progress = startTask(`Montage de « ${destination} »`);
+  // Les sorties, puis les entrées, au prorata du nombre de lignes.
+  const share = outgoing.length / (outgoing.length + incoming.length);
 
   try {
     // La location doit exister avant qu'on y range quoi que ce soit.
@@ -706,10 +716,10 @@ async function applyBuild() {
     // Les sorties d'abord : elles ne touchent que des lignes du deck, que les
     // entrées pourraient sinon fusionner (et renuméroter) à leur arrivée.
     const out = outgoing.length
-      ? await postMovesInBatches(outgoing, outTarget, origins)
+      ? await postMovesInBatches(outgoing, outTarget, origins, progress.sub(0, share))
       : { moved: 0, failed: [], undo: [] };
     const into = incoming.length
-      ? await postMovesInBatches(incoming, destination, origins)
+      ? await postMovesInBatches(incoming, destination, origins, progress.sub(share, 1))
       : { moved: 0, failed: [], undo: [] };
 
     const failures = [...out.failed, ...into.failed];
@@ -740,6 +750,7 @@ async function applyBuild() {
     showToast(err.message, { error: true });
     els.buildApply.disabled = false;
   } finally {
+    progress.end();
     els.buildApply.textContent = 'Déplacer les cartes';
   }
 }

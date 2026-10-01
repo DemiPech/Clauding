@@ -6,6 +6,8 @@ import {
   placeCounts, renderPlacesList, renderPlacesSearch, showPlaces, updatePlaceNode,
 } from './places.js';
 import { scheduleAutoSnapshot, showHistory } from './history.js';
+import { saveCollectionCache } from './collection-cache.js';
+import { silent, startTask } from '../progress.js';
 
 // --- Chargement ------------------------------------------------------------
 
@@ -148,32 +150,76 @@ function updateBuildButton() {
 /** Héros et nombre de cartes de chaque deck, pour la liste de la Collection. */
 const deckInfo = new Map();
 
-/** Complète les decks de la Collection (héros, cartes), deux à la fois pour ménager l'API. */
+/** Decks relus depuis l'ouverture de l'app (les autres viennent de la dernière fois). */
+const refreshedDecks = new Set();
+
+/** Ce qu'on garde d'un deck pour le prochain démarrage. */
+function keepDeckInfo() {
+  const kept = {};
+  for (const [name, info] of deckInfo) {
+    if (!info.failed) kept[name] = { ...info, count: placeCounts.get(name) ?? info.count ?? null };
+  }
+  saveCollectionCache({ deckInfo: kept });
+}
+
+/** Remet la liste des decks gardée la dernière fois, avant toute requête. */
+function restoreDecks(decks, info = {}) {
+  deckLocations = decks || [];
+  cardnexusReady = true;
+  for (const [name, { hero, imageUrl, count }] of Object.entries(info)) {
+    deckInfo.set(name, { hero, imageUrl, count });
+    if (count != null) placeCounts.set(name, count);
+  }
+}
+
+/**
+ * Complète les decks de la Collection (héros, cartes), deux à la fois pour
+ * ménager l'API. En arrière-plan : l'écran reste utilisable, la barre du haut
+ * montre l'avancement.
+ */
 async function enrichDecks() {
-  const queue = deckLocations.map((loc) => loc.name).filter((name) => !deckInfo.has(name));
+  const queue = deckLocations.map((loc) => loc.name).filter((name) => !refreshedDecks.has(name));
+  if (!queue.length) return;
+  const total = queue.length;
+  let done = 0;
+  const progress = startTask('Mise à jour des decks', { background: true });
 
   const worker = async () => {
     for (let name = queue.shift(); name; name = queue.shift()) {
+      refreshedDecks.add(name);
       try {
-        const res = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(name)}`);
+        const res = await fetch(`/api/cardnexus/deck?location=${encodeURIComponent(name)}`, { progress: silent });
         const deck = await res.json();
         if (!res.ok) throw new Error(deck.error);
-        const total = deck.counts.deck + deck.counts.weapons + deck.counts.equipment + (deck.hero?.quantity || 0);
+        const count = deck.counts.deck + deck.counts.weapons + deck.counts.equipment + (deck.hero?.quantity || 0);
         deckInfo.set(name, { hero: deck.hero?.name || null, imageUrl: deck.hero?.imageUrl || null });
-        placeCounts.set(name, total);
+        placeCounts.set(name, count);
       } catch {
-        deckInfo.set(name, { hero: null, imageUrl: null, failed: true });
+        // Un deck illisible garde ce qu'on en savait la dernière fois.
+        if (!deckInfo.has(name)) deckInfo.set(name, { hero: null, imageUrl: null, failed: true });
       }
+      done += 1;
+      progress.report(done / total, `${done} / ${total} decks`);
       if (!els.places.hidden) updatePlaceNode(name);
     }
   };
 
-  await Promise.all([worker(), worker()]);
+  try {
+    await Promise.all([worker(), worker()]);
+  } finally {
+    progress.end();
+    keepDeckInfo();
+  }
 }
 
-async function loadDeckLocations() {
+/** Oublie quels decks ont été relus : la prochaine mise à jour les relit tous. */
+function forgetRefreshedDecks() {
+  refreshedDecks.clear();
+}
+
+async function loadDeckLocations({ background = false } = {}) {
   try {
-    const res = await fetch('/api/cardnexus/decks');
+    const res = await fetch('/api/cardnexus/decks', { background });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
 
@@ -190,6 +236,7 @@ async function loadDeckLocations() {
     }
     updateBuildButton();
     deckLocations = data.decks;
+    saveCollectionCache({ decks: data.decks });
     if (!els.places.hidden) renderPlacesList();
     enrichDecks();
   } catch (err) {
@@ -198,7 +245,8 @@ async function loadDeckLocations() {
 }
 
 export {
-  cardnexusReady, deckInfo, deckLocations, enrichDecks, loadCardnexusDeck, loadDeckLocations,
+  cardnexusReady, deckInfo, deckLocations, enrichDecks, forgetRefreshedDecks,
+  loadCardnexusDeck, loadDeckLocations, restoreDecks,
   loadFabraryDeck, returnToTab, showHome, showOnly, showSearch, showTab, showTools, updateAppBar,
   updateBuildButton,
 };

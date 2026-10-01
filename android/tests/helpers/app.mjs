@@ -51,8 +51,9 @@ export const place = (name, icon = 'box', color = 'white') => ({ name, icon, col
 /**
  * Ouvre l'app sur une collection simulee.
  * `inv` : lignes (line()), `locations` : emplacements (place()), `classes`,
- * `talents`, `exp` : attributs des produits p1..p5, `storage` : localStorage
- * initial (la photo automatique est coupee par defaut).
+ * `talents`, `exp` : attributs des produits p1..p5, `delay` : latence de chaque
+ * requete simulee (ms), `storage` : localStorage initial (la photo automatique
+ * est coupee par defaut).
  */
 export async function openApp({
   inv,
@@ -60,6 +61,7 @@ export async function openApp({
   classes,
   talents,
   exp,
+  delay,
   storage = {},
   waitFor = '#places:not([hidden])',
 } = {}) {
@@ -81,7 +83,7 @@ export async function openApp({
   await context.route('https://content.fabrary.net/**', (route) => route.fulfill({ status: 404, body: '' }));
 
   await context.addInitScript(
-    ({ inv, locations, classes, talents, exp, storage }) => {
+    ({ inv, locations, classes, talents, exp, delay, storage }) => {
       const defaults = { snapshot_interval_h: '0', ...storage };
       for (const [key, value] of Object.entries(defaults)) {
         if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
@@ -91,8 +93,9 @@ export async function openApp({
       if (classes) window.__mockClasses = classes;
       if (talents) window.__mockTalents = talents;
       if (exp) window.__mockExp = exp;
+      if (delay != null) window.__mockDelay = delay;
     },
-    { inv, locations, classes, talents, exp, storage },
+    { inv, locations, classes, talents, exp, delay, storage },
   );
   await context.addInitScript({ path: MOCK_BRIDGE });
 

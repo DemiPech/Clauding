@@ -10,6 +10,7 @@
  * Portage navigateur de lib/fabrary.js : la signature utilise WebCrypto (donc
  * asynchrone) au lieu du module crypto de Node.
  */
+import { silent } from './progress.js';
 import { httpFetch } from './http.js';
 
 const REGION = 'us-east-2';
@@ -198,8 +199,10 @@ export function parseDeckId(input) {
 
 export const cardImageUrl = (image) => (image ? `${CONTENT_BASE}/cards/${image}.webp` : null);
 
-async function graphql(query, variables) {
+async function graphql(query, variables, progress = silent) {
+  progress.report(0.05, 'Connexion à FaBrary');
   const credentials = await getGuestCredentials();
+  progress.report(0.4, 'Lecture de la liste');
   const payload = JSON.stringify({ query, variables });
   const res = await httpFetch(GRAPHQL_ENDPOINT, {
     method: 'POST',
@@ -275,8 +278,9 @@ function zoneOf(card) {
 
 const byNameThenPitch = (a, b) => a.name.localeCompare(b.name) || (a.pitch ?? 0) - (b.pitch ?? 0);
 
-export async function fetchDeck(deckId) {
-  const data = await graphql(GET_DECK_QUERY, { deckId });
+export async function fetchDeck(deckId, progress = silent) {
+  const data = await graphql(GET_DECK_QUERY, { deckId }, progress);
+  progress.report(1);
   const deck = data?.getDeck;
   if (!deck) throw new FabraryError("Ce deck n'existe pas (ou a ete supprime).", 404);
 

@@ -7,6 +7,7 @@ import { lineLabel, showToast, undoMoves } from './moves.js';
 import { allocationFor, build, cardLabel, removedFor } from './build.js';
 import { placeCounts } from './places.js';
 import { askConfirm } from './sheets.js';
+import { startTask } from '../progress.js';
 
 // --- Historique ----------------------------------------------------------------
 //
@@ -330,10 +331,13 @@ async function takeSnapshot({ auto = false } = {}) {
   if (snapshotRunning) return null;
   snapshotRunning = true;
   els.snapshotNow.disabled = true;
-  renderSnapshotStatus(auto ? 'Photo automatique en cours…' : 'Photo en cours… (quelques secondes par tranche de 200 lignes)');
+  renderSnapshotStatus(auto ? 'Photo automatique en cours…' : 'Photo en cours…');
 
+  const progress = startTask(auto ? 'Photo automatique de la collection' : 'Photo de la collection', {
+    background: auto,
+  });
   try {
-    const res = await fetch('/api/cardnexus/snapshot');
+    const res = await fetch('/api/cardnexus/snapshot', { progress: progress.sub(0, 0.9) });
     const now = await res.json();
     if (!res.ok) throw new Error(now.error || `Erreur ${res.status}`);
 
@@ -351,6 +355,7 @@ async function takeSnapshot({ auto = false } = {}) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids }),
+          progress: progress.sub(0.9, 1),
         });
         const names = namesRes.ok ? await namesRes.json() : {};
         const described = changes.map((change) => ({ ...change, ...(names[change.productId] || { name: `Produit ${change.productId}` }) }));
@@ -379,6 +384,7 @@ async function takeSnapshot({ auto = false } = {}) {
     renderSnapshotStatus(`Photo impossible : ${err.message}`);
     return null;
   } finally {
+    progress.end();
     snapshotRunning = false;
     els.snapshotNow.disabled = false;
   }
