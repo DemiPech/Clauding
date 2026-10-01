@@ -167,8 +167,8 @@ Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 - Les cartes suivent par défaut l'**ordre des numéros de print**. L'ordre se choisit : par
   numéro, par rareté (des communes aux plus rares), par nom, par pitch ou par type ; le choix est
   gardé. Des filtres rapides n'affichent qu'une ou plusieurs raretés, et un champ filtre par nom
-  ou numéro. Les **tokens** et les **basiques** sont à part (ni avec les communes, ni dans le
-  compte d'un booster) : un token se reconnaît à son type, un basique à la rareté de ses
+  ou numéro. Les **tokens** et les **basiques** sont à part (plus mélangés aux communes) :
+  un token se reconnaît à son type, un basique à la rareté de ses
   attributs, même quand CardNexus les classe en « Common ».
 - **Toucher une carte** en ajoute un exemplaire. **+3**, **−1** et **Retirer** (✕) ajustent.
 - La **finition** (Standard, Rainbow, Cold, Gold) se choisit au-dessus de la liste et se compte à
