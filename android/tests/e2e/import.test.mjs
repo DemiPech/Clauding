@@ -10,11 +10,12 @@ async function openImport(page) {
   await page.click('[data-tab="tools"]');
   await page.click('#tool-import');
   await page.waitForSelector('#import:not([hidden])');
-  await page.waitForFunction(() => document.querySelector('#import-expansion').options.length > 1);
+  await page.waitForFunction(() => !document.querySelector('#import-expansion').disabled);
 }
 
 async function chooseExpansion(page) {
-  await page.selectOption('#import-expansion', '7');
+  await page.click('#import-expansion');
+  await page.click('#expansion-groups [data-expansion="7"]');
   await page.waitForSelector('#import-body:not([hidden]) .import-card');
 }
 
@@ -28,11 +29,22 @@ test('compter les cartes d’une extension, triées par rareté, puis les ajoute
   });
   await openImport(page);
   assert.equal(await page.textContent('#app-title'), 'Importer');
-  assert.deepEqual(
-    await page.$$eval('#import-expansion option', (o) => o.map((x) => x.textContent)),
-    ['Choisir une extension…', 'Heavy Hitters (HVY)', 'Welcome to Rathe (WTR)'],
-  );
+  assert.equal(await page.textContent('#import-expansion'), 'Choisir une extension…');
+
+  // Les extensions par famille, comme sur FaBrary, sans le code entre parenthèses.
+  await page.click('#import-expansion');
+  const groupTitles = () => page.$$eval('#expansion-groups h3', (h) => h.map((x) => x.textContent));
+  assert.deepEqual(await groupTitles(), ['Core Set', 'Armory Deck', 'Blitz Deck']);
+  assert.deepEqual(await texts(page, '#expansion-groups .expansion-option'), [
+    'Heavy Hitters', 'Welcome to Rathe', 'Armory Deck: Kayo', 'Kayo Blitz Deck',
+  ]);
+  await page.fill('#expansion-filter', 'kayo');
+  assert.deepEqual(await groupTitles(), ['Armory Deck', 'Blitz Deck']);
+  assert.equal(await back(page), true);
+  assert.equal(await page.isVisible('#expansion-sheet'), false);
+
   await chooseExpansion(page);
+  assert.equal(await page.textContent('#import-expansion'), 'Heavy Hitters');
 
   // Par défaut, l'ordre des numéros de print.
   assert.equal(await page.$eval('#import-sort', (e) => e.value), 'number');
@@ -106,7 +118,7 @@ test('le brouillon survit à la fermeture, et Tout effacer demande confirmation'
   await page.waitForSelector('#places:not([hidden])');
   await openImport(page);
   await page.waitForSelector('#import-body:not([hidden]) .import-card');
-  assert.equal(await page.$eval('#import-expansion', (s) => s.value), '7');
+  assert.equal(await page.textContent('#import-expansion'), 'Heavy Hitters');
   assert.equal(await count(page, 'Beast Mode'), '×3');
   assert.equal(await page.textContent('#import-total'), '3 cartes');
 

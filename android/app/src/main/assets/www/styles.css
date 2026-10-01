@@ -2631,3 +2631,75 @@ body.has-importbar .toast {
     font-size: 14px;
   }
 }
+
+/* Choix de l'extension : un bouton, puis une feuille filtrable, groupée par famille. */
+.picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-btn::after {
+  content: '▾';
+  color: var(--text-faint);
+}
+
+.picker-btn.is-empty {
+  color: var(--text-muted);
+}
+
+.expansion-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: 82vh;
+}
+
+.expansion-groups {
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.expansion-group h3 {
+  margin: 14px 0 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.expansion-option {
+  display: block;
+  width: 100%;
+  padding: 11px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.expansion-option:hover,
+.expansion-option:focus-visible {
+  background: var(--bg-sunken);
+}
+
+.expansion-option.is-active {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}

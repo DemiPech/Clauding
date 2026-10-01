@@ -32,6 +32,8 @@
   const expansions = [
     { id: 7, name: 'Heavy Hitters', code: 'HVY', releaseDate: '2023-11-03T00:00:00.000Z', cardCount: 5, languages: ['en', 'fr'] },
     { id: 3, name: 'Welcome to Rathe', code: 'WTR', releaseDate: '2019-10-11T00:00:00.000Z', cardCount: 0, languages: ['en'] },
+    { id: 8, name: 'Armory Deck: Kayo', code: 'AKO', releaseDate: '2024-01-01T00:00:00.000Z', cardCount: 40, languages: ['en'] },
+    { id: 9, name: 'Kayo Blitz Deck', code: 'KYO', releaseDate: '2023-11-03T00:00:00.000Z', cardCount: 40, languages: ['en'] },
   ];
   const L = (id, productId, quantity, location, extra = {}) =>
     ({ id, productId, quantity, location, finish: 'Standard', condition: 'NM', language: 'en', forSale: false, updatedAt: '2026-09-01', ...extra });

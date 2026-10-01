@@ -1,6 +1,7 @@
 // Importer des cartes : choisir une extension, toucher les cartes à ajouter,
 // puis tout envoyer d'un coup vers un emplacement.
 import { RARITIES, UNPLACED_LABEL } from '../cardnexus.js';
+import { groupExpansions } from '../expansions.js';
 import { PITCH_COLORS, escapeHtml } from './core.js';
 import { showOnly } from './nav.js';
 import { NO_LOCATION, loadLocations, locations, showToast } from './moves.js';
@@ -13,6 +14,10 @@ const view = $('#import');
 const bar = $('#importbar');
 const els = {
   expansion: $('#import-expansion'),
+  sheet: $('#expansion-sheet'),
+  sheetFilter: $('#expansion-filter'),
+  sheetGroups: $('#expansion-groups'),
+  sheetClose: $('#expansion-close'),
   language: $('#import-language'),
   condition: $('#import-condition'),
   note: $('#import-note'),
@@ -136,18 +141,64 @@ async function loadExpansions() {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
     imp.expansions = data;
   } catch (err) {
-    els.expansion.replaceChildren(new Option('Extensions indisponibles', ''));
+    els.expansion.textContent = 'Extensions indisponibles';
     els.note.textContent = err.message;
     return;
   }
-  els.expansion.replaceChildren(
-    new Option('Choisir une extension…', ''),
-    ...imp.expansions.map((exp) => new Option(exp.code ? `${exp.name} (${exp.code})` : exp.name, String(exp.id))),
-  );
+  els.expansion.disabled = false;
   if (imp.expansionId != null && imp.expansions.some((exp) => exp.id === Number(imp.expansionId))) {
-    els.expansion.value = String(imp.expansionId);
     await loadExpansion(imp.expansionId);
+  } else {
+    imp.expansionId = null;
+    renderExpansionButton();
   }
+}
+
+function renderExpansionButton() {
+  const chosen = imp.expansions.find((exp) => exp.id === imp.expansionId);
+  els.expansion.textContent = chosen ? chosen.name : 'Choisir une extension…';
+  els.expansion.classList.toggle('is-empty', !chosen);
+}
+
+// --- Choix de l'extension -----------------------------------------------------
+
+function openExpansionSheet() {
+  els.sheetFilter.value = '';
+  renderExpansionGroups();
+  els.sheet.hidden = false;
+  const active = els.sheetGroups.querySelector('.is-active');
+  if (active) active.scrollIntoView({ block: 'center' });
+}
+
+function closeExpansionSheet() {
+  els.sheet.hidden = true;
+}
+
+function renderExpansionGroups() {
+  const groups = groupExpansions(imp.expansions, els.sheetFilter.value);
+  if (!groups.length) {
+    els.sheetGroups.replaceChildren(
+      Object.assign(document.createElement('p'), { className: 'move-note', textContent: 'Aucune extension ne correspond.' }),
+    );
+    return;
+  }
+  els.sheetGroups.replaceChildren(
+    ...groups.map(({ label, expansions }) => {
+      const section = document.createElement('section');
+      section.className = 'expansion-group';
+      section.append(Object.assign(document.createElement('h3'), { textContent: label }));
+      for (const exp of expansions) {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'expansion-option';
+        option.dataset.expansion = exp.id;
+        option.textContent = exp.name;
+        option.classList.toggle('is-active', exp.id === imp.expansionId);
+        section.append(option);
+      }
+      return section;
+    }),
+  );
 }
 
 async function loadExpansion(id) {
@@ -155,6 +206,7 @@ async function loadExpansion(id) {
   imp.cards = [];
   imp.rarities.clear();
   els.body.hidden = true;
+  renderExpansionButton();
   saveDraft();
   if (!imp.expansionId) return;
 
@@ -530,7 +582,16 @@ async function applyImport() {
 
 // --- Événements -------------------------------------------------------------------
 
-els.expansion.addEventListener('change', () => loadExpansion(els.expansion.value));
+els.expansion.addEventListener('click', openExpansionSheet);
+els.sheetClose.addEventListener('click', closeExpansionSheet);
+els.sheet.addEventListener('click', (event) => {
+  if (event.target === els.sheet) return closeExpansionSheet();
+  const option = event.target.closest('[data-expansion]');
+  if (!option) return;
+  closeExpansionSheet();
+  if (Number(option.dataset.expansion) !== imp.expansionId) loadExpansion(option.dataset.expansion);
+});
+els.sheetFilter.addEventListener('input', renderExpansionGroups);
 els.language.addEventListener('change', saveDraft);
 els.condition.addEventListener('change', saveDraft);
 els.destination.addEventListener('change', () => {
@@ -576,4 +637,7 @@ els.list.addEventListener('click', (event) => {
 els.clear.addEventListener('click', clearImport);
 els.apply.addEventListener('click', applyImport);
 
-export { renderDestinations as renderImportDestinations, showImport, updateImportBar, view as importView };
+export {
+  closeExpansionSheet, renderDestinations as renderImportDestinations, showImport, updateImportBar,
+  view as importView,
+};

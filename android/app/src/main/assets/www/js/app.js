@@ -36,7 +36,7 @@ import {
 } from './ui/history.js';
 import { readCollectionCache } from './ui/collection-cache.js';
 import { listenForProgress } from './ui/progress-view.js';
-import { importView, showImport } from './ui/import-view.js';
+import { closeExpansionSheet, importView, showImport } from './ui/import-view.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -46,6 +46,7 @@ import { importView, showImport } from './ui/import-view.js';
  */
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
+  if (!document.querySelector('#expansion-sheet').hidden) return closeExpansionSheet(), true;
   if (!els.compare.hidden) return closeCompare(), true;
   if (!els.actions.hidden) return closeActions(), true;
   if (!els.confirm.hidden) return closeConfirm(false), true;

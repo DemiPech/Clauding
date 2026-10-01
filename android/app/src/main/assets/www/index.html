@@ -343,12 +343,18 @@
         </header>
 
         <div class="build-setup import-setup">
-          <label class="field import-expansion-field">
-            <span>Extension</span>
-            <select id="import-expansion">
-              <option value="">Chargement des extensions…</option>
-            </select>
-          </label>
+          <div class="field import-expansion-field">
+            <span id="import-expansion-label">Extension</span>
+            <button
+              type="button"
+              class="picker-btn"
+              id="import-expansion"
+              aria-labelledby="import-expansion-label import-expansion"
+              disabled
+            >
+              Chargement des extensions…
+            </button>
+          </div>
           <label class="field">
             <span>Langue</span>
             <select id="import-language"></select>
@@ -630,6 +636,24 @@
           <button type="submit" class="primary-btn danger" id="delete-submit">Supprimer</button>
         </div>
       </form>
+    </div>
+
+    <div class="sheet-backdrop" id="expansion-sheet" hidden>
+      <div class="sheet expansion-sheet" role="dialog" aria-labelledby="expansion-sheet-title">
+        <div class="sheet-head">
+          <h2 id="expansion-sheet-title">Extension</h2>
+          <button type="button" class="icon-btn" id="expansion-close" aria-label="Fermer">×</button>
+        </div>
+        <input
+          class="collection-filter"
+          id="expansion-filter"
+          type="search"
+          placeholder="Filtrer…"
+          aria-label="Filtrer les extensions"
+          autocomplete="off"
+        />
+        <div class="expansion-groups" id="expansion-groups"></div>
+      </div>
     </div>
 
     <div class="sheet-backdrop" id="compare" hidden>

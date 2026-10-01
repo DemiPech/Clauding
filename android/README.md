@@ -159,7 +159,11 @@ requête) et indique aussi combien de cartes n'ont aucun emplacement.
 
 Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 
-- Choisir l'**extension** (de la plus récente à la plus ancienne), la **langue** et l'**état**.
+- Choisir l'**extension**, la **langue** et l'**état**. Les extensions s'affichent comme dans la
+  recherche de FaBrary : groupées par famille (Core Set, Armory Deck, Mastery Pack, History Pack,
+  Silver Age, 1st Strike, Blitz Deck, Welcome Deck, Classic Battles, Round the Table, Hero Deck,
+  Promo, Autres), par ordre alphabétique dans chaque groupe, avec un champ pour filtrer. La famille
+  se déduit du nom (`js/expansions.js`) ; une grosse extension inconnue compte comme Core Set.
 - Les cartes suivent par défaut l'**ordre des numéros de print**. L'ordre se choisit : par
   numéro, par rareté (des communes aux plus rares), par nom, par pitch ou par type ; le choix est
   gardé. Des filtres rapides n'affichent qu'une ou plusieurs raretés, et un champ filtre par nom
