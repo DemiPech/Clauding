@@ -3,7 +3,7 @@
 import { RARITIES, UNPLACED_LABEL } from '../cardnexus.js';
 import { PITCH_COLORS, escapeHtml } from './core.js';
 import { showOnly } from './nav.js';
-import { NO_LOCATION, locations, showToast } from './moves.js';
+import { NO_LOCATION, loadLocations, locations, showToast } from './moves.js';
 import { cardLabel } from './build.js';
 import { byPlaceName, placeCounts } from './places.js';
 import { askConfirm } from './sheets.js';
@@ -25,10 +25,31 @@ const els = {
   total: $('#import-total'),
   clear: $('#import-clear'),
   destination: $('#import-destination'),
+  newRow: $('#import-new-row'),
+  newName: $('#import-new-name'),
   apply: $('#import-apply'),
 };
 
 const DRAFT_STORAGE = 'import_draft';
+const NEW_PLACE = '__nouveau__';
+const PITCH_SECTIONS = [
+  { pitch: 1, label: 'Pitch rouge' },
+  { pitch: 2, label: 'Pitch jaune' },
+  { pitch: 3, label: 'Pitch bleu' },
+  { pitch: null, label: 'Sans pitch' },
+];
+const TYPE_LABELS = {
+  Hero: 'Héros',
+  Weapon: 'Armes',
+  Equipment: 'Équipements',
+  Action: 'Actions',
+  'Attack Reaction': "Réactions d'attaque",
+  'Defense Reaction': 'Réactions de défense',
+  Instant: 'Instants',
+  Block: 'Blocs',
+  Resource: 'Ressources',
+  Token: 'Jetons',
+};
 const FINISH_LABELS = { Standard: 'Standard', 'Rainbow Foil': 'Rainbow', 'Cold Foil': 'Cold', 'Gold Foil': 'Gold' };
 const LANGUAGE_LABELS = {
   en: 'Anglais', fr: 'Français', de: 'Allemand', it: 'Italien', es: 'Espagnol', ja: 'Japonais', ko: 'Coréen',
@@ -69,7 +90,8 @@ function saveDraft() {
     finish: imp.finish,
     language: els.language.value || readDraft().language || 'en',
     condition: els.condition.value,
-    destination: els.destination.value,
+    sort: els.sort.value,
+    destination: els.destination.value === NEW_PLACE ? readDraft().destination : els.destination.value,
     counts: Object.fromEntries(imp.counts),
     known: Object.fromEntries([...imp.known].filter(([id]) => [...imp.counts.keys()].some((k) => k.startsWith(`${id}|`)))),
   };
@@ -87,6 +109,8 @@ function restoreDraft() {
   imp.finish = draft.finish || 'Standard';
   imp.expansionId = draft.expansionId ?? null;
   if (draft.condition) els.condition.value = draft.condition;
+  // Par défaut, l'ordre des numéros de print, celui du classeur.
+  if ([...els.sort.options].some((o) => o.value === draft.sort)) els.sort.value = draft.sort;
 }
 
 // --- Ouverture ----------------------------------------------------------------
@@ -172,9 +196,47 @@ function renderDestinations() {
   const options = [
     new Option(UNPLACED_LABEL, NO_LOCATION),
     ...[...locations].sort(byPlaceName).map((loc) => new Option(loc.name, loc.name)),
+    new Option('+ Nouvel emplacement…', NEW_PLACE),
   ];
   els.destination.replaceChildren(...options);
   if ([...els.destination.options].some((o) => o.value === previous)) els.destination.value = previous;
+  syncNewPlace();
+}
+
+/** « Nouvel emplacement » choisi : le champ du nom apparaît au-dessus de la barre. */
+function syncNewPlace({ focus = false } = {}) {
+  const creating = els.destination.value === NEW_PLACE;
+  els.newRow.hidden = !creating;
+  if (creating && focus) els.newName.focus();
+}
+
+/**
+ * L'emplacement où ajouter : existant, aucun, ou nouveau (créé ici s'il
+ * n'existe pas déjà sous ce nom). Renvoie undefined si le nom manque.
+ */
+async function resolveDestination() {
+  const value = els.destination.value;
+  if (value === NO_LOCATION) return null;
+  if (value !== NEW_PLACE) return value;
+
+  const name = els.newName.value.trim();
+  if (!name) {
+    showToast('Donnez un nom au nouvel emplacement.', { error: true });
+    els.newName.focus();
+    return undefined;
+  }
+  const existing = locations.find((loc) => loc.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.name;
+
+  const res = await fetch('/api/cardnexus/locations/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, icon: 'box', color: 'white' }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+  await loadLocations();
+  return data.name || name;
 }
 
 // --- Liste des cartes ---------------------------------------------------------
@@ -228,19 +290,38 @@ function visibleCards() {
 const byNumber = (a, b) => (a.printNumber || '').localeCompare(b.printNumber || '', 'en', { numeric: true });
 const byName = (a, b) => a.name.localeCompare(b.name, 'fr') || (a.pitch ?? 0) - (b.pitch ?? 0);
 
+const mainType = (card) => card.types.find((t) => TYPE_LABELS[t]) || card.types[0] || 'Autres';
+
+/** Les sections de la liste selon l'ordre choisi ; dans chaque section, par numéro. */
+function sectionsFor(cards, sort) {
+  const grouped = (keys, keyOf, labelOf) =>
+    keys
+      .map((key) => ({ title: labelOf(key), cards: cards.filter((card) => keyOf(card) === key).sort(byNumber) }))
+      .filter((section) => section.cards.length);
+
+  if (sort === 'rarity') return grouped(RARITY_ORDER, (card) => card.rarity, (key) => rarityInfo(key).label);
+  if (sort === 'pitch') {
+    return grouped(
+      PITCH_SECTIONS.map((p) => p.pitch),
+      (card) => (PITCH_SECTIONS.some((p) => p.pitch === card.pitch) ? card.pitch : null),
+      (pitch) => PITCH_SECTIONS.find((p) => p.pitch === pitch).label,
+    );
+  }
+  if (sort === 'type') {
+    const order = [...Object.keys(TYPE_LABELS), 'Autres'];
+    const present = [...new Set(cards.map(mainType))].sort((a, b) => {
+      const ia = order.indexOf(a);
+      const ib = order.indexOf(b);
+      return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib) || a.localeCompare(b);
+    });
+    return grouped(present, mainType, (type) => TYPE_LABELS[type] || type);
+  }
+  return [{ title: null, cards: cards.slice().sort(sort === 'name' ? byName : byNumber) }];
+}
+
 function renderList() {
   const cards = visibleCards();
-  const sort = els.sort.value;
-  const sections = [];
-
-  if (sort === 'rarity') {
-    for (const key of RARITY_ORDER) {
-      const group = cards.filter((card) => card.rarity === key).sort(byNumber);
-      if (group.length) sections.push({ title: rarityInfo(key).label, cards: group });
-    }
-  } else {
-    sections.push({ title: null, cards: cards.slice().sort(sort === 'name' ? byName : byNumber) });
-  }
+  const sections = sectionsFor(cards, els.sort.value);
 
   if (!cards.length) {
     els.list.replaceChildren(
@@ -395,7 +476,6 @@ function importLineLabel(productId, finish, quantity) {
 async function applyImport() {
   const { cards } = totals();
   if (!cards) return;
-  const destination = els.destination.value === NO_LOCATION ? null : els.destination.value;
   const lines = [...imp.counts].map(([key, quantity]) => {
     const [productId, finish] = key.split('|');
     return { productId, finish, quantity };
@@ -404,6 +484,15 @@ async function applyImport() {
   els.apply.disabled = true;
   els.apply.textContent = 'Ajout…';
   try {
+    const destination = await resolveDestination();
+    if (destination === undefined) return;
+    if (els.destination.value === NEW_PLACE) {
+      // Le nouvel emplacement devient la destination choisie, pour la suite.
+      renderDestinations();
+      els.destination.value = destination;
+      els.newName.value = '';
+      syncNewPlace();
+    }
     const res = await fetch('/api/cardnexus/cards/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -444,9 +533,18 @@ async function applyImport() {
 els.expansion.addEventListener('change', () => loadExpansion(els.expansion.value));
 els.language.addEventListener('change', saveDraft);
 els.condition.addEventListener('change', saveDraft);
-els.destination.addEventListener('change', saveDraft);
+els.destination.addEventListener('change', () => {
+  syncNewPlace({ focus: true });
+  saveDraft();
+});
+els.newName.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') applyImport();
+});
 els.filter.addEventListener('input', renderList);
-els.sort.addEventListener('change', renderList);
+els.sort.addEventListener('change', () => {
+  saveDraft();
+  renderList();
+});
 els.finishes.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-finish]');
   if (!chip) return;

@@ -160,14 +160,16 @@ requête) et indique aussi combien de cartes n'ont aucun emplacement.
 Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 
 - Choisir l'**extension** (de la plus récente à la plus ancienne), la **langue** et l'**état**.
-- Les cartes sont **groupées par rareté**, des communes aux plus rares (ou triées par numéro ou par
-  nom). Des filtres rapides n'affichent qu'une ou plusieurs raretés, et un champ filtre par nom
+- Les cartes suivent par défaut l'**ordre des numéros de print**. L'ordre se choisit : par
+  numéro, par rareté (des communes aux plus rares), par nom, par pitch ou par type ; le choix est
+  gardé. Des filtres rapides n'affichent qu'une ou plusieurs raretés, et un champ filtre par nom
   ou numéro.
 - **Toucher une carte** en ajoute un exemplaire. **+3**, **−1** et **Retirer** (✕) ajustent.
 - La **finition** (Standard, Rainbow, Cold, Gold) se choisit au-dessus de la liste et se compte à
   part ; une carte rappelle ce qui est déjà compté dans les autres finitions.
-- La barre du bas affiche le total, l'emplacement de destination (ou « Sans emplacement ») et
-  **Ajouter**. Une carte déjà présente à l'identique au même endroit voit sa ligne grossir.
+- La barre du bas affiche le total, l'emplacement de destination et **Ajouter**. La destination
+  peut être un emplacement existant, « Sans emplacement », ou **+ Nouvel emplacement…** : on tape
+  son nom et il est créé au moment d'ajouter. Une carte déjà présente à l'identique au même endroit voit sa ligne grossir.
 - Le comptage est gardé sur le téléphone tant qu'il n'est pas ajouté : quitter l'écran ou l'app
   ne le perd pas. **Tout effacer** demande confirmation.
 - Un import s'**annule** depuis le bandeau ou l'Historique : seuls les exemplaires ajoutés sont

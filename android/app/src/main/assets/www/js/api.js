@@ -148,7 +148,10 @@ function handlePlan(body, progress) {
 /** Cree (ou retrouve) une location de deck. */
 function handleCreateLocation(body) {
   return respond(async () => {
-    const location = await ensureLocation(body.name, { color: body.color || 'blue' });
+    const location = await ensureLocation(body.name, {
+      color: body.color || 'blue',
+      ...(body.icon ? { icon: body.icon } : {}),
+    });
     deckCache.delete('cardnexus:locations');
     deckCache.delete('cardnexus:locations:all');
     return location;

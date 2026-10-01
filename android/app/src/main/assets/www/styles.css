@@ -2602,6 +2602,10 @@ main {
   color: #e07a64;
 }
 
+.importbar .import-new {
+  padding-bottom: 0;
+}
+
 .import-total {
   font-size: 13px;
   font-weight: 600;

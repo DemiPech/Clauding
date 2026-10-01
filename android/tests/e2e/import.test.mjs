@@ -34,7 +34,12 @@ test('compter les cartes d’une extension, triées par rareté, puis les ajoute
   );
   await chooseExpansion(page);
 
+  // Par défaut, l'ordre des numéros de print.
+  assert.equal(await page.$eval('#import-sort', (e) => e.value), 'number');
+  assert.deepEqual(await texts(page, '#import-list .import-meta'), ['HVY001 · C', 'HVY002 · C', 'HVY003 · R', 'HVY004 · S']);
+
   // Sections par rareté, des communes aux plus rares ; « S » est reconnu comme Super Rare.
+  await page.selectOption('#import-sort', 'rarity');
   assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Common', 'Rare', 'Super Rare']);
   assert.deepEqual(await texts(page, '#import-finishes .chip'), ['Standard', 'Rainbow', 'Cold']);
   assert.equal(await page.isVisible('#importbar'), false);
@@ -131,6 +136,45 @@ test('annuler depuis le bandeau retire seulement les exemplaires ajoutés', asyn
   await page.click('#toast-undo');
   await toast(page, /retirée/);
   assert.deepEqual(await stock(page), { '∅:e3': 1 });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('ordre de la liste au choix, gardé ; ajout dans un emplacement créé sur place', async () => {
+  const { page, context, errors } = await openApp({ inv: [], locations: [place('Vrac 1')] });
+  await openImport(page);
+  await chooseExpansion(page);
+
+  await page.selectOption('#import-sort', 'pitch');
+  assert.deepEqual(await texts(page, '#import-list .section-head h2'), ['Pitch rouge', 'Pitch bleu']);
+  await page.selectOption('#import-sort', 'name');
+  assert.deepEqual(await texts(page, '#import-list .import-name'), [
+    'Ancestral Empowerment', 'Beast Mode', 'Pummel', 'Pummel',
+  ]);
+
+  await card(page, 'Beast Mode').locator('[data-act="plus3"]').click();
+  await page.selectOption('#import-destination', '__nouveau__');
+  assert.equal(await page.isVisible('#import-new-name'), true);
+
+  // Sans nom, rien ne part.
+  await page.click('#import-apply');
+  assert.match(await toast(page, /nom/), /Donnez un nom/);
+  assert.equal(await page.evaluate(() => window.__addCalls || 0), 0);
+
+  await page.fill('#import-new-name', 'Classeur HVY');
+  await page.click('#import-apply');
+  assert.equal(await toast(page, /ajoutée/), '3 cartes ajoutées (« Classeur HVY »)');
+  assert.deepEqual(await stock(page), { 'Classeur HVY:e3': 3 });
+  const created = await page.evaluate(() => window.__mockLocations.find((l) => l.name === 'Classeur HVY'));
+  assert.equal(created.icon, 'box');
+  assert.equal(await page.$eval('#import-destination', (e) => e.value), 'Classeur HVY');
+  assert.equal(await page.isVisible('#import-new-name'), false);
+
+  // L'ordre choisi est retrouvé à la prochaine ouverture.
+  await page.reload();
+  await page.waitForSelector('#places:not([hidden])');
+  await openImport(page);
+  assert.equal(await page.$eval('#import-sort', (e) => e.value), 'name');
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -378,10 +378,12 @@
               aria-label="Filtrer les cartes"
               autocomplete="off"
             />
-            <select id="import-sort" aria-label="Trier">
-              <option value="rarity">Par rareté</option>
+            <select id="import-sort" aria-label="Ordre de la liste">
               <option value="number">Par numéro</option>
+              <option value="rarity">Par rareté</option>
               <option value="name">Par nom</option>
+              <option value="pitch">Par pitch</option>
+              <option value="type">Par type</option>
             </select>
           </div>
           <div class="collection-kinds" id="import-rarities" role="group" aria-label="Raretés"></div>
@@ -454,6 +456,17 @@
     </div>
 
     <div class="movebar importbar" id="importbar" hidden>
+      <div class="movebar-row import-new" id="import-new-row" hidden>
+        <input
+          class="collection-filter"
+          id="import-new-name"
+          type="text"
+          maxlength="100"
+          placeholder="Nom du nouvel emplacement"
+          aria-label="Nom du nouvel emplacement"
+          autocomplete="off"
+        />
+      </div>
       <div class="movebar-row">
         <span class="import-total" id="import-total"></span>
         <button type="button" class="link-btn" id="import-clear">Tout effacer</button>
