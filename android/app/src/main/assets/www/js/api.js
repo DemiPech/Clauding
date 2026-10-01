@@ -22,6 +22,7 @@ import {
   deleteCards,
   clearTags,
   recentLines,
+  otherGameLines,
   allCollectionLines,
   productNames,
   isConfigured as cardnexusConfigured,
@@ -263,6 +264,12 @@ async function route(url, init = {}) {
         const lines = await allCollectionLines();
         return { at: new Date().toISOString(), lines: lines.length, counts: countLines(lines) };
       }, 'Impossible de photographier la collection pour le moment.');
+
+    case '/api/cardnexus/other-games':
+      return respond(
+        async () => ({ lines: await otherGameLines(params.get('location') || '') }),
+        'Impossible de vérifier les autres jeux pour le moment.',
+      );
 
     case '/api/cardnexus/refresh':
       // Tirer pour actualiser : on oublie emplacements et decks mémorisés.

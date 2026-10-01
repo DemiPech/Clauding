@@ -486,7 +486,10 @@ function renderPlaceHeader(deck) {
   els.compareBtn.hidden = true;
   els.buildBtn.hidden = true;
 
-  els.stats.replaceChildren(statItem('cartes', total), statItem('différentes', cards.length));
+  els.stats.replaceChildren(
+    statItem(total > 1 ? 'cartes' : 'carte', total),
+    statItem(cards.length > 1 ? 'différentes' : 'différente', cards.length),
+  );
   els.notes.hidden = !deck.notes;
   if (deck.notes) els.notesBody.textContent = deck.notes;
 }
@@ -541,7 +544,10 @@ function renderHeader(deck) {
   // réserve garde son propre compte).
   const main = [hero, ...deck.weapons, ...deck.equipment, ...deck.deck].filter(Boolean);
   const total = main.reduce((sum, card) => sum + (card.quantity ?? 1), 0);
-  els.stats.replaceChildren(statItem('cartes', total), statItem('différentes', main.length));
+  els.stats.replaceChildren(
+    statItem(total > 1 ? 'cartes' : 'carte', total),
+    statItem(main.length > 1 ? 'différentes' : 'différente', main.length),
+  );
   if (deck.counts.sideboard) els.stats.append(statItem('en réserve', deck.counts.sideboard));
 
   if (deck.notes) {
@@ -3132,6 +3138,19 @@ function openDelete() {
   els.deleteNote.textContent = 'La suppression est définitive (les cartes, elles, ne sont jamais supprimées).';
   els.deleteSubmit.disabled = false;
   els.delete.hidden = false;
+
+  // L'app ne voit que Flesh and Blood : on vérifie s'il reste d'autres jeux ici.
+  if (!deck.unplaced) {
+    fetch(`/api/cardnexus/other-games?location=${encodeURIComponent(deck.deckId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.lines || els.delete.hidden) return;
+        els.deleteNote.textContent =
+          `Attention : cet emplacement contient aussi ${data.lines} ligne${data.lines > 1 ? 's' : ''} d'autres jeux, ` +
+          "que l'app n'affiche pas. Elles n'auront plus d'emplacement (déplacez-les d'abord sur le site si besoin).";
+      })
+      .catch(() => {});
+  }
 }
 
 const closeDelete = () => {
@@ -3517,7 +3536,11 @@ async function takeSnapshot({ auto = false } = {}) {
     const now = await res.json();
     if (!res.ok) throw new Error(now.error || `Erreur ${res.status}`);
 
-    const previous = readStored(SNAPSHOT_STORAGE, null);
+    // Une photo d'avant le filtre « Flesh and Blood seulement » contenait les
+    // autres jeux : la comparer annoncerait ces cartes comme supprimées. Elle ne
+    // sert alors que de point de départ.
+    const stored = readStored(SNAPSHOT_STORAGE, null);
+    const previous = stored?.scope === 'fab' ? stored : null;
     let changes = [];
     if (previous?.counts) {
       changes = diffSnapshots(previous.counts, now.counts);
@@ -3541,7 +3564,13 @@ async function takeSnapshot({ auto = false } = {}) {
       }
     }
 
-    const saved = writeStored(SNAPSHOT_STORAGE, { at: now.at, lines: now.lines, cards: snapshotTotal(now.counts), counts: now.counts });
+    const saved = writeStored(SNAPSHOT_STORAGE, {
+      scope: 'fab',
+      at: now.at,
+      lines: now.lines,
+      cards: snapshotTotal(now.counts),
+      counts: now.counts,
+    });
     renderSnapshotStatus(saved ? '' : 'Photo prise, mais la mémoire du téléphone est pleine : elle n’a pas pu être gardée.');
     if (!els.history.hidden) renderChanges();
     return { changes, first: !previous?.counts };

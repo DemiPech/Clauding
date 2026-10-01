@@ -115,6 +115,11 @@ async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
 // GET /inventory) et filtre plusieurs endroits a la fois : deux fois moins de
 // requetes pour lire un endroit. Il pagine par position, jusqu'a 10 000 lignes.
 const LINES_PAGE = 200;
+
+// L'app ne s'occupe que de Flesh and Blood : toute lecture de l'inventaire est
+// filtree sur ce jeu, les cartes des autres jeux restent invisibles et intactes.
+const GAME = 'fab';
+const FAB_ONLY = { game: GAME };
 const SEARCH_WINDOW = 10_000;
 const LOCATIONS_PER_QUERY = 50;
 
@@ -124,7 +129,7 @@ async function searchAllLines(filters) {
   for (let offset = 0; offset < SEARCH_WINDOW; offset += LINES_PAGE) {
     const res = await api('/inventory/search', {
       method: 'POST',
-      body: { ...filters, limit: LINES_PAGE, offset, sortBy: 'name' },
+      body: { ...filters, gameFilters: FAB_ONLY, limit: LINES_PAGE, offset, sortBy: 'name' },
     });
     lines.push(...(res.data || []));
     if (!res.pagination?.hasMore) return lines;
@@ -153,7 +158,7 @@ async function walkAllLines() {
   const lines = [];
   let cursor = null;
   for (let page = 0; page < 2000; page += 1) {
-    const qs = new URLSearchParams({ limit: '100' });
+    const qs = new URLSearchParams({ limit: '100', game: GAME });
     if (cursor) qs.set('cursor', cursor);
     const res = await api(`/inventory?${qs}`);
     lines.push(...(res.data || []));
@@ -1047,7 +1052,7 @@ const RECENT_PAGE = 100;
 export async function recentLines(offset = 0) {
   const res = await api('/inventory/search', {
     method: 'POST',
-    body: { limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc' },
+    body: { limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc', gameFilters: FAB_ONLY },
   });
   const lines = res.data || [];
   const products = await resolveProducts(lines.map((line) => line.productId));
@@ -1141,6 +1146,23 @@ export async function renameLocation(from, to) {
   if (!name) throw new CardnexusError('Nouveau nom manquant.', 400);
   if (name.length > 100) throw new CardnexusError('Nom trop long (100 caracteres max).', 400);
   return api(`/inventory/locations/${encodeURIComponent(from)}`, { method: 'PATCH', body: { name } });
+}
+
+/**
+ * Lignes d'autres jeux encore dans un emplacement : l'app ne les voit pas, mais
+ * supprimer l'emplacement les laisserait sans emplacement.
+ */
+export async function otherGameLines(name) {
+  const res = await api('/inventory/search', {
+    method: 'POST',
+    body: { location: { op: 'or', values: [name] }, limit: 1 },
+  });
+  const all = res.pagination?.total ?? 0;
+  const fab = await api('/inventory/search', {
+    method: 'POST',
+    body: { location: { op: 'or', values: [name] }, gameFilters: FAB_ONLY, limit: 1 },
+  });
+  return Math.max(0, all - (fab.pagination?.total ?? 0));
 }
 
 /** Supprime un emplacement ; les cartes qui y restaient n'ont plus d'emplacement. */

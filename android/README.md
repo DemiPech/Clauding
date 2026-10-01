@@ -178,6 +178,14 @@ un serveur. L'écran **Historique** combine donc deux sources :
 - **Modifié récemment** : les lignes de la collection, de la plus récemment modifiée à la plus
   ancienne, y compris ce qui est fait sur le site, mais sans dire ce qui a changé.
 
+## Flesh and Blood seulement
+
+L'app ne traite que Flesh and Blood. Chaque lecture de l'inventaire passe le filtre de jeu de
+l'API (`gameFilters: { game: "fab" }` sur la recherche, `game=fab` sur la lecture au curseur).
+Les cartes des autres jeux restent invisibles et intactes. Elles ne sont ni comptées, ni
+rangées, ni comparées entre deux photos. Seule exception, la suppression d'un emplacement
+avertit s'il contient encore des lignes d'autres jeux, car elles perdraient leur emplacement.
+
 ## API CardNexus
 
 Référence : https://docs.cardnexus.com/ (`llms.txt` liste les pages, `reference/openapi.json`
