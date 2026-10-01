@@ -518,7 +518,8 @@ function renderHeader(deck) {
     els.heroArt.hidden = true;
   }
 
-  els.heroLine.textContent = [hero?.name, deck.format].filter(Boolean).join(' · ');
+  // Le format n'a d'intérêt que pour une liste FaBrary (« Inventaire CardNexus » n'apprend rien).
+  els.heroLine.textContent = [hero?.name, deck.source === 'fabrary' ? deck.format : null].filter(Boolean).join(' · ');
   els.name.textContent = deck.name;
 
   const updated = deck.updatedAt
@@ -532,11 +533,11 @@ function renderHeader(deck) {
   updateBuildButton();
   els.compareBtn.hidden = deck.source !== 'cardnexus';
 
-  els.stats.replaceChildren();
-  if (hero?.intellect != null) els.stats.append(statItem('intellect', hero.intellect));
-  if (hero?.life != null) els.stats.append(statItem('vie', hero.life));
-  els.stats.append(statItem('cartes', deck.counts.deck));
-  els.stats.append(statItem('uniques', deck.counts.unique));
+  // Toutes les cartes du deck : héros, armes, équipement et deck principal (la
+  // réserve garde son propre compte).
+  const main = [hero, ...deck.weapons, ...deck.equipment, ...deck.deck].filter(Boolean);
+  const total = main.reduce((sum, card) => sum + (card.quantity ?? 1), 0);
+  els.stats.replaceChildren(statItem('cartes', total), statItem('différentes', main.length));
   if (deck.counts.sideboard) els.stats.append(statItem('en réserve', deck.counts.sideboard));
 
   if (deck.notes) {
