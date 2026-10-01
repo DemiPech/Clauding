@@ -338,6 +338,10 @@ async function loadFromApi(endpoint, { historyUrl }) {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
 
     state.deck = data;
+    // Regroupement par défaut : par classe pour un emplacement de rangement,
+    // par pitch pour un deck. Un choix manuel vaut jusqu'à la prochaine ouverture.
+    state.group = isStoragePlace(data) ? 'class' : 'pitch';
+    els.groupSelect.value = state.group;
     if (data.source === 'cardnexus') {
       const { deck, weapons, equipment } = data.counts;
       placeCounts.set(data.deckId, deck + weapons + equipment + (data.hero?.quantity || 0));

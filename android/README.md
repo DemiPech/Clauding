@@ -116,7 +116,8 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
   restent dans la collection sans emplacement ; aucune carte n'est jamais supprimée. Les deux
   valent aussi pour les decks.
 - **Grouper par** : pitch, type, classe, talent, classe + talent (« Draconic Ninja »),
-  extension (inventaire seulement) ou rien.
+  extension (inventaire seulement) ou rien. Un emplacement de rangement s'ouvre groupé par
+  classe et un deck par pitch. Un choix manuel vaut jusqu'à la prochaine ouverture.
 - **« Sans emplacement »**, en tête de liste, montre les cartes qui n'ont aucun emplacement.
   Il s'ouvre comme un emplacement : on y prend des cartes et on les range ailleurs.
 - **Prendre au-delà de N** (N entre 1 et 4, 3 par défaut) met en main tout ce qui dépasse N
