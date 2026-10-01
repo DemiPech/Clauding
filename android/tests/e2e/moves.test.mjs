@@ -162,3 +162,16 @@ test('renommer puis supprimer un emplacement en déplaçant ses cartes', async (
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('« Sans emplacement » ne montre que les cartes vraiment sans emplacement', async () => {
+  const { page, context, errors } = await openApp({
+    inv: [line('u1', 'p2', 2, null), line('bug1', 'p1', 1, 'Vrac 1'), line('bug2', 'p3', 3, 'Vrac 2')],
+    locations: [place('Vrac 1'), place('Vrac 2')],
+  });
+  // CardNexus renvoie à tort des lignes rangées pour le filtre « sans emplacement ».
+  await page.evaluate(() => { window.__mockNullFilterBug = true; });
+  await openPlace(page, '__sans_emplacement__', 'Sans emplacement');
+  assert.deepEqual(await texts(page, '#deck-stats .stat'), ['2 cartes', '1 différente']);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

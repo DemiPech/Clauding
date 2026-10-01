@@ -2,7 +2,7 @@
 // Cognito, FaBrary (une liste « Liste test ») et l'API CardNexus sur un
 // inventaire en memoire. Les tests le parametrent avant chargement via
 // window.__mockInv, __mockLocations, __mockClasses, __mockTalents, __mockExp,
-// __mock429 (nombre de 429 a renvoyer), __mockDelay (latence de chaque
+// __mock429 (nombre de 429 a renvoyer), __mockNullFilterBug, __mockDelay (latence de chaque
 // requete, en ms), et l'inspectent via window.__inv.
 (() => {
   localStorage.setItem('cardnexus_api_key', 'cnk_test');
@@ -128,7 +128,9 @@
     if (path === '/inventory/search') {
       window.__searchCalls = (window.__searchCalls || 0) + 1;
       const hit = (p) => (body.nameSlug ? p.nameSlug === body.nameSlug : body.name ? p.name.toLowerCase().includes(body.name.toLowerCase()) : true);
-      const where = (l) => !body.location || body.location.values.some((v) => (v === null ? l.location == null : (l.location || '').toLowerCase() === v.toLowerCase()));
+      // __mockNullFilterBug : le filtre « sans emplacement » laisse passer des lignes rangees.
+      const unplaced = (l) => l.location == null || (window.__mockNullFilterBug && l.id.startsWith('bug'));
+      const where = (l) => !body.location || body.location.values.some((v) => (v === null ? unplaced(l) : (l.location || '').toLowerCase() === v.toLowerCase()));
       const game = (l) => !body.gameFilters?.game || (l.game || 'fab') === body.gameFilters.game;
       const all = inv.filter((l) => l.quantity > 0 && where(l) && game(l) && (!body.name && !body.nameSlug ? true : hit(products.find((p) => p.id === l.productId) || { name: '', nameSlug: '' })));
       const offset = body.offset || 0, limit = body.limit || 50;

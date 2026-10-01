@@ -158,10 +158,18 @@ async function linesAtLocations(names, progress = silent) {
   for (let i = 0; i < names.length; i += LOCATIONS_PER_QUERY) {
     const values = names.slice(i, i + LOCATIONS_PER_QUERY);
     const part = i / LOCATIONS_PER_QUERY;
-    lines.push(...(await searchAllLines({ location: { op: 'or', values } }, progress.sub(part / chunks, (part + 1) / chunks))));
+    const found = await searchAllLines({ location: { op: 'or', values } }, progress.sub(part / chunks, (part + 1) / chunks));
+    // La recherche de CardNexus renvoie parfois, pour « sans emplacement »
+    // (null), des lignes qui en ont un : on ne garde que ce que chaque ligne
+    // dit d'elle-même.
+    const wanted = new Set(values.map(placeKey));
+    lines.push(...found.filter((line) => wanted.has(placeKey(line.location))));
   }
   return lines;
 }
+
+/** Nom d'emplacement comparable : la casse ne compte pas, « aucun » vaut null. */
+const placeKey = (name) => (name == null || name === '' ? null : String(name).toLowerCase());
 
 /**
  * Toute la collection, sans plafond : GET /inventory au curseur (100 lignes
