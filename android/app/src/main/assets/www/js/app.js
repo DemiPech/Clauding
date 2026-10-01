@@ -17,6 +17,9 @@ const els = {
   appBrand: $('#app-brand'),
   appTitle: $('#app-title'),
   collectionFilter: $('#collection-filter'),
+  ptr: $('#ptr'),
+  ptrText: $('#ptr-text'),
+  placesRefresh: $('#places-refresh'),
   collectionKinds: $('#collection-kinds'),
   compareDeckField: $('#compare-deck-field'),
   compareDeck: $('#compare-deck'),
@@ -2533,6 +2536,83 @@ function renderPlacesList() {
   els.placesList.replaceChildren(...nodes);
 }
 
+// --- Tirer pour actualiser ---------------------------------------------------
+
+/** Distance à tirer (en px) pour déclencher l'actualisation. */
+const PULL_THRESHOLD = 70;
+let refreshing = false;
+
+/**
+ * Relit emplacements et decks sans le cache de l'app. Les comptes de cartes
+ * connus sont oubliés (ils ont pu changer) ; les decks se recomptent seuls,
+ * les autres emplacements avec « Compter les cartes ».
+ */
+async function refreshCollection() {
+  if (refreshing) return;
+  refreshing = true;
+  els.placesRefresh.disabled = true;
+  setPullState('loading');
+  try {
+    await fetch('/api/cardnexus/refresh');
+    placeCounts.clear();
+    deckInfo.clear();
+    await Promise.all([loadDeckLocations(), loadLocations()]);
+    renderPlacesList();
+    enrichDecks();
+    showToast(`Collection actualisée · ${locations.length} emplacement${locations.length > 1 ? 's' : ''}.`);
+  } catch (err) {
+    showToast(`Actualisation impossible : ${err.message}`, { error: true });
+  } finally {
+    refreshing = false;
+    els.placesRefresh.disabled = false;
+    setPullState('idle');
+  }
+}
+
+/** Indicateur en haut de la Collection : idle, pulling (avec la distance), ready, loading. */
+function setPullState(mode, distance = 0) {
+  els.ptr.dataset.state = mode;
+  const height = mode === 'loading' ? 44 : mode === 'idle' ? 0 : Math.min(distance, PULL_THRESHOLD * 1.4) * 0.6;
+  els.ptr.style.height = `${height}px`;
+  els.ptrText.textContent =
+    mode === 'loading' ? 'Actualisation…' : mode === 'ready' ? 'Relâcher pour actualiser' : 'Tirer pour actualiser';
+}
+
+{
+  let startY = null;
+  let distance = 0;
+  const pullable = () =>
+    !els.places.hidden && window.scrollY <= 0 && !refreshing && !document.querySelector('.sheet-backdrop:not([hidden])');
+
+  window.addEventListener(
+    'touchstart',
+    (event) => {
+      startY = pullable() && event.touches.length === 1 ? event.touches[0].clientY : null;
+      distance = 0;
+    },
+    { passive: true },
+  );
+  window.addEventListener(
+    'touchmove',
+    (event) => {
+      if (startY === null) return;
+      distance = event.touches[0].clientY - startY;
+      if (distance <= 0 || window.scrollY > 0) {
+        setPullState('idle');
+        return;
+      }
+      setPullState(distance >= PULL_THRESHOLD ? 'ready' : 'pulling', distance);
+    },
+    { passive: true },
+  );
+  window.addEventListener('touchend', () => {
+    if (startY === null) return;
+    startY = null;
+    if (distance >= PULL_THRESHOLD && !els.places.hidden) refreshCollection();
+    else setPullState('idle');
+  });
+}
+
 /** Compte toutes les cartes de la collection, endroit par endroit, en un balayage. */
 async function countAllPlaces() {
   els.placesCount.disabled = true;
@@ -3717,6 +3797,7 @@ els.journalClear.addEventListener('click', async () => {
 });
 els.openTidy.addEventListener('click', showTidy);
 els.placesCount.addEventListener('click', countAllPlaces);
+els.placesRefresh.addEventListener('click', refreshCollection);
 els.placesList.addEventListener('click', (event) => {
   const place = event.target.closest('[data-place]');
   if (!place) return;

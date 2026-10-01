@@ -25,7 +25,9 @@ Quatre onglets en bas de l'écran :
 - **Collection** (l'accueil) : tous les emplacements sur une seule page, decks compris (avec
   leur héros et leur nombre de cartes). « Sans emplacement » est épinglé en tête tant qu'il
   reste des cartes à ranger. Un champ filtre par nom, et des filtres rapides sélectionnent
-  Decks, Vracs, Kallax ou Classeurs. Toucher un emplacement l'ouvre.
+  Decks, Vracs, Kallax ou Classeurs. Toucher un emplacement l'ouvre. **Tirer vers le bas** en
+  haut de la page, ou toucher ↻, relit les emplacements et les decks sans le cache de l'app
+  (par exemple après en avoir créé un sur le site).
 - **Chercher** : un seul champ. Un nom de carte montre où sont les exemplaires dans la
   collection, et on peut les déplacer depuis la barre du bas. Un lien de deck FaBrary (ou son
   identifiant de 26 caractères) ouvre la liste.

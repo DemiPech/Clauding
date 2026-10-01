@@ -264,6 +264,11 @@ async function route(url, init = {}) {
         return { at: new Date().toISOString(), lines: lines.length, counts: countLines(lines) };
       }, 'Impossible de photographier la collection pour le moment.');
 
+    case '/api/cardnexus/refresh':
+      // Tirer pour actualiser : on oublie emplacements et decks mémorisés.
+      forgetCardnexusCache();
+      return json(200, { ok: true });
+
     case '/api/cardnexus/counts':
       return respond(
         async () => [...(await countByLocation()).entries()].map(([name, count]) => ({ name, count })),
