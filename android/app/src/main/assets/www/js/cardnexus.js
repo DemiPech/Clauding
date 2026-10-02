@@ -305,12 +305,14 @@ async function resolveProducts(productIds, progress = silent) {
   return products;
 }
 
-// --- Classes manquantes : FaBrary en renfort ----------------------------------
+// --- Classes et talents manquants : FaBrary en renfort --------------------------
 //
-// CardNexus ne connait pas encore certaines classes (Pirate, Necromancer…) :
-// ces cartes arrivent sans classe. FaBrary, lui, les connait. Pour chaque
-// carte sans classe, on lui demande ses classes et talents, et on garde la
-// reponse sur le telephone : une carte ne change pas de classe.
+// CardNexus ne connait pas encore certaines classes (Pirate, Necromancer…) ni
+// certains talents (Revered, Reviled…) : ces cartes arrivent sans. FaBrary,
+// lui, les connait. Pour chaque carte sans classe ou sans talent, on lui
+// demande les siens, et on garde la reponse sur le telephone : une carte ne
+// change pas de classe. Une carte vraiment sans talent n'est demandee qu'une
+// fois, puis la reponse gardee suffit.
 
 const CLASS_CACHE_STORAGE = 'fabrary_classes';
 // Une carte que FaBrary ne connait pas encore (extension toute neuve) est
@@ -319,6 +321,7 @@ const CLASS_RETRY_MS = 24 * 3600 * 1000;
 const classChecked = new WeakSet();
 
 const hasClasses = (product) => (product.attributes?.classes || []).some((c) => c && c !== 'NotClassed');
+const hasTalents = (product) => (product.attributes?.talents || []).some(Boolean);
 
 function readClassCache() {
   try {
@@ -339,10 +342,11 @@ function writeClassCache(cache) {
 /** Identifiant FaBrary d'un produit CardNexus. */
 const fabraryIdOf = (product) => fabraryIdentifier(cleanName(product.name), product.attributes?.pitch);
 
-/** Complete, d'apres FaBrary, les classes (et talents) des cartes qui n'en ont pas. */
+/** Complete, d'apres FaBrary, les classes et talents des cartes qui n'en ont pas. */
 async function completeClasses(products, progress = silent) {
   const todo = products.filter(
-    (product) => !classChecked.has(product) && product.productType !== 'sealed' && !hasClasses(product),
+    (product) =>
+      !classChecked.has(product) && product.productType !== 'sealed' && (!hasClasses(product) || !hasTalents(product)),
   );
   if (!todo.length) return;
 
@@ -353,7 +357,7 @@ async function completeClasses(products, progress = silent) {
     return !hit || (hit.missing && now - hit.at > CLASS_RETRY_MS);
   });
   if (unknown.length) {
-    progress.detail(`Classes : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
+    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
     try {
       const found = await fetchCardClasses(unknown, progress);
       for (const id of unknown) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
@@ -368,12 +372,13 @@ async function completeClasses(products, progress = silent) {
   for (const product of todo) {
     classChecked.add(product);
     const hit = cache[fabraryIdOf(product)];
-    if (!hit || hit.missing || !hit.classes?.length) continue;
+    if (!hit || hit.missing) continue;
+    // Ce que CardNexus sait deja l'emporte ; FaBrary ne fait que combler.
     const attrs = product.attributes || {};
     product.attributes = {
       ...attrs,
-      classes: hit.classes,
-      ...(!(attrs.talents || []).length && hit.talents?.length ? { talents: hit.talents } : {}),
+      ...(!hasClasses(product) && hit.classes?.length ? { classes: hit.classes } : {}),
+      ...(!hasTalents(product) && hit.talents?.length ? { talents: hit.talents } : {}),
     };
   }
 }

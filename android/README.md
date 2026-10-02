@@ -135,7 +135,7 @@ Depuis l'accueil, **Emplacements** liste toutes les locations CardNexus, rangée
   valent aussi pour les decks.
 - **Grouper par** : pitch, type, classe, talent, classe + talent (« Draconic Ninja »),
   extension (inventaire seulement) ou rien. Un emplacement de rangement s'ouvre groupé par
-  classe et un deck par pitch. Un choix manuel vaut jusqu'à la prochaine ouverture.
+  classe + talent et un deck par pitch. Un choix manuel vaut jusqu'à la prochaine ouverture.
 - **« Sans emplacement »**, en tête de liste, montre les cartes qui n'ont aucun emplacement.
   Il s'ouvre comme un emplacement : on y prend des cartes et on les range ailleurs.
 - **Prendre au-delà de N** (N entre 1 et 4, 3 par défaut) met en main tout ce qui dépasse N
@@ -230,17 +230,22 @@ Les cartes des autres jeux restent invisibles et intactes. Elles ne sont ni comp
 rangées, ni comparées entre deux photos. Seule exception, la suppression d'un emplacement
 avertit s'il contient encore des lignes d'autres jeux, car elles perdraient leur emplacement.
 
-## Classes manquantes (FaBrary en renfort)
+## Classes et talents manquants (FaBrary en renfort)
 
-CardNexus ne connaît pas encore certaines classes (Pirate, Necromancer…) : ces cartes arrivent
-sans classe. Pour chaque carte sans classe, l'app demande sa classe et ses talents à FaBrary
-(requête `getCard`, plusieurs cartes par requête grâce aux alias GraphQL), d'après son nom et son
-pitch (`buckwild-red`). La réponse est gardée sur le téléphone (`fabrary_classes`) : une carte
-n'est demandée qu'une fois. Une carte que FaBrary ne connaît pas encore est redemandée le
-lendemain. Si FaBrary ne répond pas, la carte reste sans classe et l'app continue normalement.
+CardNexus ne connaît pas encore certaines classes (Pirate, Necromancer…) ni certains talents
+(Revered, Reviled…) : ces cartes arrivent sans. Pour chaque carte sans classe ou sans talent,
+l'app demande les siens à FaBrary (requête `getCard`, plusieurs cartes par requête grâce aux
+alias GraphQL), d'après son nom et son pitch (`buckwild-red`). Ce que CardNexus sait déjà
+l'emporte : FaBrary ne fait que combler les trous.
 
-Les classes complétées servent partout : groupement par classe ou classe + talent, rangement des
-vracs.
+La réponse est gardée sur le téléphone (`fabrary_classes`) : une carte n'est demandée qu'une
+fois, y compris une carte vraiment sans talent. La première ouverture d'un gros vrac interroge
+donc FaBrary pour beaucoup de cartes (40 par requête), les suivantes plus du tout. Une carte que
+FaBrary ne connaît pas encore est redemandée le lendemain. Si FaBrary ne répond pas, la carte
+reste comme CardNexus la donne et l'app continue normalement.
+
+Les classes et talents complétés servent partout : groupement par classe, talent ou classe +
+talent, rangement des vracs.
 
 ## API CardNexus
 

@@ -108,7 +108,7 @@ async function loadFromApi(endpoint, { historyUrl }) {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
 
     state.deck = data;
-    // Regroupement par défaut : par classe pour un emplacement de rangement,
+    // Regroupement par défaut : par classe + talent pour un emplacement de rangement,
     // par pitch pour un deck. Un choix manuel vaut jusqu'à la prochaine ouverture.
     state.group = isStoragePlace(data) ? 'classTalent' : 'pitch';
     els.groupSelect.value = state.group;
