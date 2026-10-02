@@ -141,7 +141,7 @@ test('renommer puis supprimer un emplacement en déplaçant ses cartes', async (
   await openPlace(page, 'Tiroir DS 1');
   // Un emplacement de rangement : pas de héros, groupé par classe par défaut.
   assert.equal(await page.isVisible('#hero-art'), false);
-  assert.equal(await page.$eval('#group-select', (e) => e.value), 'class');
+  assert.equal(await page.$eval('#group-select', (e) => e.value), 'classTalent');
   assert.deepEqual(await texts(page, '#deck-stats .stat'), ['4 cartes', '2 différentes']);
 
   await menu(page, 'rename-btn');
