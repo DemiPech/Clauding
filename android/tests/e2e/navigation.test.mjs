@@ -155,7 +155,7 @@ test('en-têtes : toutes les cartes comptées ; groupement par défaut', async (
   await back(page);
 
   await openPlace(page, 'Vrac 1');
-  assert.equal(await page.$eval('#group-select', (e) => e.value), 'class');
+  assert.equal(await page.$eval('#group-select', (e) => e.value), 'classTalent');
   assert.deepEqual(await texts(page, '#sections .section-head h2'), ['Generic', 'Ninja']);
   await page.selectOption('#group-select', 'type');
   await back(page);
