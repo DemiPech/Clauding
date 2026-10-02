@@ -1,0 +1,13 @@
+{
+  "name": "cardnexus-sdk-bundle",
+  "private": true,
+  "type": "module",
+  "description": "Assemble le SDK CardNexus (TypeScript) en un seul fichier JavaScript pour l'app.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "standardwebhooks": "1.0.0"
+  }
+}

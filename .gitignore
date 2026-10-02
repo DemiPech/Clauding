@@ -12,3 +12,4 @@ android/fab-decks.apk
 
 # Tests
 android/tests/node_modules/
+android/sdk/node_modules/

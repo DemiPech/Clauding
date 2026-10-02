@@ -13,8 +13,10 @@ CardNexus, déplacement de cartes, montage d'une liste FaBrary dans CardNexus.
 3. Au premier lancement, coller sa clé d'API CardNexus dans les réglages (⚙). Elle reste
    sur le téléphone ; les decks FaBrary fonctionnent sans.
 
-Chaque push qui touche `android/` recompile l'APK (workflow `APK Android`) et remplace le
-fichier de la release. Toutes les versions sont signées avec la même clé
+Chaque push qui touche `android/` recompile l'APK (workflow `APK Android`). Sur `main`, il
+remplace le fichier de la release `apk-latest` ; sur une autre branche, il publie une
+pré-release à part, `apk-<branche>` (par exemple `apk-claude-cardnexus-sdk`), pour essayer une
+version sans toucher à celle de `main`. Toutes les versions sont signées avec la même clé
 (`app/decklist.keystore`), donc une mise à jour s'installe par-dessus l'ancienne sans
 perdre la clé d'API.
 
@@ -233,6 +235,18 @@ avertit s'il contient encore des lignes d'autres jeux, car elles perdraient leur
 Référence : https://docs.cardnexus.com/ (`llms.txt` liste les pages, `reference/openapi.json`
 décrit chaque route).
 
+- Les appels passent par le **SDK officiel** ([cardnexus/cardnexus-sdk](https://github.com/cardnexus/cardnexus-sdk)) :
+  `client.lines.search`, `client.bulkOperations.update`, `client.locations.create`, etc. Il est
+  écrit en TypeScript et n'est pas publié sur npm : `android/sdk/` l'assemble en un seul fichier,
+  `js/vendor/cardnexus-sdk.js` (54 Ko), à partir du commit figé dans `android/sdk/SDK_VERSION`.
+  Pour changer de version : modifier `SDK_VERSION`, puis `cd android/sdk && npm ci && npm run build`.
+  Le CI vérifie que le fichier embarqué correspond bien à ce commit.
+- Le SDK fait ses requêtes avec `fetch` ; l'app lui en fournit un (`sdkFetch`, dans `js/http.js`)
+  qui passe par le pont natif, comme le reste. Ses reprises automatiques sont coupées : l'app
+  garde sa propre régulation (ci-dessous) et ne rejoue jamais un `409` (nom déjà pris).
+- Le SDK accepte une clé d'idempotence mais n'envoie pas l'en-tête : l'app pose elle-même
+  `Idempotency-Key` sur les écritures.
+
 - Les lectures d'endroits passent par `POST /inventory/search` : 200 lignes par page contre 100
   pour `GET /inventory`, et jusqu'à 50 endroits dans une même requête (filtre `location` en
   `op: "or"`). Elle pagine par position, dans la limite de 10 000 lignes.
@@ -267,7 +281,8 @@ app/src/main/assets/www/
   js/progress.js                          avancement des chargements (tâches, pourcentages)
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
-  js/http.js                              requêtes sortantes via le pont natif
+  js/http.js                              requêtes sortantes via le pont natif (et fetch du SDK)
+  js/vendor/cardnexus-sdk.js              SDK CardNexus assemblé (généré par android/sdk)
 ```
 
 - `api.js` intercepte les appels `fetch('/api/…')` et y répond localement, avec les mêmes

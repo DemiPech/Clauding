@@ -9,9 +9,13 @@
  *
  * Portage navigateur de lib/cardnexus.js : la cle d'API vient des reglages de
  * l'app (localStorage) au lieu de api_key.txt.
+ *
+ * Les appels passent par le SDK officiel (js/vendor/cardnexus-sdk.js, genere
+ * par android/sdk) ; ses requetes empruntent le pont natif via sdkFetch.
  */
+import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
 import { cardImageUrl } from './fabrary.js';
-import { httpFetch, uuid } from './http.js';
+import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
 const BASE = 'https://public-api.cardnexus.com/v1';
@@ -73,44 +77,75 @@ async function throttle() {
 // (Retry-After), on patiente et on rejoue. Au-dela, on abandonne.
 const MAX_RATE_RETRIES = 3;
 
-async function api(endpoint, { method = 'GET', body, idempotencyKey } = {}) {
+let client = null;
+let clientKey = null;
+
+/** Le client du SDK, recree si la cle d'API change. */
+function sdk() {
   const key = getApiKey();
   if (!key) {
     throw new CardnexusError("Aucune clé d'API CardNexus : ajoutez-la dans les réglages (⚙).", 503);
   }
+  if (!client || clientKey !== key) {
+    client = new CardNexus({
+      bearerAuth: key,
+      baseURL: BASE,
+      fetch: sdkFetch,
+      // Les reprises sont gerees ici : regulation, pause affichee, et jamais
+      // de reprise d'un 409 (nom deja pris), que le SDK rejouerait.
+      maxRetries: 0,
+      timeout: 60_000,
+      logLevel: 'off',
+    });
+    clientKey = key;
+  }
+  return client;
+}
 
+/**
+ * Options d'une ecriture rejouable. Le SDK accepte `idempotencyKey` mais
+ * n'envoie pas l'en-tete (il ne le nomme pas) : on le pose nous-memes.
+ */
+const idempotent = (key) => ({ headers: { 'Idempotency-Key': key } });
+
+/** Le detail d'une erreur de l'API, tel que CardNexus le renvoie. */
+function errorDetail(err) {
+  const body = err.error;
+  if (!body) return '';
+  if (typeof body === 'string') return body.slice(0, 200);
+  return String(body.message || body.error?.message || JSON.stringify(body)).slice(0, 200);
+}
+
+/**
+ * Un appel au SDK : `run(client)` renvoie la promesse d'une operation. On
+ * regule le debit, on rejoue apres un 429 en suivant Retry-After, et on
+ * traduit les erreurs du SDK en CardnexusError lisibles.
+ */
+async function call(run) {
+  const cn = sdk();
   for (let attempt = 0; ; attempt += 1) {
     await throttle();
-    const res = await httpFetch(`${BASE}${endpoint}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        // La meme cle a chaque reprise : une ecriture rejouee ne s'applique qu'une fois.
-        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-
-    if (res.status === 401) throw new CardnexusError("Clé d'API CardNexus refusée (401).", 401);
-    if (res.status === 429) {
-      const retry = Number(res.headers.get('Retry-After')) || 10;
-      if (attempt < MAX_RATE_RETRIES) {
-        pauseFor((retry + 1) * 1000, 'Quota CardNexus atteint');
-        await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 1000));
-        continue;
+    try {
+      return await run(cn);
+    } catch (err) {
+      if (!(err instanceof APIError)) throw err;
+      if (err.status === undefined) {
+        const reason = err.cause?.message || err.message;
+        throw new CardnexusError(`Connexion à CardNexus impossible (${reason}).`, 502);
       }
-      throw new CardnexusError(`Quota CardNexus atteint. Reessayez dans ${retry} secondes.`, 429);
+      if (err.status === 401) throw new CardnexusError("Clé d'API CardNexus refusée (401).", 401);
+      if (err.status === 429) {
+        const retry = Number(err.headers?.get('retry-after')) || 10;
+        if (attempt < MAX_RATE_RETRIES) {
+          pauseFor((retry + 1) * 1000, 'Quota CardNexus atteint');
+          await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 1000));
+          continue;
+        }
+        throw new CardnexusError(`Quota CardNexus atteint. Reessayez dans ${retry} secondes.`, 429);
+      }
+      if (err.status === 409) throw new CardnexusError('Ce nom est déjà utilisé par un autre emplacement.', 409);
+      throw new CardnexusError(`CardNexus a repondu ${err.status}. ${errorDetail(err)}`, 502);
     }
-    if (res.status === 409) throw new CardnexusError('Ce nom est déjà utilisé par un autre emplacement.', 409);
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new CardnexusError(`CardNexus a repondu ${res.status}. ${text.slice(0, 200)}`, 502);
-    }
-    // Une suppression peut repondre sans corps.
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
   }
 }
 
@@ -136,10 +171,9 @@ function reportLines(progress, read, total) {
 async function searchAllLines(filters, progress = silent) {
   const lines = [];
   for (let offset = 0; offset < SEARCH_WINDOW; offset += LINES_PAGE) {
-    const res = await api('/inventory/search', {
-      method: 'POST',
-      body: { ...filters, gameFilters: FAB_ONLY, limit: LINES_PAGE, offset, sortBy: 'name' },
-    });
+    const res = await call((cn) =>
+      cn.lines.search({ ...filters, gameFilters: FAB_ONLY, limit: LINES_PAGE, offset, sortBy: 'name' }),
+    );
     lines.push(...(res.data || []));
     // L'API donne le nombre total de lignes : de quoi afficher un vrai pourcentage.
     reportLines(progress, lines.length, res.pagination?.total);
@@ -181,9 +215,7 @@ async function walkAllLines(progress = silent) {
   const lines = [];
   let cursor = null;
   for (let page = 0; page < 2000; page += 1) {
-    const qs = new URLSearchParams({ limit: '100', game: GAME });
-    if (cursor) qs.set('cursor', cursor);
-    const res = await api(`/inventory?${qs}`);
+    const res = await call((cn) => cn.lines.list({ limit: 100, game: GAME, ...(cursor ? { cursor } : {}) }));
     lines.push(...(res.data || []));
     if (estimate > lines.length) {
       progress.report(lines.length / estimate, `${formatCount(lines.length)} / ≈ ${formatCount(estimate)} lignes`);
@@ -260,10 +292,9 @@ async function resolveProducts(productIds, progress = silent) {
 
   for (let i = 0; i < missing.length; i += PRODUCT_BATCH) {
     progress.report(i / missing.length, `Catalogue : ${formatCount(i)} / ${formatCount(missing.length)} cartes`);
-    const res = await api('/products/search', {
-      method: 'POST',
-      body: { productIds: missing.slice(i, i + PRODUCT_BATCH), limit: PRODUCT_BATCH },
-    });
+    const res = await call((cn) =>
+      cn.products.search({ productIds: missing.slice(i, i + PRODUCT_BATCH), limit: PRODUCT_BATCH }),
+    );
     for (const product of res.data || []) productCache.set(product.id, product);
   }
   progress.report(1);
@@ -277,7 +308,7 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'fr');
 
 /** Toutes les locations, avec leur icone — les destinations possibles d'un deplacement. */
 export async function listLocations() {
-  const locations = await api('/inventory/locations');
+  const locations = await call((cn) => cn.locations.list());
   return locations.map(({ name, color, icon }) => ({ name, color, icon })).sort(byName);
 }
 
@@ -503,10 +534,7 @@ export async function searchInventoryLines(query, { game = 'fab', progress = sil
     throw new CardnexusError('Tapez au moins deux caracteres.', 400);
   }
 
-  const res = await api('/inventory/search', {
-    method: 'POST',
-    body: { name: term, limit: SEARCH_LIMIT, gameFilters: { game } },
-  });
+  const res = await call((cn) => cn.lines.search({ name: term, limit: SEARCH_LIMIT, gameFilters: { game } }));
 
   const lines = res.data || [];
   progress.report(0.5);
@@ -589,11 +617,9 @@ export async function moveLines(moves, destination) {
     return { inventoryId, count, location: destination };
   });
 
-  const res = await api('/inventory/bulk/update', {
-    method: 'POST',
-    body: { items },
-    idempotencyKey: uuid(),
-  });
+  // La meme cle a chaque reprise : un envoi rejoue ne s'applique qu'une fois.
+  const idempotencyKey = uuid();
+  const res = await call((cn) => cn.bulkOperations.update({ items }, idempotent(idempotencyKey)));
 
   // Le stock a bouge : les recherches memorisees ne valent plus rien.
   forgetInventorySearches();
@@ -655,10 +681,9 @@ async function linesForSlug(nameSlug) {
 
   const lines = [];
   for (let offset = 0; offset < 2000; offset += SEARCH_PAGE) {
-    const res = await api('/inventory/search', {
-      method: 'POST',
-      body: { nameSlug, limit: SEARCH_PAGE, offset, gameFilters: { game: 'fab' } },
-    });
+    const res = await call((cn) =>
+      cn.lines.search({ nameSlug, limit: SEARCH_PAGE, offset, gameFilters: { game: 'fab' } }),
+    );
     lines.push(...(res.data || []));
     if (!res.pagination?.hasMore) break;
   }
@@ -1112,10 +1137,9 @@ const RECENT_PAGE = 100;
  * historique qu'elle expose, et il couvre aussi ce qui est fait sur le site.
  */
 export async function recentLines(offset = 0, progress = silent) {
-  const res = await api('/inventory/search', {
-    method: 'POST',
-    body: { limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc', gameFilters: FAB_ONLY },
-  });
+  const res = await call((cn) =>
+    cn.lines.search({ limit: RECENT_PAGE, offset, sortBy: 'lastModified', sortDirection: 'desc', gameFilters: FAB_ONLY }),
+  );
   const lines = res.data || [];
   progress.report(0.5);
   const products = await resolveProducts(lines.map((line) => line.productId), progress.sub(0.5, 1));
@@ -1147,11 +1171,8 @@ async function bulkUpdate(items, progress = silent) {
   for (let i = 0; i < items.length; i += UPDATE_BATCH) {
     progress.report(i / items.length, `${formatCount(i)} / ${formatCount(items.length)} lignes`);
     const batch = items.slice(i, i + UPDATE_BATCH);
-    const res = await api('/inventory/bulk/update', {
-      method: 'POST',
-      body: { items: batch },
-      idempotencyKey: uuid(),
-    });
+    const idempotencyKey = uuid();
+    const res = await call((cn) => cn.bulkOperations.update({ items: batch }, idempotent(idempotencyKey)));
     for (const result of res.results || []) results.push({ ...result, item: batch[result.index] });
   }
   progress.report(1);
@@ -1189,7 +1210,7 @@ export async function deleteCards(items, progress = silent) {
   for (const [index, item] of whole.entries()) {
     deleting.report(index / whole.length, `${index} / ${whole.length} lignes supprimées`);
     try {
-      await api(`/inventory/${encodeURIComponent(item.inventoryId)}`, { method: 'DELETE' });
+      await call((cn) => cn.lines.delete(item.inventoryId, null));
       removed += item.count;
     } catch (err) {
       failed.push({ ...item, reason: err.message });
@@ -1219,7 +1240,7 @@ export async function renameLocation(from, to) {
   const name = String(to || '').trim();
   if (!name) throw new CardnexusError('Nouveau nom manquant.', 400);
   if (name.length > 100) throw new CardnexusError('Nom trop long (100 caracteres max).', 400);
-  return api(`/inventory/locations/${encodeURIComponent(from)}`, { method: 'PATCH', body: { name } });
+  return call((cn) => cn.locations.update(from, { name }));
 }
 
 /**
@@ -1227,21 +1248,17 @@ export async function renameLocation(from, to) {
  * supprimer l'emplacement les laisserait sans emplacement.
  */
 export async function otherGameLines(name) {
-  const res = await api('/inventory/search', {
-    method: 'POST',
-    body: { location: { op: 'or', values: [name] }, limit: 1 },
-  });
+  const res = await call((cn) => cn.lines.search({ location: { op: 'or', values: [name] }, limit: 1 }));
   const all = res.pagination?.total ?? 0;
-  const fab = await api('/inventory/search', {
-    method: 'POST',
-    body: { location: { op: 'or', values: [name] }, gameFilters: FAB_ONLY, limit: 1 },
-  });
+  const fab = await call((cn) =>
+    cn.lines.search({ location: { op: 'or', values: [name] }, gameFilters: FAB_ONLY, limit: 1 }),
+  );
   return Math.max(0, all - (fab.pagination?.total ?? 0));
 }
 
 /** Supprime un emplacement ; les cartes qui y restaient n'ont plus d'emplacement. */
 export async function deleteLocation(name) {
-  await api(`/inventory/locations/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  await call((cn) => cn.locations.delete(name, null));
   return { deleted: name };
 }
 
@@ -1251,11 +1268,8 @@ export async function ensureLocation(name, { color = 'blue', icon = DECK_ICON } 
   if (!trimmed) throw new CardnexusError('Nom de location manquant.', 400);
   if (trimmed.length > 100) throw new CardnexusError('Nom de location trop long (100 max).', 400);
 
-  return api('/inventory/locations', {
-    method: 'POST',
-    body: { name: trimmed, color, icon, upsert: true },
-    idempotencyKey: uuid(),
-  });
+  const idempotencyKey = uuid();
+  return call((cn) => cn.locations.create({ name: trimmed, color, icon, upsert: true }, idempotent(idempotencyKey)));
 }
 
 // --- Import d'une extension -----------------------------------------------
@@ -1304,7 +1318,7 @@ export function rarityKey(value) {
 export async function listExpansions() {
   const all = [];
   for (let offset = 0; offset < 5000; offset += EXPANSIONS_PAGE) {
-    const res = await api(`/games/${GAME}/expansions?limit=${EXPANSIONS_PAGE}&offset=${offset}`);
+    const res = await call((cn) => cn.products.listGameExpansions(GAME, { limit: EXPANSIONS_PAGE, offset }));
     all.push(...(res.data || []));
     if (!res.pagination?.hasMore) break;
   }
@@ -1325,16 +1339,15 @@ export async function expansionCards(expansionId, progress = silent) {
 
   const products = [];
   for (let offset = 0; offset < SEARCH_WINDOW; offset += PRODUCT_BATCH) {
-    const res = await api('/products/search', {
-      method: 'POST',
-      body: {
+    const res = await call((cn) =>
+      cn.products.search({
         expansionId: [id],
         productType: { op: 'or', values: ['card'] },
         gameFilters: FAB_ONLY,
         limit: PRODUCT_BATCH,
         offset,
-      },
-    });
+      }),
+    );
     products.push(...(res.data || []));
     const total = res.pagination?.total;
     if (total) progress.report(products.length / total, `${formatCount(products.length)} / ${formatCount(total)} cartes`);
@@ -1398,7 +1411,8 @@ export async function addCards({ lines, language = 'en', condition = 'NM', locat
   for (let i = 0; i < requests.length; i += IMPORT_BATCH) {
     progress.report(i / requests.length, `${formatCount(i)} / ${formatCount(requests.length)} cartes envoyées`);
     const batch = requests.slice(i, i + IMPORT_BATCH);
-    const res = await api('/inventory', { method: 'POST', body: { lines: batch }, idempotencyKey: uuid() });
+    const idempotencyKey = uuid();
+    const res = await call((cn) => cn.lines.create({ lines: batch }, idempotent(idempotencyKey)));
 
     const rejected = new Map((res.errors || []).map((error) => [error.index, error.code]));
     for (const [index, code] of rejected) {

@@ -168,19 +168,24 @@
     throw new Error('route non simulee ' + method + ' ' + url);
   }
 
+  // Comme la vraie API (et le pont natif, qui transmet les en-tetes en minuscules).
+  const JSON_TYPE = { 'content-type': 'application/json; charset=utf-8' };
+  window.__requests = [];
+
   window.AndroidApp = {
     request(id, method, url, headersJson, hasBody, body) {
+      window.__requests.push({ method, url, headers: JSON.parse(headersJson || '{}'), body: hasBody ? body : null });
       setTimeout(() => {
         if (window.__mock429 > 0) {
           window.__mock429 -= 1;
-          window.__androidHttpDone(id, 429, JSON.stringify({ 'retry-after': '1' }), '{"code":"TOO_MANY_REQUESTS"}', '');
+          window.__androidHttpDone(id, 429, JSON.stringify({ 'retry-after': '1', ...JSON_TYPE }), '{"code":"TOO_MANY_REQUESTS"}', '');
           return;
         }
         try {
           const res = handle(method, url, hasBody ? JSON.parse(body) : null);
-          window.__androidHttpDone(id, 200, '{}', res === null ? '' : JSON.stringify(res), '');
+          window.__androidHttpDone(id, res === null ? 204 : 200, JSON.stringify(JSON_TYPE), res === null ? '' : JSON.stringify(res), '');
         } catch (e) {
-          window.__androidHttpDone(id, 500, '{}', String(e.message), '');
+          window.__androidHttpDone(id, 500, JSON.stringify(JSON_TYPE), JSON.stringify({ message: String(e.message) }), '');
         }
       }, window.__mockDelay ?? 5);
     },

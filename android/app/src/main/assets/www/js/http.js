@@ -31,7 +31,7 @@ window.__androidHttpDone = (id, status, headersJson, body, error) => {
   call.resolve({
     status,
     ok: status >= 200 && status < 300,
-    headers: { get: (name) => headers[String(name).toLowerCase()] ?? null },
+    headers: { get: (name) => headers[String(name).toLowerCase()] ?? null, all: headers },
     text: async () => body,
     json: async () => JSON.parse(body),
   });
@@ -47,6 +47,56 @@ export function httpFetch(url, { method = 'GET', headers = {}, body } = {}) {
     const hasBody = body !== undefined && body !== null;
     bridge.request(id, method, url, JSON.stringify(headers), hasBody, hasBody ? String(body) : '');
   });
+}
+
+/** Les en-tetes d'un fetch (objet, tableau ou Headers) en objet simple. */
+function plainHeaders(headers) {
+  if (!headers) return {};
+  if (typeof headers.forEach === 'function' && !Array.isArray(headers)) {
+    const out = {};
+    headers.forEach((value, name) => {
+      out[name] = value;
+    });
+    return out;
+  }
+  return Object.fromEntries(Array.isArray(headers) ? headers : Object.entries(headers));
+}
+
+// Reponses sans corps, que le constructeur Response refuse d'en recevoir un.
+const NO_BODY = new Set([101, 204, 205, 304]);
+
+/**
+ * Un vrai fetch, pour le SDK CardNexus : memes arguments, et une vraie
+ * Response en retour. La requete passe par le pont natif comme les autres ;
+ * l'annulation (delai depasse) est respectee cote JavaScript.
+ */
+export async function sdkFetch(input, init = {}) {
+  const url = typeof input === 'string' ? input : input.url ?? String(input);
+  const method = (init.method || 'GET').toUpperCase();
+  // Un DELETE n'a pas de corps : la pile HTTP de certains Android le refuse.
+  const body = method === 'DELETE' || method === 'GET' ? undefined : init.body ?? undefined;
+  const { signal } = init;
+  if (signal?.aborted) throw new DOMException('Requête annulée', 'AbortError');
+
+  const request = httpFetch(url, { method, headers: plainHeaders(init.headers), body });
+  const raw = await (signal
+    ? new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Requête annulée', 'AbortError')), { once: true });
+        request.then(resolve, reject);
+      })
+    : request);
+  if (raw instanceof Response) return raw;
+
+  const text = await raw.text();
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(raw.headers.all || {})) {
+    try {
+      headers.set(name, value);
+    } catch {
+      // Un en-tete que le navigateur refuse : le SDK n'en a pas besoin.
+    }
+  }
+  return new Response(NO_BODY.has(raw.status) ? null : text, { status: raw.status, headers });
 }
 
 /** crypto.randomUUID, avec repli pour les WebView anciennes. */

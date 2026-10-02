@@ -40,6 +40,14 @@ jobs:
       - name: Lancer les tests
         run: npm test
 
+      # Le SDK CardNexus embarque doit correspondre au commit fige dans SDK_VERSION.
+      - name: Verifier le SDK embarque
+        working-directory: android/sdk
+        run: |
+          npm ci
+          npm run build
+          git diff --exit-code -- ../app/src/main/assets/www/js/vendor
+
   build:
     needs: tests
     runs-on: ubuntu-latest
@@ -70,13 +78,27 @@ jobs:
           name: fab-decks-apk
           path: android/fab-decks.apk
 
-      # Un lien fixe a ouvrir depuis le telephone :
-      # https://github.com/<depot>/releases/tag/apk-latest
+      # Un lien fixe a ouvrir depuis le telephone. La branche main publie
+      # apk-latest ; une autre branche, sa propre pre-release (apk-<branche>),
+      # pour essayer une version sans remplacer celle de main.
+      - name: Choisir la release
+        id: release
+        working-directory: .
+        run: |
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            echo "tag=apk-latest" >> "$GITHUB_OUTPUT"
+            echo "name=FaB Decks (dernier APK)" >> "$GITHUB_OUTPUT"
+          else
+            slug=$(echo "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._\n-' '-')
+            echo "tag=apk-$slug" >> "$GITHUB_OUTPUT"
+            echo "name=FaB Decks (branche $GITHUB_REF_NAME)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publier en release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-latest
-          name: FaB Decks (dernier APK)
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.name }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           make_latest: false
