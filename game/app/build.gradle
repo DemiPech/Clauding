@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'net.demipech.game'
+    compileSdk 34
+
+    defaultConfig {
+        // Identifiant distinct de FaB Decks : les deux apps cohabitent sur le telephone.
+        applicationId 'net.demipech.game'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    // Cle de signature versionnee : chaque APK compile par la CI porte la meme
+    // signature, donc une nouvelle version s'installe par-dessus l'ancienne
+    // sans perdre la sauvegarde. Cle sans valeur, pour l'installation manuelle.
+    signingConfigs {
+        shared {
+            storeFile file('game.keystore')
+            storePassword 'android'
+            keyAlias 'game'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

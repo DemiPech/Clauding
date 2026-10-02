@@ -1,0 +1,86 @@
+name: APK Jeu
+
+on:
+  push:
+    paths:
+      - 'game/**'
+      - '.github/workflows/game.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: game-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Les tests passent d'abord : si l'un echoue, l'APK n'est pas publie.
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game/tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: game/tests/package-lock.json
+
+      - name: Installer
+        run: npm ci
+
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Lancer les tests
+        run: npm test
+
+  build:
+    needs: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Compiler l'APK
+        run: gradle assembleRelease --no-daemon
+
+      - name: Renommer l'APK
+        run: cp app/build/outputs/apk/release/app-release.apk jeu.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jeu-apk
+          path: game/jeu.apk
+
+      # Un lien fixe a ouvrir depuis le telephone :
+      # https://github.com/<depot>/releases/tag/game-apk-latest
+      - name: Publier en release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: game-apk-latest
+          name: Jeu (dernier APK)
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          body: |
+            APK compilé depuis `${{ github.ref_name }}` @ `${{ github.sha }}`.
+            Téléchargez `jeu.apk` depuis le téléphone puis ouvrez-le pour l'installer.
+          files: game/jeu.apk

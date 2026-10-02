@@ -12,3 +12,11 @@ android/fab-decks.apk
 
 # Tests
 android/tests/node_modules/
+
+# Jeu
+game/.gradle/
+game/build/
+game/app/build/
+game/local.properties
+game/jeu.apk
+game/tests/node_modules/
