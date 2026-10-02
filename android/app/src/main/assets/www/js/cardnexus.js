@@ -14,7 +14,7 @@
  * par android/sdk) ; ses requetes empruntent le pont natif via sdkFetch.
  */
 import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
-import { cardImageUrl } from './fabrary.js';
+import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
@@ -289,17 +289,93 @@ const productCache = new Map();
 
 async function resolveProducts(productIds, progress = silent) {
   const missing = [...new Set(productIds)].filter((id) => !productCache.has(id));
+  const catalogue = progress.sub(0, 0.85);
 
   for (let i = 0; i < missing.length; i += PRODUCT_BATCH) {
-    progress.report(i / missing.length, `Catalogue : ${formatCount(i)} / ${formatCount(missing.length)} cartes`);
+    catalogue.report(i / missing.length, `Catalogue : ${formatCount(i)} / ${formatCount(missing.length)} cartes`);
     const res = await call((cn) =>
       cn.products.search({ productIds: missing.slice(i, i + PRODUCT_BATCH), limit: PRODUCT_BATCH }),
     );
     for (const product of res.data || []) productCache.set(product.id, product);
   }
-  progress.report(1);
 
-  return new Map(productIds.map((id) => [id, productCache.get(id)]).filter(([, p]) => p));
+  const products = new Map(productIds.map((id) => [id, productCache.get(id)]).filter(([, p]) => p));
+  await completeClasses([...products.values()], progress.sub(0.85, 1));
+  progress.report(1);
+  return products;
+}
+
+// --- Classes manquantes : FaBrary en renfort ----------------------------------
+//
+// CardNexus ne connait pas encore certaines classes (Pirate, Necromancer…) :
+// ces cartes arrivent sans classe. FaBrary, lui, les connait. Pour chaque
+// carte sans classe, on lui demande ses classes et talents, et on garde la
+// reponse sur le telephone : une carte ne change pas de classe.
+
+const CLASS_CACHE_STORAGE = 'fabrary_classes';
+// Une carte que FaBrary ne connait pas encore (extension toute neuve) est
+// redemandee le lendemain.
+const CLASS_RETRY_MS = 24 * 3600 * 1000;
+const classChecked = new WeakSet();
+
+const hasClasses = (product) => (product.attributes?.classes || []).some((c) => c && c !== 'NotClassed');
+
+function readClassCache() {
+  try {
+    return JSON.parse(localStorage.getItem(CLASS_CACHE_STORAGE)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeClassCache(cache) {
+  try {
+    localStorage.setItem(CLASS_CACHE_STORAGE, JSON.stringify(cache));
+  } catch {
+    // Memoire pleine : FaBrary sera simplement redemande la prochaine fois.
+  }
+}
+
+/** Identifiant FaBrary d'un produit CardNexus. */
+const fabraryIdOf = (product) => fabraryIdentifier(cleanName(product.name), product.attributes?.pitch);
+
+/** Complete, d'apres FaBrary, les classes (et talents) des cartes qui n'en ont pas. */
+async function completeClasses(products, progress = silent) {
+  const todo = products.filter(
+    (product) => !classChecked.has(product) && product.productType !== 'sealed' && !hasClasses(product),
+  );
+  if (!todo.length) return;
+
+  const cache = readClassCache();
+  const now = Date.now();
+  const unknown = [...new Set(todo.map(fabraryIdOf))].filter((id) => {
+    const hit = cache[id];
+    return !hit || (hit.missing && now - hit.at > CLASS_RETRY_MS);
+  });
+  if (unknown.length) {
+    progress.detail(`Classes : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
+    try {
+      const found = await fetchCardClasses(unknown, progress);
+      for (const id of unknown) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
+      writeClassCache(cache);
+    } catch {
+      // FaBrary injoignable : on s'en tient a ce que dit CardNexus, et on
+      // reessaiera au prochain affichage.
+      return;
+    }
+  }
+
+  for (const product of todo) {
+    classChecked.add(product);
+    const hit = cache[fabraryIdOf(product)];
+    if (!hit || hit.missing || !hit.classes?.length) continue;
+    const attrs = product.attributes || {};
+    product.attributes = {
+      ...attrs,
+      classes: hit.classes,
+      ...(!(attrs.talents || []).length && hit.talents?.length ? { talents: hit.talents } : {}),
+    };
+  }
 }
 
 // --- Locations -------------------------------------------------------------

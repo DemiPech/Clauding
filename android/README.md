@@ -230,6 +230,18 @@ Les cartes des autres jeux restent invisibles et intactes. Elles ne sont ni comp
 rangées, ni comparées entre deux photos. Seule exception, la suppression d'un emplacement
 avertit s'il contient encore des lignes d'autres jeux, car elles perdraient leur emplacement.
 
+## Classes manquantes (FaBrary en renfort)
+
+CardNexus ne connaît pas encore certaines classes (Pirate, Necromancer…) : ces cartes arrivent
+sans classe. Pour chaque carte sans classe, l'app demande sa classe et ses talents à FaBrary
+(requête `getCard`, plusieurs cartes par requête grâce aux alias GraphQL), d'après son nom et son
+pitch (`buckwild-red`). La réponse est gardée sur le téléphone (`fabrary_classes`) : une carte
+n'est demandée qu'une fois. Une carte que FaBrary ne connaît pas encore est redemandée le
+lendemain. Si FaBrary ne répond pas, la carte reste sans classe et l'app continue normalement.
+
+Les classes complétées servent partout : groupement par classe ou classe + talent, rangement des
+vracs.
+
 ## API CardNexus
 
 Référence : https://docs.cardnexus.com/ (`llms.txt` liste les pages, `reference/openapi.json`

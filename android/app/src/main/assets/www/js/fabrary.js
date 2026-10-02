@@ -199,10 +199,14 @@ export function parseDeckId(input) {
 
 export const cardImageUrl = (image) => (image ? `${CONTENT_BASE}/cards/${image}.webp` : null);
 
-async function graphql(query, variables, progress = silent) {
+/**
+ * `partial` : une requete groupee (plusieurs cartes) rend ce qu'elle a trouve
+ * meme si certaines cartes n'existent pas ; on ne leve d'erreur que sans donnees.
+ */
+async function graphql(query, variables, progress = silent, { partial = false } = {}) {
   progress.report(0.05, 'Connexion à FaBrary');
   const credentials = await getGuestCredentials();
-  progress.report(0.4, 'Lecture de la liste');
+  progress.report(0.4, partial ? 'Lecture des cartes' : 'Lecture de la liste');
   const payload = JSON.stringify({ query, variables });
   const res = await httpFetch(GRAPHQL_ENDPOINT, {
     method: 'POST',
@@ -217,7 +221,7 @@ async function graphql(query, variables, progress = silent) {
     throw new FabraryError(`Reponse illisible de FaBrary (HTTP ${res.status})`, 502);
   }
 
-  if (json.errors?.length) {
+  if (json.errors?.length && !(partial && json.data)) {
     const first = json.errors[0];
     // Les credentials invite ont pu etre invalidees cote AWS : on purge le cache.
     if (res.status === 403) cachedCredentials = null;
@@ -345,4 +349,61 @@ export async function fetchDeck(deckId, progress = silent) {
       unique: main.length,
     },
   };
+}
+
+// --- Classes et talents des cartes ------------------------------------------
+
+/** Couleur de pitch dans les identifiants FaBrary : « buckwild-red ». */
+const PITCH_COLORS = { 1: 'red', 2: 'yellow', 3: 'blue' };
+
+/** Identifiant FaBrary d'une carte, d'apres son nom et son pitch. */
+export function fabraryIdentifier(name, pitch) {
+  const slug = String(name)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return PITCH_COLORS[pitch] ? `${slug}-${PITCH_COLORS[pitch]}` : slug;
+}
+
+const CARDS_PER_QUERY = 40;
+
+/** « NECROMANCER », « necromancer » → « Necromancer ». */
+const titleCase = (word) =>
+  String(word)
+    .toLowerCase()
+    .replace(/(^|[\s-])([a-z])/g, (_, sep, letter) => sep + letter.toUpperCase());
+
+/**
+ * Classes et talents de ces cartes selon FaBrary : { identifiant: { classes,
+ * talents } }, ou null pour une carte que FaBrary ne connait pas. Les cartes
+ * sont demandees par groupes, une requete GraphQL par groupe (alias).
+ */
+export async function fetchCardClasses(identifiers, progress = silent) {
+  const ids = [...new Set(identifiers)];
+  const found = {};
+  for (let i = 0; i < ids.length; i += CARDS_PER_QUERY) {
+    const batch = ids.slice(i, i + CARDS_PER_QUERY);
+    const variables = Object.fromEntries(batch.map((id, n) => [`c${n}`, id]));
+    const query = `query cards(${batch.map((_, n) => `$c${n}: ID!`).join(', ')}) {
+${batch.map((_, n) => `  c${n}: getCard(cardIdentifier: $c${n}) { cardIdentifier classes talents }`).join('\n')}
+}`;
+    const step = progress.sub(i / ids.length, (i + batch.length) / ids.length);
+    const data = await graphql(query, variables, step, { partial: true });
+    // Sans donnees du tout (erreur du serveur), ce n'est pas « carte inconnue ».
+    if (!data) throw new FabraryError('FaBrary n’a pas répondu pour ces cartes.', 502);
+    batch.forEach((id, n) => {
+      const card = data[`c${n}`];
+      found[id] = card
+        ? {
+            classes: (card.classes || []).map(titleCase).filter((c) => c !== 'Notclassed'),
+            talents: (card.talents || []).map(titleCase),
+          }
+        : null;
+    });
+    step.report(1);
+  }
+  return found;
 }

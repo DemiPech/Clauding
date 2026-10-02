@@ -72,7 +72,22 @@
     if (u.host.startsWith('cognito')) {
       return body.IdentityPoolId ? { IdentityId: 'id' } : { Credentials: { AccessKeyId: 'A', SecretKey: 'S', SessionToken: 'T', Expiration: Date.now() / 1000 + 3600 } };
     }
-    if (u.host.includes('appsync')) return { data: { getDeck: fabDeck } };
+    if (u.host.includes('appsync')) {
+      // Cartes demandees par lot (alias c0, c1…) : __mockFabraryCards[identifiant].
+      if (body.query.includes('getCard')) {
+        window.__fabraryCardCalls = (window.__fabraryCardCalls || 0) + 1;
+        if (window.__mockFabraryDown) throw new Error('FaBrary indisponible');
+        const known = window.__mockFabraryCards || {};
+        const data = {};
+        const errors = [];
+        for (const [alias, id] of Object.entries(body.variables)) {
+          data[alias] = known[id] ? { cardIdentifier: id, ...known[id] } : null;
+          if (!known[id]) errors.push({ message: 'Not found', path: [alias] });
+        }
+        return errors.length ? { data, errors } : { data };
+      }
+      return { data: { getDeck: fabDeck } };
+    }
     const path = u.pathname.replace('/v1', '');
     if (path.startsWith('/inventory/locations/')) {
       const name = decodeURIComponent(path.slice('/inventory/locations/'.length));
