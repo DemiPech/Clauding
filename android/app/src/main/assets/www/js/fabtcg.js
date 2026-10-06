@@ -65,53 +65,97 @@ function tagText(html, tag) {
   return match ? decodeEntities(match[1].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim() : '';
 }
 
-const PITCH_WORDS = { red: 1, yellow: 2, blue: 3 };
-// « 3 x Blood Runs Deep (1) », « 3x Name (Red) », « 1 x Fang, Dracai of Blades »
-const CARD_LINE = /^(\d{1,2})\s*x\s+(.+?)(?:\s*\((?:pitch\s*)?([0-3]|red|yellow|blue)\))?$/i;
+const PITCH_WORDS = { red: 1, r: 1, yel: 2, yellow: 2, y: 2, blu: 3, blue: 3, b: 3 };
+// « 3x Affirm Loyalty (red) », « 2x Blunten (yel) », « 3 x Name (1) », « 1x Fang, Dracai of Blades »
+const CARD_LINE = /^(\d{1,2})\s*x\s+(.+?)(?:\s*\((?:pitch\s*)?([0-3]|red|r|yel|yellow|y|blu|blue|b)\))?$/i;
+
+// Champs du deck, un intitule puis sa valeur (« Player », puis « Michel … (29114217) »).
+const FIELDS = { player: 'player', event: 'event', format: 'format', hero: 'hero', date: 'date', rank: 'rank' };
+
+const pitchOf = (marker) => {
+  if (!marker) return null;
+  const key = marker.toLowerCase();
+  return PITCH_WORDS[key] ?? (Number(key) || null);
+};
 
 /**
- * Lit une decklist fabtcg.com. Rend { title, heroName, entries }, ou `entries`
- * = [{ name, pitch, quantity, section }] et `section` vaut 'heroGear',
- * 'pitch1'…'pitch3' ou 'others'.
+ * Les images officielles de la page : « 3x Affirm Loyalty (red) » → URL de
+ * l'image (balise <li class="card-item"> : nom puis <img>).
+ */
+function cardImages(html) {
+  const images = new Map();
+  const item = /<div class="card-name">([\s\S]*?)<\/div>[\s\S]*?<img[^>]+src="([^"]+)"/gi;
+  for (const [, label, src] of String(html).matchAll(item)) {
+    const text = decodeEntities(label.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    const card = text.match(CARD_LINE);
+    if (card && !images.has(imageKey(card[2], pitchOf(card[3])))) {
+      images.set(imageKey(card[2], pitchOf(card[3])), decodeEntities(src));
+    }
+  }
+  return images;
+}
+
+const imageKey = (name, pitch) => `${String(name).trim().toLowerCase()}|${pitch ?? ''}`;
+
+/**
+ * Lit une decklist fabtcg.com. Rend { title, heroName, fields, entries }, ou
+ * `entries` = [{ name, pitch, quantity, section, imageUrl }] et `section` vaut
+ * 'heroGear', 'pitch1'…'pitch3' ou 'others'. La page affiche la liste deux
+ * fois (deux presentations) : on s'arrete a la fin de la premiere.
  */
 export function parseFabtcgDecklist(html) {
   const lines = htmlToLines(html);
   const title = tagText(html, 'h1') || tagText(html, 'title').replace(/\s*[-–|]\s*Flesh and Blood TCG\s*$/i, '');
+  const images = cardImages(html);
   const entries = [];
+  const fields = {};
   let section = null;
   let heroName = null;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     if (/^hero\b.*\bweapons?\b.*\bequipment\b/i.test(line)) {
+      if (entries.length) break; // deuxieme presentation de la meme liste
       section = 'heroGear';
       continue;
     }
-    const pitch = line.match(/^pitch\s*([0-3])$/i);
+    const pitch = line.match(/^pitch\s*([0-3])(?:\s*\(\d+\))?$/i);
     if (pitch) {
       section = `pitch${pitch[1]}`;
       continue;
     }
-    if (/^others?$/i.test(line)) {
+    if (/^others?(?:\s*\(\d+\))?$/i.test(line)) {
       section = 'others';
       continue;
     }
-    // Un champ « Hero: Fang, Dracai of Blades » dans les informations du deck.
-    const heroField = line.match(/^hero\s*:\s*(.+)$/i);
-    if (heroField && !heroName) heroName = heroField[1].trim();
+    // « Hero: Fang, … » sur une ligne, ou l'intitule seul suivi de sa valeur.
+    const inline = line.match(/^(player|event|format|hero|date|rank)\s*:\s*(.+)$/i);
+    if (inline && !section) {
+      fields[FIELDS[inline[1].toLowerCase()]] ??= inline[2].trim();
+      continue;
+    }
+    const label = FIELDS[line.toLowerCase()];
+    if (label && !section && lines[i + 1] && !CARD_LINE.test(lines[i + 1])) {
+      fields[label] ??= lines[i + 1].trim();
+      i += 1;
+      continue;
+    }
 
     if (!section) continue;
     const card = line.match(CARD_LINE);
     if (!card) continue;
-    const marker = card[3]?.toLowerCase();
     const sectionPitch = section.startsWith('pitch') ? Number(section.slice(5)) || null : null;
+    const cardPitch = pitchOf(card[3]) ?? sectionPitch;
     entries.push({
       quantity: Number(card[1]),
       name: card[2].trim(),
-      pitch: (marker && (PITCH_WORDS[marker] ?? (Number(marker) || null))) ?? sectionPitch,
+      pitch: cardPitch,
       section,
+      imageUrl: images.get(imageKey(card[2], pitchOf(card[3]))) || null,
     });
   }
 
+  heroName = fields.hero || null;
   // Sans champ « Hero », le heros est la carte de la premiere section dont le
   // nom figure dans le titre (« Joueur – Fang, Dracai of Blades – Evenement »).
   if (!heroName) {
@@ -119,7 +163,7 @@ export function parseFabtcgDecklist(html) {
     heroName =
       entries.find((e) => e.section === 'heroGear' && lowerTitle.includes(e.name.toLowerCase()))?.name || null;
   }
-  return { title, heroName, entries };
+  return { title, heroName, fields, entries };
 }
 
 /** Une decklist fabtcg.com, dans la meme forme qu'un deck FaBrary. */
@@ -130,10 +174,14 @@ export async function fetchFabtcgDeck(input, progress = silent) {
   progress.report(0.05, 'Lecture de la page fabtcg.com');
   const res = await httpFetch(url, { method: 'GET', headers: BROWSER_HEADERS });
   if (res.status === 404) throw new FabraryError("Cette decklist n'existe pas sur fabtcg.com.", 404);
-  if (!res.ok) throw new FabraryError(`fabtcg.com a répondu ${res.status}.`, 502);
   const html = await res.text();
+  // Une page de verification anti-robot (Cloudflare) plutot que la decklist.
+  if (/just a moment|cf-chl|challenge-platform|attention required/i.test(html.slice(0, 20000))) {
+    throw new FabraryError('fabtcg.com a demandé une vérification anti-robot. Réessayez dans un moment.', 503);
+  }
+  if (!res.ok) throw new FabraryError(`fabtcg.com a répondu ${res.status}.`, 502);
 
-  const { title, heroName, entries } = parseFabtcgDecklist(html);
+  const { title, heroName, fields, entries } = parseFabtcgDecklist(html);
   if (!entries.length) {
     throw new FabraryError('Aucune carte trouvée sur cette page fabtcg.com (format de page inattendu ?).', 422);
   }
@@ -142,23 +190,26 @@ export async function fetchFabtcgDeck(input, progress = silent) {
   const deck = await deckFromNames(entries, { heroName }, progress.sub(0.3, 1));
   progress.report(1);
 
-  // « Joueur – Héros – Événement » : le joueur en auteur, l'événement en format.
+  // Le joueur et l'evenement : champs de la page, sinon le titre
+  // (« Joueur – Héros – Événement »).
   const parts = title.split(/\s+[–—-]\s+/).map((part) => part.trim()).filter(Boolean);
-  const heroInTitle = deck.hero && parts.findIndex((part) => part.toLowerCase() === deck.hero.name.toLowerCase());
+  const heroInTitle = deck.hero ? parts.findIndex((part) => part.toLowerCase() === deck.hero.name.toLowerCase()) : -1;
+  const player = fields.player?.replace(/\s*\(\d+\)\s*$/, '') || (heroInTitle > 0 ? parts.slice(0, heroInTitle).join(' – ') : null);
+  const event = fields.event || (heroInTitle >= 0 && parts.length > heroInTitle + 1 ? parts.slice(heroInTitle + 1).join(' – ') : null);
   return {
     source: 'fabtcg',
     deckId: url,
     url,
     name: title || 'Decklist fabtcg.com',
-    format: heroInTitle >= 0 && parts.length > heroInTitle + 1 ? parts.slice(heroInTitle + 1).join(' – ') : null,
+    format: [event, fields.rank].filter(Boolean).join(' · ') || null,
     notes: deck.unknown.length
-      ? `Cartes non reconnues par FaBrary (affichées sans image ni type) : ${deck.unknown.join(', ')}.`
+      ? `Cartes non reconnues par FaBrary (affichées sans type ni statistiques) : ${deck.unknown.join(', ')}.`
       : null,
     tags: [],
     tournament: null,
     createdAt: null,
     updatedAt: null,
-    author: heroInTitle > 0 ? parts.slice(0, heroInTitle).join(' – ') : null,
+    author: player,
     ...deck,
   };
 }

@@ -88,9 +88,12 @@
         const errors = [];
         for (const [alias, id] of Object.entries(body.variables)) {
           data[alias] = known[id] ? { cardIdentifier: id, ...known[id] } : null;
-          if (!known[id]) errors.push({ message: 'Not found', path: [alias] });
+          if (!known[id]) {
+            errors.push({ message: "Cannot return null for non-nullable type: 'Card' within parent 'Query' (/" + alias + ')', path: [alias] });
+          }
         }
-        return errors.length ? { data, errors } : { data };
+        // Comme le vrai FaBrary : getCard est non nul, une carte inconnue annule tout le lot.
+        return errors.length ? { data: null, errors } : { data };
       }
       return { data: { getDeck: fabDeck } };
     }

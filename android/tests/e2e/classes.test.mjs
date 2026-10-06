@@ -27,7 +27,8 @@ test('les cartes sans classe chez CardNexus prennent celle de FaBrary', async ()
   assert.deepEqual(await sections(page), ['Brute', 'Pirate', 'Shadow Necromancer']);
   await page.selectOption('#group-select', 'class');
   assert.deepEqual(await sections(page), ['Brute', 'Necromancer', 'Pirate']);
-  assert.equal(await page.evaluate(() => window.__fabraryCardCalls), 1, 'une seule requête pour toutes les cartes');
+  // Buckwild est inconnue de FaBrary : le lot échoue, puis le reste est redemandé.
+  assert.equal(await page.evaluate(() => window.__fabraryCardCalls), 2, 'le lot, puis le lot sans la carte inconnue');
 
   // Gardé sur le téléphone : un nouveau lancement ne redemande rien.
   // Rechargée, l'app rouvre directement l'emplacement (il est dans l'adresse).

@@ -75,11 +75,15 @@ Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis q
 ## Decklists fabtcg.com et listes consultées
 
 - **Decklists du site officiel** : un lien `fabtcg.com/decklists/…` s'ouvre comme une liste
-  FaBrary (onglet Chercher, Comparer, Monter). L'app lit la page (sections « Hero / Weapon /
-  Equipment », « Pitch 1 »… et lignes « 3 x Nom (1) », `js/fabtcg.js`), puis demande à FaBrary la
-  fiche de chaque carte (type, image, classe) d'après son nom et son pitch. Le joueur et
-  l'événement viennent du titre de la page. Une carte que FaBrary ne reconnaît pas reste dans la
-  liste avec son seul nom, et une note l'indique.
+  FaBrary (onglet Chercher, Comparer, Monter). L'app lit la page (`js/fabtcg.js`) : les champs
+  Player, Event, Rank et Hero, puis les sections « Hero / Weapon / Equipment », « Pitch 1/2/3 »
+  et leurs lignes « 3x Nom (red) » (la page affiche la liste deux fois : seule la première est
+  lue). Elle demande ensuite à FaBrary la fiche de chaque carte (type, image, classe) d'après son
+  nom et son pitch. Une carte que FaBrary ne reconnaît pas reste dans la liste avec son nom et
+  l'image officielle de la page, et une note l'indique.
+- **Cartes inconnues de FaBrary** : `getCard` ne peut pas renvoyer « rien », donc une seule carte
+  inconnue fait échouer toute la requête groupée. L'erreur désigne la carte : l'app la note
+  inconnue et redemande les autres. Ça vaut aussi pour le complément des classes et talents.
 - **Listes consultées** : chaque liste ouverte (FaBrary ou fabtcg.com) est notée dans l'onglet
   Chercher, sous le champ de recherche. Elles sont groupées par héros (le plus récent en premier),
   avec un filtre par héros. Toucher une liste la rouvre, ✕ la retire de l'historique. L'historique

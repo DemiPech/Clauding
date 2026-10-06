@@ -7,6 +7,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
 const { parseFabtcgDecklist, parseFabtcgUrl, htmlToLines } = await import(
   '../../app/src/main/assets/www/js/fabtcg.js'
 );
+const { FABTCG_PAGE } = await import('../fixtures/fabtcg-decklist.mjs');
 
 const PAGE = `<!doctype html><html><head><title>Michel Verissimo Da Silva Luiz &#8211; Fang, Dracai of Blades &#8211; 100th Calling Atlanta - Flesh and Blood TCG</title>
 <script>var x = "1 x Not A Card";</script></head><body>
@@ -63,4 +64,28 @@ test('sections, quantités, pitch et héros', () => {
 test('un champ « Hero: … » l’emporte sur le titre', () => {
   const html = '<h1>Joueur – Deck</h1><p>Hero: Kayo, Armed and Dangerous</p><h3>Hero / Weapons / Equipment</h3><p>1 x Kayo, Armed and Dangerous</p>';
   assert.equal(parseFabtcgDecklist(html).heroName, 'Kayo, Armed and Dangerous');
+});
+
+test('page réelle : champs du joueur, pitch (red/yel/blu), images, liste lue une seule fois', () => {
+  const { title, heroName, fields, entries } = parseFabtcgDecklist(FABTCG_PAGE);
+  assert.equal(title, 'Michel Verissimo da Silva Luiz - Fang, Dracai of Blades - 100th Calling Atlanta');
+  assert.equal(heroName, 'Fang, Dracai of Blades');
+  assert.deepEqual(fields, {
+    rank: '13th', date: 'October 3, 2026', player: 'Michel Verissimo da Silva Luiz (29114217)',
+    event: '100th Calling Atlanta', format: 'Classic Constructed', hero: 'Fang, Dracai of Blades',
+  });
+  assert.deepEqual(
+    entries.map((e) => [e.quantity, e.name, e.pitch, e.section]),
+    [
+      [1, 'Fang, Dracai of Blades', null, 'heroGear'],
+      [2, 'Obsidian Fire Vein', null, 'heroGear'],
+      [1, 'Mystery Helm', null, 'heroGear'],
+      [3, 'Buckwild', 1, 'pitch1'],
+      [3, 'Hunt’s End', 1, 'pitch1'],
+      [2, 'Blunten', 2, 'pitch2'],
+      [2, 'Buckwild', 3, 'pitch3'],
+    ],
+  );
+  assert.match(entries[2].imageUrl, /XXX001\.webp$/);
+  assert.match(entries[6].imageUrl, /WTR003\.webp$/);
 });

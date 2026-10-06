@@ -200,8 +200,9 @@ export function parseDeckId(input) {
 export const cardImageUrl = (image) => (image ? `${CONTENT_BASE}/cards/${image}.webp` : null);
 
 /**
- * `partial` : une requete groupee (plusieurs cartes) rend ce qu'elle a trouve
- * meme si certaines cartes n'existent pas ; on ne leve d'erreur que sans donnees.
+ * `partial` : une requete groupee (plusieurs cartes). On rend alors { data,
+ * errors } tels quels, pour que l'appelant sache quelles cartes ont echoue ;
+ * on ne leve d'erreur que si aucune erreur ne designe une carte.
  */
 async function graphql(query, variables, progress = silent, { partial = false } = {}) {
   progress.report(0.05, 'Connexion à FaBrary');
@@ -221,7 +222,10 @@ async function graphql(query, variables, progress = silent, { partial = false } 
     throw new FabraryError(`Reponse illisible de FaBrary (HTTP ${res.status})`, 502);
   }
 
-  if (json.errors?.length && !(partial && json.data)) {
+  if (partial && (json.data || json.errors?.some((error) => error.path?.length))) {
+    return { data: json.data || null, errors: json.errors || [] };
+  }
+  if (json.errors?.length) {
     const first = json.errors[0];
     // Les credentials invite ont pu etre invalidees cote AWS : on purge le cache.
     if (res.status === 403) cachedCredentials = null;
@@ -385,18 +389,34 @@ async function fetchCards(identifiers, fields, progress = silent) {
   const ids = [...new Set(identifiers)];
   const found = {};
   for (let i = 0; i < ids.length; i += CARDS_PER_QUERY) {
-    const batch = ids.slice(i, i + CARDS_PER_QUERY);
-    const variables = Object.fromEntries(batch.map((id, n) => [`c${n}`, id]));
-    const query = `query cards(${batch.map((_, n) => `$c${n}: ID!`).join(', ')}) {
+    const step = progress.sub(i / ids.length, Math.min(ids.length, i + CARDS_PER_QUERY) / ids.length);
+    let batch = ids.slice(i, i + CARDS_PER_QUERY);
+    // getCard ne peut pas rendre « rien » : une seule carte inconnue fait
+    // echouer tout le lot (data: null). L'erreur designe la carte (path) : on
+    // la note inconnue, et on redemande le reste du lot.
+    for (let attempt = 0; batch.length && attempt <= CARDS_PER_QUERY; attempt += 1) {
+      const variables = Object.fromEntries(batch.map((id, n) => [`c${n}`, id]));
+      const query = `query cards(${batch.map((_, n) => `$c${n}: ID!`).join(', ')}) {
 ${batch.map((_, n) => `  c${n}: getCard(cardIdentifier: $c${n}) { ${fields} }`).join('\n')}
 }`;
-    const step = progress.sub(i / ids.length, (i + batch.length) / ids.length);
-    const data = await graphql(query, variables, step, { partial: true });
-    // Sans donnees du tout (erreur du serveur), ce n'est pas « carte inconnue ».
-    if (!data) throw new FabraryError('FaBrary n’a pas répondu pour ces cartes.', 502);
-    batch.forEach((id, n) => {
-      found[id] = data[`c${n}`] || null;
-    });
+      const { data, errors } = await graphql(query, variables, step, { partial: true });
+      const failed = new Set(
+        errors.map((error) => error.path?.[0]).filter((alias) => typeof alias === 'string' && /^c\d+$/.test(alias)),
+      );
+      if (data) {
+        batch.forEach((id, n) => {
+          found[id] = data[`c${n}`] || null;
+        });
+        break;
+      }
+      if (!failed.size) throw new FabraryError('FaBrary n’a pas répondu pour ces cartes.', 502);
+      const retry = [];
+      batch.forEach((id, n) => {
+        if (failed.has(`c${n}`)) found[id] = null;
+        else retry.push(id);
+      });
+      batch = retry;
+    }
     step.report(1);
   }
   return found;
@@ -446,7 +466,7 @@ export async function deckFromNames(entries, { heroName = null } = {}, progress 
         id,
         name: card.name,
         image: card.defaultImage || null,
-        imageUrl: cardImageUrl(card.defaultImage),
+        imageUrl: cardImageUrl(card.defaultImage) || entry.imageUrl || null,
         intellect: card.intellect ?? null,
         life: card.life ?? null,
         classes: card.classes || [],
@@ -457,6 +477,8 @@ export async function deckFromNames(entries, { heroName = null } = {}, progress 
       return;
     }
     const normalized = normalizeCard({ cardIdentifier: id, card }, entry.quantity);
+    // L'image de la page d'origine, quand FaBrary n'en a pas.
+    if (!normalized.imageUrl && entry.imageUrl) normalized.imageUrl = entry.imageUrl;
     const zone = zoneOf(card);
     (zone === 'weapons' ? weapons : zone === 'equipment' ? equipment : main).push(normalized);
   });

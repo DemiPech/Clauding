@@ -5,20 +5,9 @@ import { openApp, close, line, place, texts, openFabrary, back } from '../helper
 
 after(close);
 
-const PATH = '/decklists/michel-verissimo-da-silva-luiz-fang-dracai-of-blades-100th-calling-atlanta/';
-const URL = `https://fabtcg.com${PATH}`;
-const PAGE = `<html><head><title>Michel Verissimo Da Silva Luiz &#8211; Fang, Dracai of Blades &#8211; 100th Calling Atlanta</title></head>
-<body><h1>Michel Verissimo Da Silva Luiz &#8211; Fang, Dracai of Blades &#8211; 100th Calling Atlanta</h1>
-<h3>Hero / Weapon / Equipment</h3><ul><li>1 x Fang, Dracai of Blades</li><li>2 x Kunai of Retribution</li></ul>
-<h3>Pitch 1</h3><ul><li>3 x Buckwild (1)</li><li>2 x Mystery Card (1)</li></ul>
-<h3>Pitch 3</h3><ul><li>2 x Buckwild (3)</li></ul></body></html>`;
-
-const CARDS = {
-  'fang-dracai-of-blades': { name: 'Fang, Dracai of Blades', types: ['Hero'], classes: ['Warrior'], talents: ['Draconic'], defaultImage: null, life: 20, intellect: 4 },
-  'kunai-of-retribution': { name: 'Kunai of Retribution', types: ['Weapon'], subtypes: ['Dagger'], classes: ['Warrior'], defaultImage: null },
-  'buckwild-red': { name: 'Buckwild', pitch: 1, types: ['Action'], subtypes: ['Attack'], classes: ['Generic'], defaultImage: null },
-  'buckwild-blue': { name: 'Buckwild', pitch: 3, types: ['Action'], subtypes: ['Attack'], classes: ['Generic'], defaultImage: null },
-};
+const { FABTCG_PATH: PATH, FABTCG_URL: URL, FABTCG_PAGE: PAGE, FABRARY_CARDS: CARDS } = await import(
+  '../fixtures/fabtcg-decklist.mjs'
+);
 
 async function openFabtcg(page) {
   await page.click('[data-tab="search"]');
@@ -35,12 +24,17 @@ test('une decklist fabtcg.com s’ouvre comme une liste FaBrary et se monte', as
   }, { path: PATH, html: PAGE, cards: CARDS });
 
   await openFabtcg(page);
-  assert.equal(await page.textContent('#app-title'), 'Michel Verissimo Da Silva Luiz – Fang, Dracai of Blades – 100th Calling Atlanta');
-  assert.equal(await page.textContent('#deck-hero-line'), 'Fang, Dracai of Blades · 100th Calling Atlanta');
-  assert.equal(await page.textContent('#deck-byline'), 'par Michel Verissimo Da Silva Luiz');
-  // Héros (1) + 2 kunai + 3 + 2 Buckwild + 2 cartes inconnues de FaBrary = 10.
-  assert.deepEqual(await texts(page, '#deck-stats .stat'), ['10 cartes', '5 différentes']);
-  assert.match(await page.textContent('#deck-notes'), /non reconnues par FaBrary.*Mystery Card/);
+  assert.equal(await page.textContent('#app-title'), 'Michel Verissimo da Silva Luiz - Fang, Dracai of Blades - 100th Calling Atlanta');
+  assert.equal(await page.textContent('#deck-hero-line'), 'Fang, Dracai of Blades · 100th Calling Atlanta · 13th');
+  assert.equal(await page.textContent('#deck-byline'), 'par Michel Verissimo da Silva Luiz');
+  // Héros + 2 Obsidian Fire Vein + Mystery Helm + 3 + 3 + 2 + 2 = 14 cartes, 7 différentes (héros compris).
+  assert.deepEqual(await texts(page, '#deck-stats .stat'), ['14 cartes', '7 différentes']);
+  // Une carte inconnue de FaBrary n'empêche pas les autres d'être reconnues (même lot).
+  assert.match(await page.textContent('#deck-notes'), /non reconnues par FaBrary .*: Mystery Helm\./);
+  assert.equal(
+    await page.$eval('#hero-art', (img) => img.getAttribute('src')),
+    'https://content.fabrary.net/cards/HNT098.webp',
+  );
   assert.equal(await page.isVisible('#build-btn'), true, 'Monter dans CardNexus');
   await page.click('#more-btn');
   assert.equal(await page.textContent('#fabrary-link'), 'Voir sur fabtcg.com ↗');
@@ -79,7 +73,7 @@ test('historique des listes : par héros, filtre, réouverture et retrait', asyn
   assert.deepEqual(await texts(page, '#list-history-heroes .chip'), [
     'Tous (2)', 'Dorinthea Ironsong (1)', 'Fang, Dracai of Blades (1)',
   ]);
-  assert.match((await texts(page, '.history-list-meta'))[1], /Michel Verissimo Da Silva Luiz · 100th Calling Atlanta · fabtcg\.com/);
+  assert.match((await texts(page, '.history-list-meta'))[1], /Michel Verissimo da Silva Luiz · 100th Calling Atlanta · 13th · fabtcg\.com/);
 
   // Filtrer par héros.
   await page.click('#list-history-heroes [data-hero="Fang, Dracai of Blades"]');
@@ -89,7 +83,7 @@ test('historique des listes : par héros, filtre, réouverture et retrait', asyn
   const calls = await page.evaluate(() => window.__fabtcgCalls);
   await page.click('.history-list-open');
   await page.waitForSelector('#deck:not([hidden])');
-  assert.equal(await page.textContent('#deck-hero-line'), 'Fang, Dracai of Blades · 100th Calling Atlanta');
+  assert.equal(await page.textContent('#deck-hero-line'), 'Fang, Dracai of Blades · 100th Calling Atlanta · 13th');
   assert.equal(await page.evaluate(() => window.__fabtcgCalls), calls);
   await back(page);
 
