@@ -1,5 +1,5 @@
 // Navigation par onglets, barre du haut et liste des decks CardNexus.
-import { els, state } from './core.js';
+import { els, isListSource, state } from './core.js';
 import { isStoragePlace, renderDeck } from './deck-view.js';
 import { updateMovebar } from './moves.js';
 import {
@@ -7,6 +7,7 @@ import {
 } from './places.js';
 import { scheduleAutoSnapshot, showHistory } from './history.js';
 import { importView, updateImportBar } from './import-view.js';
+import { recordListVisit, setListHistoryVisible } from './list-history.js';
 import { saveCollectionCache } from './collection-cache.js';
 import { silent, startTask } from '../progress.js';
 
@@ -76,6 +77,7 @@ function showHome() {
 function showSearch() {
   showOnly(els.search);
   renderPlacesSearch();
+  setListHistoryVisible(true);
 }
 
 function showTools() {
@@ -118,6 +120,7 @@ async function loadFromApi(endpoint, { historyUrl }) {
     }
     history.replaceState(null, '', historyUrl);
     document.title = `${data.name} — Decklist Viewer`;
+    recordListVisit(data);
     renderDeck();
     showOnly(els.deck);
   } catch (err) {
@@ -154,7 +157,7 @@ let cardnexusReady = false;
  * est réévalué quand l'inventaire arrive, car il arrive après le deck.
  */
 function updateBuildButton() {
-  els.buildBtn.hidden = state.deck?.source !== 'fabrary' || !cardnexusReady;
+  els.buildBtn.hidden = !isListSource(state.deck?.source) || !cardnexusReady;
 }
 
 /** Héros et nombre de cartes de chaque deck, pour la liste de la Collection. */

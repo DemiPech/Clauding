@@ -7,6 +7,7 @@
  * version PC. Tout autre fetch part normalement.
  */
 import { fetchDeck, parseDeckId, FabraryError } from './fabrary.js';
+import { fetchFabtcgDeck, parseFabtcgUrl } from './fabtcg.js';
 import {
   listDeckLocations,
   listLocations,
@@ -87,17 +88,24 @@ function readJsonBody(init) {
   return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
-function handleFabraryDeck(rawId, progress) {
-  const deckId = parseDeckId(rawId);
-  if (!deckId) {
-    return json(400, {
-      error: 'Identifiant de deck invalide. Collez une URL fabrary.net/decks/... ou un ID.',
-    });
-  }
-  return respond(
-    () => cached(`fabrary:${deckId}`, () => fetchDeck(deckId, progress)),
-    'Impossible de contacter FaBrary pour le moment.',
-  );
+/**
+ * Une liste a afficher ou a monter : lien (ou identifiant) FaBrary, ou lien de
+ * decklist fabtcg.com. Rend une fonction de chargement (mise en cache), ou null.
+ */
+function listLoader(raw) {
+  const fabtcgUrl = parseFabtcgUrl(raw);
+  if (fabtcgUrl) return (progress) => cached(`fabtcg:${fabtcgUrl}`, () => fetchFabtcgDeck(fabtcgUrl, progress));
+  const deckId = parseDeckId(raw);
+  if (deckId) return (progress) => cached(`fabrary:${deckId}`, () => fetchDeck(deckId, progress));
+  return null;
+}
+
+const INVALID_LIST = 'Lien de liste invalide. Collez un lien fabrary.net/decks/… (ou son identifiant), ou fabtcg.com/decklists/….';
+
+function handleListDeck(raw, progress) {
+  const load = listLoader(raw);
+  if (!load) return json(400, { error: INVALID_LIST });
+  return respond(() => load(progress), 'Impossible de récupérer cette liste pour le moment.');
 }
 
 function handleCardnexusDeck(locationName, progress) {
@@ -129,12 +137,12 @@ function wantedFromDeck(deck, { includeSideboard }) {
 
 /** Calcule le plan de montage d'une liste FaBrary vers une location. */
 function handlePlan(body, progress) {
-  const deckId = parseDeckId(body.deckId);
-  if (!deckId) return json(400, { error: 'Identifiant de deck FaBrary invalide.' });
+  const load = listLoader(body.deckId);
+  if (!load) return json(400, { error: INVALID_LIST });
   if (!body.destination) return json(400, { error: 'Destination manquante.' });
 
   return respond(async () => {
-    const deck = await cached(`fabrary:${deckId}`, () => fetchDeck(deckId, progress.sub(0, 0.1)));
+    const deck = await load(progress.sub(0, 0.1));
     const wanted = wantedFromDeck(deck, { includeSideboard: Boolean(body.includeSideboard) });
     const plan = await planDeckBuild(wanted, body.destination, {
       existing: Boolean(body.existing),
@@ -326,7 +334,7 @@ async function route(url, init, progress) {
       );
 
     case '/api/deck':
-      return handleFabraryDeck(params.get('id') || params.get('url'), progress);
+      return handleListDeck(params.get('id') || params.get('url'), progress);
 
     case '/api/cardnexus/decks':
       if (!cardnexusConfigured()) return json(200, { configured: false, decks: [] });
@@ -347,7 +355,7 @@ async function route(url, init, progress) {
 
 // Ce que l'écran affiche pendant chaque appel (barre de progression en haut).
 const STATIC_LABELS = {
-  '/api/deck': 'Lecture de la liste FaBrary',
+  '/api/deck': 'Lecture de la liste',
   '/api/cardnexus/decks': 'Lecture des emplacements',
   '/api/cardnexus/locations': 'Lecture des emplacements',
   '/api/cardnexus/counts': 'Comptage des cartes',

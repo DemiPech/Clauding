@@ -2703,3 +2703,73 @@ body.has-importbar .toast {
   background: var(--accent-soft);
   box-shadow: inset 3px 0 0 var(--accent);
 }
+
+/* ---------- Historique des listes consultées ---------- */
+
+.list-history {
+  margin-top: 26px;
+}
+
+.history-lists {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.history-list-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-list-art {
+  flex: none;
+  width: 34px;
+  aspect-ratio: var(--card-ratio);
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-sunken);
+}
+
+.history-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-list-name {
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.history-list-meta {
+  color: var(--text-faint);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.history-list-remove {
+  flex: none;
+  color: var(--text-faint);
+}

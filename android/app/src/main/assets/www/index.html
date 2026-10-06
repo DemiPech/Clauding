@@ -33,28 +33,35 @@
       <section id="search-view" hidden>
         <header class="view-head">
           <h1>Chercher</h1>
-          <p class="byline">Une carte de votre collection, ou le lien d'un deck FaBrary.</p>
+          <p class="byline">Une carte de votre collection, ou le lien d'une liste FaBrary ou fabtcg.com.</p>
         </header>
 
         <form class="search" id="search-form" autocomplete="off">
           <input
             id="deck-input"
             type="search"
-            placeholder="Nom de carte, ou lien fabrary.net/decks/…"
-            aria-label="Nom de carte ou lien de deck FaBrary"
+            placeholder="Nom de carte, ou lien de liste"
+            aria-label="Nom de carte, ou lien de liste FaBrary ou fabtcg.com"
             spellcheck="false"
             autocapitalize="off"
           />
           <button type="submit" id="load-btn">Chercher</button>
         </form>
         <p class="move-note" id="search-hint">
-          Un nom de carte montre où sont vos exemplaires ; un lien FaBrary ouvre la liste.
+          Un nom de carte montre où sont vos exemplaires ; un lien fabrary.net/decks/… ou
+          fabtcg.com/decklists/… ouvre la liste.
           <button class="link-btn link-btn-inline" data-example="01M3266BQFH7Y98S5E859NZK4Z">
             Voir un exemple FaBrary
           </button>
         </p>
         <p class="move-note" id="places-search-note"></p>
         <div id="places-search-results"></div>
+
+        <section class="list-history" id="list-history" hidden>
+          <div class="build-section-head"><h2>Listes consultées</h2></div>
+          <div class="collection-kinds" id="list-history-heroes" role="group" aria-label="Héros"></div>
+          <div id="list-history-groups"></div>
+        </section>
       </section>
 
       <section id="tools-view" hidden>
@@ -71,11 +78,11 @@
             <span>Regrouper les cartes par nom, classe, talent ou extension</span>
           </button>
           <button type="button" class="tool-card" id="tool-build">
-            <b>Monter une liste FaBrary</b>
-            <span>Réunir les cartes d'un deck FaBrary dans un emplacement, en visitant le moins d'endroits possible</span>
+            <b>Monter une liste</b>
+            <span>Réunir les cartes d'une liste FaBrary ou fabtcg.com dans un emplacement, en visitant le moins d'endroits possible</span>
           </button>
           <button type="button" class="tool-card" id="tool-compare">
-            <b>Comparer un deck à une liste FaBrary</b>
+            <b>Comparer un deck à une liste</b>
             <span>Ce qu'il faut faire entrer, ce qui manque, ce qui est en trop</span>
           </button>
         </nav>
@@ -578,7 +585,7 @@
         <div class="action-list" id="action-list">
           <a class="action-item" id="fabrary-link" href="#" target="_blank" rel="noopener">Voir sur FaBrary ↗</a>
           <button type="button" class="action-item" id="copy-btn">Copier la decklist</button>
-          <button type="button" class="action-item" id="compare-btn" hidden>Comparer à une liste FaBrary</button>
+          <button type="button" class="action-item" id="compare-btn" hidden>Comparer à une liste</button>
           <button type="button" class="action-item" id="rename-btn" hidden>Renommer</button>
           <button type="button" class="action-item" id="untag-btn" hidden>Retirer les tags</button>
           <button type="button" class="action-item danger" id="delete-btn" hidden>Supprimer l'emplacement</button>
@@ -659,7 +666,7 @@
     <div class="sheet-backdrop" id="compare" hidden>
       <form class="sheet" id="compare-form" autocomplete="off">
         <div class="sheet-head">
-          <h2>Comparer à une liste FaBrary</h2>
+          <h2>Comparer à une liste</h2>
           <button type="button" class="icon-btn" id="compare-close" aria-label="Fermer">×</button>
         </div>
 
@@ -668,12 +675,12 @@
           <select id="compare-deck"></select>
         </label>
         <label class="field">
-          <span>URL ou identifiant du deck FaBrary</span>
+          <span>Lien de la liste (FaBrary ou fabtcg.com)</span>
           <input
             id="compare-input"
             type="text"
             inputmode="url"
-            placeholder="https://fabrary.net/decks/…"
+            placeholder="fabrary.net/decks/… ou fabtcg.com/decklists/…"
             spellcheck="false"
             autocapitalize="off"
           />

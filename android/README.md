@@ -72,6 +72,19 @@ Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis q
 - Une mise à jour en arrière-plan (au démarrage, photo automatique) s'affiche en plus discret,
   et l'écran reste utilisable pendant ce temps.
 
+## Decklists fabtcg.com et listes consultées
+
+- **Decklists du site officiel** : un lien `fabtcg.com/decklists/…` s'ouvre comme une liste
+  FaBrary (onglet Chercher, Comparer, Monter). L'app lit la page (sections « Hero / Weapon /
+  Equipment », « Pitch 1 »… et lignes « 3 x Nom (1) », `js/fabtcg.js`), puis demande à FaBrary la
+  fiche de chaque carte (type, image, classe) d'après son nom et son pitch. Le joueur et
+  l'événement viennent du titre de la page. Une carte que FaBrary ne reconnaît pas reste dans la
+  liste avec son seul nom, et une note l'indique.
+- **Listes consultées** : chaque liste ouverte (FaBrary ou fabtcg.com) est notée dans l'onglet
+  Chercher, sous le champ de recherche. Elles sont groupées par héros (le plus récent en premier),
+  avec un filtre par héros. Toucher une liste la rouvre, ✕ la retire de l'historique. L'historique
+  reste sur le téléphone et s'efface devant des résultats de recherche de carte.
+
 ## Monter un deck : où chercher les cartes
 
 La répartition proposée cherche à **visiter le moins d'endroits possible** :
@@ -292,12 +305,14 @@ app/src/main/assets/www/
     sheets.js                             confirmations, suppression, tags, renommer
     history.js                            onglet Historique, photos de la collection
     import-view.js                        importer des cartes d'une extension
+    list-history.js                       listes consultées (onglet Chercher)
     progress-view.js                      barre de progression en haut
     collection-cache.js                   liste gardée pour le démarrage instantané
   js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)
   js/progress.js                          avancement des chargements (tâches, pourcentages)
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
+  js/fabtcg.js                            decklists du site officiel fabtcg.com
   js/http.js                              requêtes sortantes via le pont natif (et fetch du SDK)
   js/vendor/cardnexus-sdk.js              SDK CardNexus assemblé (généré par android/sdk)
 ```

@@ -72,6 +72,12 @@
     if (u.host.startsWith('cognito')) {
       return body.IdentityPoolId ? { IdentityId: 'id' } : { Credentials: { AccessKeyId: 'A', SecretKey: 'S', SessionToken: 'T', Expiration: Date.now() / 1000 + 3600 } };
     }
+    // Decklists fabtcg.com : __mockFabtcgPages[chemin] = HTML de la page.
+    if (u.host === 'fabtcg.com') {
+      const page = (window.__mockFabtcgPages || {})[u.pathname];
+      window.__fabtcgCalls = (window.__fabtcgCalls || 0) + 1;
+      return page ? { __html: page } : { __status: 404, __html: '<h1>Not found</h1>' };
+    }
     if (u.host.includes('appsync')) {
       // Cartes demandees par lot (alias c0, c1…) : __mockFabraryCards[identifiant].
       if (body.query.includes('getCard')) {
@@ -198,6 +204,10 @@
         }
         try {
           const res = handle(method, url, hasBody ? JSON.parse(body) : null);
+          if (res && res.__html !== undefined) {
+            window.__androidHttpDone(id, res.__status || 200, JSON.stringify({ 'content-type': 'text/html; charset=utf-8' }), res.__html, '');
+            return;
+          }
           window.__androidHttpDone(id, res === null ? 204 : 200, JSON.stringify(JSON_TYPE), res === null ? '' : JSON.stringify(res), '');
         } catch (e) {
           window.__androidHttpDone(id, 500, JSON.stringify(JSON_TYPE), JSON.stringify({ message: String(e.message) }), '');

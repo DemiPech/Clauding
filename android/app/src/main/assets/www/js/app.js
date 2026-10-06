@@ -37,6 +37,7 @@ import {
 import { readCollectionCache } from './ui/collection-cache.js';
 import { listenForProgress } from './ui/progress-view.js';
 import { closeExpansionSheet, importView, showImport } from './ui/import-view.js';
+import { listenForListHistory } from './ui/list-history.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -65,9 +66,11 @@ window.__appBack = () => {
 
 // --- Événements ------------------------------------------------------------
 
-/** Un lien (ou un identifiant) de deck FaBrary, plutôt qu'un nom de carte. */
+/** Un lien de liste (FaBrary ou fabtcg.com) ou un identifiant FaBrary, plutôt qu'un nom de carte. */
 const looksLikeFabrary = (value) =>
-  /fabrary\.net\/decks\//i.test(value) || /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value.trim());
+  /fabrary\.net\/decks\//i.test(value) ||
+  /fabtcg\.com\/decklists\/[a-z0-9]/i.test(value) ||
+  /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value.trim());
 
 els.form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -97,6 +100,7 @@ els.search.addEventListener('click', (event) => {
 });
 
 els.appBack.addEventListener('click', () => window.__appBack());
+listenForListHistory((ref) => loadFabraryDeck(ref));
 
 els.tabbar.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-tab]');

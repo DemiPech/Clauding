@@ -144,7 +144,7 @@ async function runCompare() {
   if (!target) return;
 
   els.compareSubmit.disabled = true;
-  els.compareNote.textContent = 'Récupération de la liste FaBrary…';
+  els.compareNote.textContent = 'Récupération de la liste…';
   try {
     const res = await fetch(`/api/deck?id=${encodeURIComponent(value)}`);
     const list = await res.json();

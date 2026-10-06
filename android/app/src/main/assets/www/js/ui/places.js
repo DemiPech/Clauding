@@ -5,6 +5,7 @@ import {
   cardnexusReady, deckInfo, deckLocations, enrichDecks, forgetRefreshedDecks, loadDeckLocations,
   showOnly,
 } from './nav.js';
+import { setListHistoryVisible } from './list-history.js';
 import { lineRowNode, loadLocations, locations, showToast, updateMovebar } from './moves.js';
 
 // --- Emplacements ------------------------------------------------------------
@@ -286,6 +287,8 @@ async function runPlacesSearch(term) {
 
 function renderPlacesSearch() {
   const cards = placesSearch.data?.cards || [];
+  // L'historique des listes s'efface devant des résultats de recherche.
+  setListHistoryVisible(!cards.length);
   if (!els.search.hidden) updateMovebar();
   els.placesSearchResults.replaceChildren(
     ...cards.map((card) => {

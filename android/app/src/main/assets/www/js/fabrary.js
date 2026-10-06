@@ -377,33 +377,101 @@ const titleCase = (word) =>
     .replace(/(^|[\s-])([a-z])/g, (_, sep, letter) => sep + letter.toUpperCase());
 
 /**
- * Classes et talents de ces cartes selon FaBrary : { identifiant: { classes,
- * talents } }, ou null pour une carte que FaBrary ne connait pas. Les cartes
- * sont demandees par groupes, une requete GraphQL par groupe (alias).
+ * Fiches de ces cartes selon FaBrary : { identifiant: fiche }, ou null pour une
+ * carte que FaBrary ne connait pas. Les cartes sont demandees par groupes, une
+ * requete GraphQL par groupe (alias c0, c1…). `fields` : les champs voulus.
  */
-export async function fetchCardClasses(identifiers, progress = silent) {
+async function fetchCards(identifiers, fields, progress = silent) {
   const ids = [...new Set(identifiers)];
   const found = {};
   for (let i = 0; i < ids.length; i += CARDS_PER_QUERY) {
     const batch = ids.slice(i, i + CARDS_PER_QUERY);
     const variables = Object.fromEntries(batch.map((id, n) => [`c${n}`, id]));
     const query = `query cards(${batch.map((_, n) => `$c${n}: ID!`).join(', ')}) {
-${batch.map((_, n) => `  c${n}: getCard(cardIdentifier: $c${n}) { cardIdentifier classes talents }`).join('\n')}
+${batch.map((_, n) => `  c${n}: getCard(cardIdentifier: $c${n}) { ${fields} }`).join('\n')}
 }`;
     const step = progress.sub(i / ids.length, (i + batch.length) / ids.length);
     const data = await graphql(query, variables, step, { partial: true });
     // Sans donnees du tout (erreur du serveur), ce n'est pas « carte inconnue ».
     if (!data) throw new FabraryError('FaBrary n’a pas répondu pour ces cartes.', 502);
     batch.forEach((id, n) => {
-      const card = data[`c${n}`];
-      found[id] = card
-        ? {
-            classes: (card.classes || []).map(titleCase).filter((c) => c !== 'Notclassed'),
-            talents: (card.talents || []).map(titleCase),
-          }
-        : null;
+      found[id] = data[`c${n}`] || null;
     });
     step.report(1);
   }
   return found;
 }
+
+/**
+ * Classes et talents de ces cartes selon FaBrary : { identifiant: { classes,
+ * talents } }, ou null pour une carte que FaBrary ne connait pas.
+ */
+export async function fetchCardClasses(identifiers, progress = silent) {
+  const cards = await fetchCards(identifiers, 'cardIdentifier classes talents', progress);
+  return Object.fromEntries(
+    Object.entries(cards).map(([id, card]) => [
+      id,
+      card
+        ? {
+            classes: (card.classes || []).map(titleCase).filter((c) => c !== 'Notclassed'),
+            talents: (card.talents || []).map(titleCase),
+          }
+        : null,
+    ]),
+  );
+}
+
+const CARD_FIELDS = `cardIdentifier name defaultImage pitch cost power defense life intellect
+  types subtypes talents classes keywords rarity typeText functionalText`;
+
+/**
+ * Une liste donnee par noms de cartes (decklist d'un autre site), completee par
+ * FaBrary : `entries` = [{ name, pitch, quantity }]. Rend le deck dans la meme
+ * forme que fetchDeck ; une carte inconnue de FaBrary garde son seul nom.
+ */
+export async function deckFromNames(entries, { heroName = null } = {}, progress = silent) {
+  const ids = entries.map((entry) => fabraryIdentifier(entry.name, entry.pitch));
+  const cards = await fetchCards(ids, CARD_FIELDS, progress);
+
+  let hero = null;
+  const weapons = [];
+  const equipment = [];
+  const main = [];
+  entries.forEach((entry, index) => {
+    const id = ids[index];
+    const card = cards[id] || { cardIdentifier: id, name: entry.name, pitch: entry.pitch ?? null, types: [] };
+    const isHero = (card.types || []).includes('Hero') || (heroName && sameName(entry.name, heroName));
+    if (isHero && !hero) {
+      hero = {
+        id,
+        name: card.name,
+        image: card.defaultImage || null,
+        imageUrl: cardImageUrl(card.defaultImage),
+        intellect: card.intellect ?? null,
+        life: card.life ?? null,
+        classes: card.classes || [],
+        talents: card.talents || [],
+        typeText: card.typeText || '',
+        text: card.functionalText || '',
+      };
+      return;
+    }
+    const normalized = normalizeCard({ cardIdentifier: id, card }, entry.quantity);
+    const zone = zoneOf(card);
+    (zone === 'weapons' ? weapons : zone === 'equipment' ? equipment : main).push(normalized);
+  });
+
+  [weapons, equipment, main].forEach((list) => list.sort(byNameThenPitch));
+  const total = (list) => list.reduce((sum, c) => sum + c.quantity, 0);
+  return {
+    hero,
+    weapons,
+    equipment,
+    deck: main,
+    sideboard: [],
+    counts: { deck: total(main), weapons: total(weapons), equipment: total(equipment), sideboard: 0, unique: main.length },
+    unknown: entries.filter((_, index) => !cards[ids[index]]).map((entry) => entry.name),
+  };
+}
+
+const sameName = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();

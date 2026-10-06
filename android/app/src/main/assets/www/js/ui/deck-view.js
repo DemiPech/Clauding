@@ -1,6 +1,6 @@
 // Affichage d'un deck ou d'un emplacement : en-tête, sections, menu ⋯.
 import {
-  PITCH_COLORS, PITCH_LABELS, TYPE_ORDER, els, escapeHtml, state, typeLabel,
+  PITCH_COLORS, PITCH_LABELS, TYPE_ORDER, els, escapeHtml, isListSource, state, typeLabel,
 } from './core.js';
 import { deckLocations, updateAppBar, updateBuildButton } from './nav.js';
 import { locations, markHeldCards, updateMovebar } from './moves.js';
@@ -93,7 +93,7 @@ function renderHeader(deck) {
   }
 
   // Le format n'a d'intérêt que pour une liste FaBrary (« Inventaire CardNexus » n'apprend rien).
-  els.heroLine.textContent = [hero?.name, deck.source === 'fabrary' ? deck.format : null].filter(Boolean).join(' · ');
+  els.heroLine.textContent = [hero?.name, isListSource(deck.source) ? deck.format : null].filter(Boolean).join(' · ');
   els.name.textContent = deck.name;
 
   const updated = deck.updatedAt
@@ -102,7 +102,10 @@ function renderHeader(deck) {
   els.byline.textContent = [deck.author && `par ${deck.author}`, updated].filter(Boolean).join(' · ');
 
   els.fabraryLink.hidden = !deck.url;
-  if (deck.url) els.fabraryLink.href = deck.url;
+  if (deck.url) {
+    els.fabraryLink.href = deck.url;
+    els.fabraryLink.textContent = deck.source === 'fabtcg' ? 'Voir sur fabtcg.com ↗' : 'Voir sur FaBrary ↗';
+  }
 
   updateBuildButton();
   els.compareBtn.hidden = deck.source !== 'cardnexus';

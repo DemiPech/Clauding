@@ -245,9 +245,12 @@ function typeLabel(card) {
   return TYPE_LABELS[primary] || primary || 'Autres';
 }
 
+/** Une liste de deck (FaBrary ou decklist fabtcg.com), par opposition à l'inventaire. */
+const isListSource = (source) => source === 'fabrary' || source === 'fabtcg';
+
 const escapeHtml = (text) =>
   String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 export {
-  LOCATION_COLORS, PITCH_COLORS, PITCH_LABELS, TYPE_ORDER, els, escapeHtml, state, typeLabel,
+  LOCATION_COLORS, PITCH_COLORS, PITCH_LABELS, TYPE_ORDER, els, escapeHtml, state, typeLabel, isListSource,
 };
