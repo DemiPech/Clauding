@@ -200,6 +200,27 @@ Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 - Un import s'**annule** depuis le bandeau ou l'Historique : seuls les exemplaires ajoutés sont
   retirés.
 
+## Cartes à compléter
+
+Deux outils (onglet Outils) recensent les **communes et rares** dont vous avez moins
+d'exemplaires que l'objectif (3 par défaut, de 1 à 4) :
+
+- **Toutes éditions confondues** : une carte = un nom + un pitch. Toutes ses impressions
+  s'additionnent : 2 Sink Below d'un deck Blitz + 2 de Welcome to Rathe = 4. Les impressions
+  d'autres raretés (Marvel, promo…) comptent aussi. Une carte commune dans une extension et rare
+  dans une autre est rangée en commune.
+- **Par extension** : seules comptent les cartes de l'impression de cette extension (choisie
+  avec le même sélecteur que l'import).
+
+Les héros, tokens, basiques et raretés supérieures sont exclus ; les armes et équipements sont
+inclus ou non au choix. Le résultat se groupe par classe, rareté, extension ou nom, se filtre par
+rareté ou par nom, et se copie en texte (« 2x Sink Below (rouge) »). Toutes les finitions, langues
+et états comptent, quel que soit l'emplacement.
+
+Le catalogue des communes et rares (une recherche par rareté, découpée par extensions au-delà de
+10 000 cartes) est gardé une semaine sur le téléphone ; « Relire le catalogue » le recharge. Le
+calcul lui-même est dans `js/completion.js`.
+
 ## Ranger les vracs
 
 **Ranger les vracs** propose un plan pour regrouper les cartes dans les endroits cochés.
@@ -310,6 +331,7 @@ app/src/main/assets/www/
     history.js                            onglet Historique, photos de la collection
     import-view.js                        importer des cartes d'une extension
     list-history.js                       listes consultées (onglet Chercher)
+    completion-view.js                    cartes à compléter (communes et rares)
     progress-view.js                      barre de progression en haut
     collection-cache.js                   liste gardée pour le démarrage instantané
   js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)

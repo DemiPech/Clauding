@@ -7,6 +7,7 @@ import {
 } from './places.js';
 import { scheduleAutoSnapshot, showHistory } from './history.js';
 import { importView, updateImportBar } from './import-view.js';
+import { completionView } from './completion-view.js';
 import { recordListVisit, setListHistoryVisible } from './list-history.js';
 import { saveCollectionCache } from './collection-cache.js';
 import { silent, startTask } from '../progress.js';
@@ -28,10 +29,11 @@ const VIEW_TABS = {
   history: 'history',
   tidy: 'tools',
   import: 'tools',
+  completion: 'tools',
 };
 
 function showOnly(el) {
-  const views = [els.search, els.tools, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history, importView];
+  const views = [els.search, els.tools, els.loading, els.error, els.deck, els.build, els.places, els.tidy, els.history, importView, completionView];
   for (const node of views) node.hidden = node !== el;
   if (VIEW_TABS[el.id]) state.tab = VIEW_TABS[el.id];
   for (const tab of els.tabbar.querySelectorAll('[data-tab]')) {
@@ -51,7 +53,7 @@ const ROOT_TITLES = { places: 'Collection', 'search-view': 'Chercher', 'tools-vi
  * flèche retour et le titre de l'écran ouvert par-dessus.
  */
 function updateAppBar() {
-  const views = [els.places, els.search, els.tools, els.history, els.deck, els.build, els.tidy, importView, els.loading, els.error];
+  const views = [els.places, els.search, els.tools, els.history, els.deck, els.build, els.tidy, importView, completionView, els.loading, els.error];
   const current = views.find((view) => !view.hidden);
   const root = current && ROOT_TITLES[current.id];
   let title = root || '';
@@ -59,6 +61,7 @@ function updateAppBar() {
   else if (current === els.build) title = els.buildEyebrow.textContent.startsWith('Comparer') ? 'Comparer' : 'Monter un deck';
   else if (current === els.tidy) title = 'Ranger les vracs';
   else if (current === importView) title = 'Importer';
+  else if (current === completionView) title = 'À compléter';
   else if (current === els.loading) title = 'Chargement…';
   else if (current === els.error) title = 'Indisponible';
   els.appTitle.textContent = title;

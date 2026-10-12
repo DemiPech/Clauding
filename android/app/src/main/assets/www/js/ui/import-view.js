@@ -162,7 +162,16 @@ function renderExpansionButton() {
 
 // --- Choix de l'extension -----------------------------------------------------
 
+// La feuille sert aussi a d'autres ecrans (cartes a completer) : `picker`
+// dit quelle extension surligner et que faire du choix.
+let picker = null;
+
 function openExpansionSheet() {
+  picker = null;
+  showExpansionSheet();
+}
+
+function showExpansionSheet() {
   els.sheetFilter.value = '';
   renderExpansionGroups();
   els.sheet.hidden = false;
@@ -193,7 +202,7 @@ function renderExpansionGroups() {
         option.className = 'expansion-option';
         option.dataset.expansion = exp.id;
         option.textContent = exp.name;
-        option.classList.toggle('is-active', exp.id === imp.expansionId);
+        option.classList.toggle('is-active', exp.id === (picker ? picker.selected : imp.expansionId));
         section.append(option);
       }
       return section;
@@ -589,8 +598,33 @@ els.sheet.addEventListener('click', (event) => {
   const option = event.target.closest('[data-expansion]');
   if (!option) return;
   closeExpansionSheet();
-  if (Number(option.dataset.expansion) !== imp.expansionId) loadExpansion(option.dataset.expansion);
+  const id = Number(option.dataset.expansion);
+  if (picker) {
+    const { onPick } = picker;
+    picker = null;
+    onPick(imp.expansions.find((exp) => exp.id === id));
+  } else if (id !== imp.expansionId) {
+    loadExpansion(option.dataset.expansion);
+  }
 });
+
+/** Les extensions Flesh and Blood (lues une fois, partagées avec l'import). */
+async function listExpansions() {
+  if (!imp.expansions.length) {
+    const res = await fetch('/api/cardnexus/expansions');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    imp.expansions = data;
+  }
+  return imp.expansions;
+}
+
+/** Choisir une extension depuis un autre écran : `onPick(extension)`. */
+async function pickExpansion({ selected = null, onPick }) {
+  await listExpansions();
+  picker = { selected, onPick };
+  showExpansionSheet();
+}
 els.sheetFilter.addEventListener('input', renderExpansionGroups);
 els.language.addEventListener('change', saveDraft);
 els.condition.addEventListener('change', saveDraft);
@@ -638,6 +672,6 @@ els.clear.addEventListener('click', clearImport);
 els.apply.addEventListener('click', applyImport);
 
 export {
-  closeExpansionSheet, renderDestinations as renderImportDestinations, showImport, updateImportBar,
+  closeExpansionSheet, pickExpansion, renderDestinations as renderImportDestinations, showImport, updateImportBar,
   view as importView,
 };

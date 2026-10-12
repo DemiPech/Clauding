@@ -7,7 +7,7 @@
 (() => {
   localStorage.setItem('cardnexus_api_key', 'cnk_test');
   const P = (id, name, nameSlug, fabId, pitch, types, subTypes = []) =>
-    ({ id, name, nameSlug, printNumber: 'X' + id, imageUrl: null, expansion: { name: (window.__mockExp || {})[id] || 'HNT' }, attributes: { fabId, pitch, types, subTypes, classes: (window.__mockClasses || {})[id] || ['Generic'], talents: (window.__mockTalents || {})[id] || [], cost: 1, attack: 3, defense: 3 } });
+    ({ id, name, nameSlug, printNumber: 'X' + id, imageUrl: null, productType: 'card', rarity: (window.__mockRarity || {})[id], expansion: { name: (window.__mockExp || {})[id] || 'HNT' }, attributes: { fabId, pitch, types, subTypes, classes: (window.__mockClasses || {})[id] || ['Generic'], talents: (window.__mockTalents || {})[id] || [], cost: 1, attack: 3, defense: 3 } });
   const products = [
     P('p1', 'Buckwild (Red)', 'buckwild', 'buckwild-1', 1, ['Action'], ['Attack']),
     P('p2', 'Buckwild (Blue)', 'buckwild', 'buckwild-3', 3, ['Action'], ['Attack']),
@@ -35,6 +35,8 @@
     // CardNexus classe tokens et basiques en « Common » : le type et les attributs les trahissent.
     E('e6', 'Might', 'might', null, 'Common', 'HVY006', ['Standard'], { types: ['Token', 'Aura'] }),
     E('e7', 'Cracked Bauble', 'cracked-bauble', 2, 'Common', 'HVY007', ['Standard'], { rarity: 'Basic', types: ['Resource'] }),
+    // Sink Below réimprimée dans un Armory Deck : même carte (fabId) que p3.
+    { ...E('e8', 'Sink Below (Red)', 'sink-below', 1, 'Common', 'AKO008', ['Standard'], { types: ['Defense Reaction'] }), expansion: { id: 8, name: 'Armory Deck: Kayo', code: 'AKO' } },
   );
   const expansions = [
     { id: 7, name: 'Heavy Hitters', code: 'HVY', releaseDate: '2023-11-03T00:00:00.000Z', cardCount: 5, languages: ['en', 'fr'] },
@@ -142,6 +144,16 @@
       return { data: inv.filter((l) => l.quantity > 0 && (!u.searchParams.has('location') || l.location === u.searchParams.get('location')) && (!g || (l.game || 'fab') === g)), pagination: {} };
     }
     if (path === '/products/search') {
+      // Filtre de rareté (gameFilters.filters.rarity) : catalogue des communes et rares.
+      const rarities = body.gameFilters?.filters?.rarity?.values;
+      if (rarities) {
+        const all = products.filter((p) => p.productType === 'card'
+          && rarities.some((r) => String(p.rarity || '').toLowerCase() === r.toLowerCase())
+          && (!body.expansionId || body.expansionId.includes(p.expansion?.id)));
+        const offset = body.offset || 0, limit = body.limit || 50;
+        window.__catalogCalls = (window.__catalogCalls || 0) + 1;
+        return { data: all.slice(offset, offset + limit), pagination: { offset, limit, total: all.length, hasMore: offset + limit < all.length } };
+      }
       if (body.expansionId) {
         const all = products.filter((p) => body.expansionId.includes(p.expansion?.id));
         const offset = body.offset || 0, limit = body.limit || 50;
@@ -156,7 +168,8 @@
       const unplaced = (l) => l.location == null || (window.__mockNullFilterBug && l.id.startsWith('bug'));
       const where = (l) => !body.location || body.location.values.some((v) => (v === null ? unplaced(l) : (l.location || '').toLowerCase() === v.toLowerCase()));
       const game = (l) => !body.gameFilters?.game || (l.game || 'fab') === body.gameFilters.game;
-      const all = inv.filter((l) => l.quantity > 0 && where(l) && game(l) && (!body.name && !body.nameSlug ? true : hit(products.find((p) => p.id === l.productId) || { name: '', nameSlug: '' })));
+      const inExpansion = (l) => !body.expansionId || body.expansionId.includes(products.find((p) => p.id === l.productId)?.expansion?.id);
+      const all = inv.filter((l) => l.quantity > 0 && where(l) && game(l) && inExpansion(l) && (!body.name && !body.nameSlug ? true : hit(products.find((p) => p.id === l.productId) || { name: '', nameSlug: '' })));
       const offset = body.offset || 0, limit = body.limit || 50;
       const data = all.slice(offset, offset + limit);
       return { data, pagination: { offset, limit, total: all.length, hasMore: offset + limit < all.length } };

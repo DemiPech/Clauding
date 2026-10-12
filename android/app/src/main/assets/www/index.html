@@ -73,6 +73,14 @@
             <b>Importer des cartes</b>
             <span>Ajouter un booster ou un achat : choisir l'extension, puis toucher chaque carte</span>
           </button>
+          <button type="button" class="tool-card" id="tool-completion">
+            <b>Communes et rares à compléter</b>
+            <span>Celles dont vous avez moins de 3 exemplaires, toutes éditions confondues</span>
+          </button>
+          <button type="button" class="tool-card" id="tool-completion-set">
+            <b>À compléter, par extension</b>
+            <span>Les communes et rares d'une extension dont il vous manque des exemplaires</span>
+          </button>
           <button type="button" class="tool-card" id="open-tidy">
             <b>Ranger les vracs</b>
             <span>Regrouper les cartes par nom, classe, talent ou extension</span>
@@ -401,6 +409,61 @@
           </div>
           <div class="collection-kinds" id="import-rarities" role="group" aria-label="Raretés"></div>
           <div id="import-list"></div>
+        </div>
+      </section>
+
+      <section id="completion" hidden>
+        <header class="build-head">
+          <p class="eyebrow" id="completion-eyebrow">Cartes à compléter</p>
+          <h1 id="completion-title">Toutes éditions confondues</h1>
+          <p class="byline" id="completion-byline"></p>
+        </header>
+
+        <div class="build-setup import-setup">
+          <div class="field import-expansion-field" id="completion-expansion-field" hidden>
+            <span id="completion-expansion-label">Extension</span>
+            <button type="button" class="picker-btn is-empty" id="completion-expansion"
+              aria-labelledby="completion-expansion-label completion-expansion">Choisir une extension…</button>
+          </div>
+          <label class="field">
+            <span>Objectif</span>
+            <select id="completion-target">
+              <option value="1">1 exemplaire</option>
+              <option value="2">2 exemplaires</option>
+              <option value="3" selected>3 exemplaires</option>
+              <option value="4">4 exemplaires</option>
+            </select>
+          </label>
+          <label class="field check-field">
+            <span>Armes et équipements</span>
+            <span class="check-line"><input type="checkbox" id="completion-gear" checked /> inclus</span>
+          </label>
+          <div class="completion-actions">
+            <button type="button" class="primary-btn" id="completion-run">Recenser</button>
+            <button type="button" class="link-btn" id="completion-refresh"
+              title="Relire le catalogue CardNexus (gardé 7 jours)">Relire le catalogue</button>
+          </div>
+        </div>
+
+        <p class="move-note" id="completion-note"></p>
+
+        <div id="completion-result" hidden>
+          <ul class="stat-row" id="completion-stats"></ul>
+          <div class="import-filters">
+            <input class="collection-filter" id="completion-filter" type="search"
+              placeholder="Filtrer par nom…" aria-label="Filtrer les cartes" autocomplete="off" />
+            <select id="completion-group" aria-label="Grouper par">
+              <option value="class">Par classe</option>
+              <option value="rarity">Par rareté</option>
+              <option value="expansion">Par extension</option>
+              <option value="name">Par nom</option>
+            </select>
+          </div>
+          <div class="collection-kinds" id="completion-rarities" role="group" aria-label="Raretés"></div>
+          <div class="pickup-actions">
+            <button type="button" class="link-btn" id="completion-copy">Copier la liste</button>
+          </div>
+          <div id="completion-list"></div>
         </div>
       </section>
 

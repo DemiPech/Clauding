@@ -29,6 +29,8 @@ import {
   listExpansions,
   expansionCards,
   addCards,
+  completionAll,
+  completionExpansion,
   isConfigured as cardnexusConfigured,
   CardnexusError,
   UNPLACED,
@@ -298,6 +300,19 @@ async function route(url, init, progress) {
       );
     }
 
+    case '/api/cardnexus/completion': {
+      const options = {
+        target: Math.min(4, Math.max(1, Number(params.get('target')) || 3)),
+        includeGear: params.get('gear') !== '0',
+        refresh: params.get('refresh') === '1',
+      };
+      const expansion = params.get('expansion');
+      return respond(
+        () => (expansion ? completionExpansion(expansion, options, progress) : completionAll(options, progress)),
+        'Impossible de recenser les cartes pour le moment.',
+      );
+    }
+
     case '/api/cardnexus/recent':
       return respond(
         () => recentLines(Math.max(0, Number(params.get('offset')) || 0), progress),
@@ -375,6 +390,7 @@ const STATIC_LABELS = {
   '/api/cardnexus/expansions': 'Lecture des extensions',
   '/api/cardnexus/expansion-cards': "Lecture des cartes de l'extension",
   '/api/cardnexus/cards/add': 'Ajout des cartes',
+  '/api/cardnexus/completion': 'Recensement des cartes à compléter',
 };
 
 function progressLabel(url) {

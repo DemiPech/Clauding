@@ -15,6 +15,7 @@
  */
 import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
 import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
+import { completionRows } from './completion.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
@@ -1440,9 +1441,13 @@ export async function expansionCards(expansionId, progress = silent) {
     const attrs = product.attributes || {};
     return {
       productId: product.id,
+      key: mergeKey(product),
       name: cleanName(product.name),
       pitch: attrs.pitch ?? null,
       printNumber: product.printNumber || null,
+      expansion: product.expansion?.code || product.expansion?.name || null,
+      classes: (attrs.classes || []).filter((c) => c && c !== 'NotClassed'),
+      talents: attrs.talents || [],
       rarity: cardRarity(product),
       finishes: product.finishes?.length ? product.finishes : ['Standard'],
       languages: product.languages || [],
@@ -1514,4 +1519,170 @@ export async function addCards({ lines, language = 'en', condition = 'NM', locat
 
   forgetInventorySearches();
   return { added, failed, undo };
+}
+
+// --- Cartes a completer (communes et rares) ------------------------------------
+
+const COMPLETION_CATALOG_STORAGE = 'completion_catalog';
+// Le catalogue bouge a chaque extension : on le relit au bout d'une semaine.
+const COMPLETION_CATALOG_TTL_MS = 7 * 24 * 3600 * 1000;
+
+/** Une impression du catalogue, reduite a ce qu'il faut pour completer. */
+function completionCard(product) {
+  const attrs = product.attributes || {};
+  return {
+    productId: product.id,
+    key: mergeKey(product),
+    name: cleanName(product.name),
+    pitch: attrs.pitch ?? null,
+    rarity: cardRarity(product),
+    types: attrs.types || [],
+    classes: (attrs.classes || []).filter((c) => c && c !== 'NotClassed'),
+    talents: attrs.talents || [],
+    expansion: product.expansion?.code || product.expansion?.name || null,
+    printNumber: product.printNumber || null,
+  };
+}
+
+let completionCatalog = null;
+const CARDS_ONLY = { productType: { op: 'or', values: ['card'] } };
+const EXPANSIONS_PER_CHUNK = 20;
+
+/**
+ * Tous les produits d'une recherche du catalogue, 200 par page (10 000 au
+ * plus). `first` : la premiere page, si elle est deja lue.
+ */
+async function allProducts(filters, knownTotal, progress, label, first = null) {
+  const products = first ? [...(first.data || [])] : [];
+  if (first && !first.pagination?.hasMore) return products;
+  for (let offset = products.length; offset < SEARCH_WINDOW; offset += PRODUCT_BATCH) {
+    const res = await call((cn) => cn.products.search({ ...CARDS_ONLY, ...filters, limit: PRODUCT_BATCH, offset }));
+    products.push(...(res.data || []));
+    const total = res.pagination?.total ?? knownTotal;
+    if (total) progress.report(products.length / total, `Catalogue ${label} : ${formatCount(products.length)} / ${formatCount(total)}`);
+    if (!res.pagination?.hasMore) break;
+  }
+  return products;
+}
+
+/**
+ * Toutes les communes et rares du catalogue Flesh and Blood (une recherche
+ * par rarete, 200 par page), gardees sur le telephone une semaine.
+ */
+async function commonRareCatalog(progress = silent, { refresh = false } = {}) {
+  if (!refresh && !completionCatalog) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(COMPLETION_CATALOG_STORAGE));
+      if (stored && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalog = stored.cards;
+    } catch {
+      completionCatalog = null;
+    }
+  }
+  if (!refresh && completionCatalog) return completionCatalog;
+
+  const cards = [];
+  const rarities = ['Common', 'Rare'];
+  for (const [index, rarity] of rarities.entries()) {
+    const step = progress.sub(index / rarities.length, (index + 1) / rarities.length);
+    const label = rarity === 'Common' ? 'des communes' : 'des rares';
+    const filters = { gameFilters: { game: GAME, filters: { rarity: { op: 'or', values: [rarity] } } } };
+    // La premiere page dit aussi combien il y en a en tout.
+    const first = await call((cn) => cn.products.search({ ...CARDS_ONLY, ...filters, limit: PRODUCT_BATCH, offset: 0 }));
+    const total = first.pagination?.total ?? 0;
+    if (total <= SEARCH_WINDOW) {
+      cards.push(...(await allProducts(filters, total, step, label, first)).map(completionCard));
+      continue;
+    }
+    // Au-dela de 10 000, la recherche ne pagine plus : on decoupe par extensions.
+    const expansions = await listExpansions();
+    const chunks = [];
+    for (let i = 0; i < expansions.length; i += EXPANSIONS_PER_CHUNK) {
+      chunks.push(expansions.slice(i, i + EXPANSIONS_PER_CHUNK).map((exp) => exp.id));
+    }
+    for (const [n, ids] of chunks.entries()) {
+      const part = step.sub(n / chunks.length, (n + 1) / chunks.length);
+      cards.push(...(await allProducts({ ...filters, expansionId: ids }, null, part, label)).map(completionCard));
+    }
+  }
+
+  completionCatalog = cards;
+  try {
+    localStorage.setItem(COMPLETION_CATALOG_STORAGE, JSON.stringify({ at: Date.now(), cards }));
+  } catch {
+    // Memoire pleine : le catalogue sera relu la prochaine fois.
+  }
+  return cards;
+}
+
+/**
+ * Communes et rares a moins de `target` exemplaires, toutes editions
+ * confondues : on compte, pour chaque carte (nom + pitch), les exemplaires de
+ * toutes ses impressions, y compris celles d'autres raretes (Marvel, promo…).
+ */
+export async function completionAll({ target = 3, includeGear = true, refresh = false } = {}, progress = silent) {
+  const catalog = await commonRareCatalog(progress.sub(0, 0.45), { refresh });
+  const lines = await allCollectionLines(progress.sub(0.45, 0.85));
+
+  const keyByProduct = new Map(catalog.map((card) => [String(card.productId), card.key]));
+  const others = [...new Set(lines.map((line) => line.productId).filter((id) => !keyByProduct.has(String(id))))];
+  const products = await resolveProducts(others, progress.sub(0.85, 1));
+  for (const [id, product] of products) keyByProduct.set(String(id), mergeKey(product));
+
+  const owned = new Map();
+  for (const line of lines) {
+    const key = keyByProduct.get(String(line.productId));
+    if (key) owned.set(key, (owned.get(key) || 0) + line.quantity);
+  }
+  const rows = completionRows(catalog, owned, { target, includeGear });
+  await fillRowClasses(rows, progress);
+  return { rows, catalogSize: catalog.length };
+}
+
+/**
+ * Communes et rares d'une extension a moins de `target` exemplaires de cette
+ * impression-la (les autres editions ne comptent pas).
+ */
+export async function completionExpansion(expansionId, { target = 3, includeGear = true } = {}, progress = silent) {
+  const cards = await expansionCards(expansionId, progress.sub(0, 0.5));
+  const lines = await searchAllLines({ expansionId: [Number(expansionId)] }, progress.sub(0.5, 1));
+  const owned = new Map();
+  for (const line of lines) {
+    const key = String(line.productId);
+    owned.set(key, (owned.get(key) || 0) + line.quantity);
+  }
+  const rows = completionRows(cards, owned, { target, includeGear, by: 'printing' });
+  await fillRowClasses(rows, progress);
+  return { rows, catalogSize: cards.length };
+}
+
+/**
+ * Classes et talents des cartes a completer que CardNexus ne connait pas :
+ * meme renfort FaBrary (et meme cache) que pour l'inventaire.
+ */
+async function fillRowClasses(rows, progress = silent) {
+  const todo = rows.filter((row) => !row.classes.length || !row.talents.length);
+  if (!todo.length) return;
+  const cache = readClassCache();
+  const now = Date.now();
+  const idOf = (row) => fabraryIdentifier(row.name, row.pitch);
+  const unknown = [...new Set(todo.map(idOf))].filter((id) => {
+    const hit = cache[id];
+    return !hit || (hit.missing && now - hit.at > CLASS_RETRY_MS);
+  });
+  if (unknown.length) {
+    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
+    try {
+      const found = await fetchCardClasses(unknown, progress);
+      for (const id of unknown) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
+      writeClassCache(cache);
+    } catch {
+      // FaBrary injoignable : les cartes restent comme CardNexus les donne.
+    }
+  }
+  for (const row of todo) {
+    const hit = cache[idOf(row)];
+    if (!hit || hit.missing) continue;
+    if (!row.classes.length && hit.classes?.length) row.classes = hit.classes;
+    if (!row.talents.length && hit.talents?.length) row.talents = hit.talents;
+  }
 }

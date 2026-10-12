@@ -61,6 +61,7 @@ export async function openApp({
   classes,
   talents,
   exp,
+  rarity,
   delay,
   storage = {},
   waitFor = '#places:not([hidden])',
@@ -83,7 +84,7 @@ export async function openApp({
   await context.route('https://content.fabrary.net/**', (route) => route.fulfill({ status: 404, body: '' }));
 
   await context.addInitScript(
-    ({ inv, locations, classes, talents, exp, delay, storage }) => {
+    ({ inv, locations, classes, talents, exp, rarity, delay, storage }) => {
       const defaults = { snapshot_interval_h: '0', ...storage };
       for (const [key, value] of Object.entries(defaults)) {
         if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
@@ -94,8 +95,9 @@ export async function openApp({
       if (talents) window.__mockTalents = talents;
       if (exp) window.__mockExp = exp;
       if (delay != null) window.__mockDelay = delay;
+      if (rarity) window.__mockRarity = rarity;
     },
-    { inv, locations, classes, talents, exp, delay, storage },
+    { inv, locations, classes, talents, exp, rarity, delay, storage },
   );
   await context.addInitScript({ path: MOCK_BRIDGE });
 

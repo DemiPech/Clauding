@@ -38,6 +38,7 @@ import { readCollectionCache } from './ui/collection-cache.js';
 import { listenForProgress } from './ui/progress-view.js';
 import { closeExpansionSheet, importView, showImport } from './ui/import-view.js';
 import { listenForListHistory } from './ui/list-history.js';
+import { completionView, showCompletion } from './ui/completion-view.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -59,6 +60,7 @@ window.__appBack = () => {
   if (!els.build.hidden) return leaveBuild(), true;
   if (!els.tidy.hidden) return showTools(), true;
   if (!importView.hidden) return showTools(), true;
+  if (!completionView.hidden) return showTools(), true;
   if (!els.deck.hidden || !els.error.hidden || !els.loading.hidden) return returnToTab(), true;
   if (els.places.hidden) return showHome(), true;
   return false;
@@ -129,6 +131,8 @@ els.toolBuild.addEventListener('click', () => {
 });
 els.toolCompare.addEventListener('click', () => openCompare({ pick: true }));
 document.querySelector('#tool-import').addEventListener('click', showImport);
+document.querySelector('#tool-completion').addEventListener('click', () => showCompletion('all'));
+document.querySelector('#tool-completion-set').addEventListener('click', () => showCompletion('expansion'));
 els.historyTabs.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-history-tab]');
   if (chip) setHistoryTab(chip.dataset.historyTab);
