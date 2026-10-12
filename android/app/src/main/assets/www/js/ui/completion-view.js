@@ -150,7 +150,7 @@ function renderList() {
     els.list.replaceChildren(
       Object.assign(document.createElement('p'), {
         className: 'move-note',
-        textContent: `Rien à compléter : vous avez au moins ${comp.target} exemplaire${comp.target > 1 ? 's' : ''} de chaque commune et rare.`,
+        textContent: `Rien à compléter : vous avez au moins ${comp.target} exemplaire${comp.target > 1 ? 's' : ''} de chaque commune et rare (1 pour les héros, armes et équipements).`,
       }),
     );
     return;
@@ -194,7 +194,7 @@ function rowNode(row) {
       <span class="completion-name">${escapeHtml(row.name)}</span>
       <span class="completion-meta">${escapeHtml(meta)}</span>
     </span>
-    <span class="completion-count">${row.owned} / ${comp.target}</span>
+    <span class="completion-count">${row.owned} / ${row.target}</span>
     <span class="completion-missing">−${row.missing}</span>
   `;
   return li;

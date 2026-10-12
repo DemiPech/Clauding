@@ -20,26 +20,33 @@ const CATALOG = [
 test('toutes éditions confondues : 2 + 2 Sink Below = 4, rien à compléter', () => {
   const owned = new Map([['sink-below-1', 4], ['pummel-1', 1], ['helm', 3]]);
   const rows = completionRows(CATALOG, owned, { target: 3 });
-  assert.deepEqual(rows.map((r) => [r.name, r.pitch, r.owned, r.missing, r.rarity]), [
-    ['Pummel', 1, 1, 2, 'common'],
+  assert.deepEqual(rows.map((r) => [r.name, r.pitch, r.target, r.owned, r.missing, r.rarity]), [
+    // Un héros : un exemplaire suffit (le casque, 3 possédés, est complet).
+    ['Kayo', null, 1, 0, 1, 'rare'],
+    ['Pummel', 1, 3, 1, 2, 'common'],
     // Rare dans HVY, commune dans HNT : on la dit commune (plus facile à trouver).
-    ['Pummel', 3, 0, 3, 'common'],
+    ['Pummel', 3, 3, 0, 3, 'common'],
   ]);
-  assert.deepEqual(rows[1].printings.map((p) => p.expansion), ['HVY', 'HNT']);
-  assert.deepEqual(completionTotals(rows), { cards: 2, missing: 5, absent: 1 });
+  assert.deepEqual(rows[2].printings.map((p) => p.expansion), ['HVY', 'HNT']);
+  assert.deepEqual(completionTotals(rows), { cards: 3, missing: 6, absent: 2 });
 });
 
-test('héros, tokens et raretés supérieures exclus ; armes et équipements au choix', () => {
+test('tokens et raretés supérieures exclus ; héros, armes et équipements au choix, à 1 exemplaire', () => {
   const rows = completionRows(CATALOG, new Map(), { target: 3, includeGear: false });
   assert.deepEqual(rows.map((r) => r.name), ['Pummel', 'Pummel', 'Sink Below']);
-  assert.ok(completionRows(CATALOG, new Map()).some((r) => r.name === 'Fyendal Helm'));
+  const all = completionRows(CATALOG, new Map(), { target: 4 });
+  assert.deepEqual(
+    all.filter((r) => ['Fyendal Helm', 'Kayo'].includes(r.name)).map((r) => [r.name, r.target, r.missing]),
+    [['Fyendal Helm', 1, 1], ['Kayo', 1, 1]],
+  );
+  assert.equal(all.find((r) => r.name === 'Sink Below').target, 4);
 });
 
 test('par extension : chaque impression compte à part', () => {
   const owned = new Map([['1', 3], ['2', 1]]);
   const rows = completionRows(CATALOG.filter((c) => ['WTR', 'DRO'].includes(c.expansion)), owned, { by: 'printing' });
   assert.deepEqual(rows.map((r) => [r.name, r.printings[0].expansion, r.owned, r.missing]), [
-    ['Fyendal Helm', 'WTR', 0, 3],
+    ['Fyendal Helm', 'WTR', 0, 1],
     ['Pummel', 'WTR', 0, 3],
     ['Sink Below', 'DRO', 1, 2],
   ]);

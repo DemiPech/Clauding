@@ -212,8 +212,8 @@ d'exemplaires que l'objectif (3 par défaut, de 1 à 4) :
 - **Par extension** : seules comptent les cartes de l'impression de cette extension (choisie
   avec le même sélecteur que l'import).
 
-Les héros, tokens, basiques et raretés supérieures sont exclus ; les armes et équipements sont
-inclus ou non au choix. Le résultat se groupe par classe, rareté, extension ou nom, se filtre par
+Les tokens, basiques et raretés supérieures sont exclus. Les héros, armes et équipements ont un
+objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté, extension ou nom, se filtre par
 rareté ou par nom, et se copie en texte (« 2x Sink Below (rouge) »). Toutes les finitions, langues
 et états comptent, quel que soit l'emplacement.
 

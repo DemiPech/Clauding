@@ -13,20 +13,26 @@
 
 const RARITIES_WANTED = new Set(['common', 'rare']);
 
+// Un héros, une arme ou un équipement : un exemplaire suffit.
+const SINGLE_TYPES = ['Hero', 'Weapon', 'Equipment'];
+const isSingle = (types) => types.some((type) => SINGLE_TYPES.includes(type));
+
 /**
  * `cards` : impressions du catalogue [{ productId, key, name, pitch, rarity,
  * types, classes, talents, expansion, printNumber, imageUrl }] ; `owned` :
  * Map clé → exemplaires possédés (clé de carte, ou productId par extension).
+ * L'objectif vaut `target` pour une carte de deck, et 1 pour un héros, une
+ * arme ou un équipement (`includeGear` : les compter ou non).
  * Rend une ligne par carte à compléter : { key, name, pitch, rarity, types,
- * classes, talents, owned, missing, printings, imageUrl }.
+ * classes, talents, target, owned, missing, printings, imageUrl }.
  */
 export function completionRows(cards, owned, { target = 3, includeGear = true, by = 'card' } = {}) {
   const rows = new Map();
   for (const card of cards) {
     if (!RARITIES_WANTED.has(card.rarity)) continue;
     const types = card.types || [];
-    if (types.includes('Hero') || types.includes('Token')) continue;
-    if (!includeGear && (types.includes('Weapon') || types.includes('Equipment'))) continue;
+    if (types.includes('Token')) continue;
+    if (!includeGear && isSingle(types)) continue;
 
     const key = by === 'printing' ? String(card.productId) : card.key;
     let row = rows.get(key);
@@ -40,6 +46,7 @@ export function completionRows(cards, owned, { target = 3, includeGear = true, b
         classes: card.classes || [],
         talents: card.talents || [],
         imageUrl: card.imageUrl || null,
+        target: isSingle(types) ? Math.min(1, target) : target,
         printings: [],
       };
       rows.set(key, row);
@@ -53,7 +60,7 @@ export function completionRows(cards, owned, { target = 3, includeGear = true, b
   const result = [];
   for (const row of rows.values()) {
     row.owned = owned.get(row.key) || 0;
-    row.missing = Math.max(0, target - row.owned);
+    row.missing = Math.max(0, row.target - row.owned);
     if (row.missing > 0) result.push(row);
   }
   return result.sort((a, b) => a.name.localeCompare(b.name, 'en') || (a.pitch ?? 0) - (b.pitch ?? 0));
