@@ -224,9 +224,16 @@ impressions. L'en-tête estime le coût pour tout compléter (prix × exemplaire
 signale les cartes sans prix. Les prix sont ceux du moment où le catalogue a été lu. Toutes les finitions, langues
 et états comptent, quel que soit l'emplacement.
 
-Le catalogue de chaque palier (une recherche par rareté, découpée par extensions au-delà de
-10 000 cartes) est gardé une semaine sur le téléphone, prix compris ; « Relire le catalogue » le recharge. Le
-calcul lui-même est dans `js/completion.js`.
+**Catalogue** (toutes éditions) : la liste des cartes vient de [Card Vault](https://cardvault.fabtcg.com),
+la base officielle (`js/cardvault.js`) : toutes les cartes imprimées en anglais de chaque rareté,
+avec classes et talents tirés de leur ligne de type (Pirate, Necromancer, Revered… compris). Card
+Vault n'a pas de prix : ils viennent du catalogue CardNexus (une recherche par rareté, découpée
+par extensions au-delà de 10 000 cartes), rattaché carte par carte (identifiant, sinon nom +
+pitch). Si Card Vault ne répond pas, le catalogue CardNexus sert seul ; si CardNexus ne répond
+pas, la liste s'affiche sans prix. Le mode par extension, lui, lit l'extension sur CardNexus.
+
+Le catalogue de chaque palier est gardé une semaine sur le téléphone, prix compris ; « Relire le
+catalogue » le recharge. Le calcul lui-même est dans `js/completion.js`.
 
 ## Ranger les vracs
 
@@ -346,6 +353,7 @@ app/src/main/assets/www/
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
   js/fabtcg.js                            decklists du site officiel fabtcg.com
+  js/cardvault.js                         catalogue officiel Card Vault (cartes à compléter)
   js/http.js                              requêtes sortantes via le pont natif (et fetch du SDK)
   js/vendor/cardnexus-sdk.js              SDK CardNexus assemblé (généré par android/sdk)
 ```

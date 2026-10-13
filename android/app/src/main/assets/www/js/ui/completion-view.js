@@ -95,9 +95,12 @@ async function runCompletion({ refresh = false } = {}) {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
     comp.rows = data.rows;
     comp.target = Number(els.target.value);
-    els.note.textContent = data.catalogSize
-      ? ''
-      : `Aucune carte (${TIER_TEXT[comp.tier]}) trouvée dans le catalogue CardNexus.`;
+    const catalogName = data.source === 'cardvault' ? 'Card Vault' : 'CardNexus';
+    els.note.textContent = !data.catalogSize
+      ? `Aucune carte (${TIER_TEXT[comp.tier]}) trouvée dans le catalogue ${catalogName}.`
+      : data.priced === false
+        ? 'Catalogue Card Vault ; prix indisponibles (catalogue CardNexus injoignable).'
+        : '';
     els.result.hidden = false;
     renderResult();
   } catch (err) {
@@ -116,7 +119,9 @@ function visibleRows() {
   );
 }
 
-const classOf = (row) => (row.classes.length ? row.classes.join(' / ') : 'Sans classe');
+// Une carte sans classe (« Shadow Action ») se range sous son talent.
+const classOf = (row) =>
+  row.classes.length ? row.classes.join(' / ') : row.talents.length ? row.talents.join(' / ') : 'Sans classe';
 const firstPrinting = (row) => row.printings[0]?.expansion || 'Autres';
 
 // Prix décroissant ou croissant ; les cartes sans prix à la fin.

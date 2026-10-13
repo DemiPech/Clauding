@@ -16,6 +16,7 @@
 import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
 import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
 import { completionRows, productPrice, TIERS } from './completion.js';
+import { vaultCatalog } from './cardvault.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
@@ -1572,23 +1573,10 @@ async function allProducts(filters, knownTotal, progress, label, first = null) {
 }
 
 /**
- * Toutes les cartes d'un palier de raretes (`cr` : communes et rares, `ml` :
- * majestics et legendaires) du catalogue Flesh and Blood, une recherche par
- * rarete, 200 par page. Gardees sur le telephone une semaine (avec les prix
- * du moment).
+ * Les cartes d'un palier de raretes au catalogue CardNexus, une recherche par
+ * rarete, 200 par page : leurs impressions, avec leur prix.
  */
-async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
-  const storage = `${COMPLETION_CATALOG_STORAGE}_${tier}`;
-  if (!refresh && !completionCatalogs[tier]) {
-    try {
-      const stored = JSON.parse(localStorage.getItem(storage));
-      if (stored && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalogs[tier] = stored.cards;
-    } catch {
-      completionCatalogs[tier] = null;
-    }
-  }
-  if (!refresh && completionCatalogs[tier]) return completionCatalogs[tier];
-
+async function cardNexusCatalog(tier, progress = silent) {
   const cards = [];
   const rarities = TIER_RARITIES[tier];
   for (const [index, rarity] of rarities.entries()) {
@@ -1613,14 +1601,83 @@ async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
       cards.push(...(await allProducts({ ...filters, expansionId: ids }, null, part, label)).map(completionCard));
     }
   }
+  return cards;
+}
 
-  completionCatalogs[tier] = cards;
+/**
+ * Le catalogue d'un palier : la liste des cartes vient de Card Vault (la base
+ * officielle, complete), les prix et les impressions de CardNexus.
+ *
+ * Chaque carte CardNexus est rattachee a sa carte Card Vault par son
+ * identifiant (fabId = card_id) ou, a defaut, par nom + pitch ; celles qui
+ * ne s'y rattachent pas sont ignorees. Sans Card Vault, on se rabat sur le
+ * seul catalogue CardNexus ; sans CardNexus, la liste est la, sans prix.
+ * `aliases` : identifiant Card Vault -> cle de la carte, pour rattacher
+ * l'inventaire.
+ */
+export function mergeCatalogs(vault, nexus) {
+  const keys = new Set();
+  const aliases = {};
+  // L'identifiant et l'image ne servent plus : le catalogue garde ainsi sa place.
+  const cards = vault.map(({ cardId, imageUrl, ...card }) => {
+    const key = fabKey(card.name, card.pitch);
+    keys.add(key);
+    aliases[cardId] = key;
+    return { ...card, productId: null, key, price: null };
+  });
+  const byKey = new Map();
+  for (const card of cards) if (!byKey.has(card.key)) byKey.set(card.key, card);
+  for (const card of nexus) {
+    const key = aliases[card.key] || (keys.has(fabKey(card.name, card.pitch)) ? fabKey(card.name, card.pitch) : null);
+    if (!key) continue;
+    // Une ligne de type vide chez Card Vault (cela arrive) : celle de CardNexus.
+    const first = byKey.get(key);
+    if (!first.types.length && card.types.length) first.types = card.types;
+    cards.push({ ...card, key });
+  }
+  return { cards, aliases };
+}
+
+/**
+ * Toutes les cartes d'un palier de raretes (`cr` : communes et rares, `ml` :
+ * majestics et legendaires). Gardees sur le telephone une semaine (avec les
+ * prix du moment). Rend { cards, aliases, source, priced }.
+ */
+async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
+  const storage = `${COMPLETION_CATALOG_STORAGE}_${tier}`;
+  if (!refresh && !completionCatalogs[tier]) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(storage));
+      if (stored?.v === 2 && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalogs[tier] = stored.catalog;
+    } catch {
+      completionCatalogs[tier] = null;
+    }
+  }
+  if (!refresh && completionCatalogs[tier]) return completionCatalogs[tier];
+
+  let vault = null;
   try {
-    localStorage.setItem(storage, JSON.stringify({ at: Date.now(), cards }));
+    vault = await vaultCatalog(TIERS[tier], progress.sub(0, 0.4));
+  } catch {
+    // Card Vault injoignable : le catalogue CardNexus seul.
+  }
+  let nexus = null;
+  try {
+    nexus = await cardNexusCatalog(tier, progress.sub(vault ? 0.4 : 0, 1));
+  } catch (err) {
+    if (!vault) throw err;
+  }
+
+  const catalog = vault
+    ? { ...mergeCatalogs(vault, nexus || []), source: 'cardvault', priced: Boolean(nexus) }
+    : { cards: nexus, aliases: {}, source: 'cardnexus', priced: true };
+  completionCatalogs[tier] = catalog;
+  try {
+    localStorage.setItem(storage, JSON.stringify({ v: 2, at: Date.now(), catalog }));
   } catch {
     // Memoire pleine : le catalogue sera relu la prochaine fois.
   }
-  return cards;
+  return catalog;
 }
 
 /**
@@ -1635,19 +1692,30 @@ export async function completionAll(
   const catalog = await tierCatalog(tier, progress.sub(0, 0.45), { refresh });
   const lines = await allCollectionLines(progress.sub(0.45, 0.85));
 
-  const keyByProduct = new Map(catalog.map((card) => [String(card.productId), card.key]));
+  // Chaque produit de l'inventaire rattache a la cle de sa carte au catalogue.
+  const keys = new Set(catalog.cards.map((card) => card.key));
+  const keyOf = (product) => {
+    const byId = catalog.aliases[mergeKey(product)];
+    if (byId) return byId;
+    const byName = fabKey(cleanName(product.name), product.attributes?.pitch);
+    return keys.has(byName) ? byName : mergeKey(product);
+  };
+  const keyByProduct = new Map(
+    catalog.cards.filter((card) => card.productId != null).map((card) => [String(card.productId), card.key]),
+  );
   const others = [...new Set(lines.map((line) => line.productId).filter((id) => !keyByProduct.has(String(id))))];
   const products = await resolveProducts(others, progress.sub(0.85, 1));
-  for (const [id, product] of products) keyByProduct.set(String(id), mergeKey(product));
+  for (const [id, product] of products) keyByProduct.set(String(id), keyOf(product));
 
   const owned = new Map();
   for (const line of lines) {
     const key = keyByProduct.get(String(line.productId));
     if (key) owned.set(key, (owned.get(key) || 0) + line.quantity);
   }
-  const rows = completionRows(catalog, owned, { target, includeGear, rarities: TIERS[tier] });
-  await fillRowClasses(rows, progress);
-  return { rows, catalogSize: catalog.length };
+  const rows = completionRows(catalog.cards, owned, { target, includeGear, rarities: TIERS[tier] });
+  // Card Vault donne deja classes et talents ; CardNexus seul, FaBrary complete.
+  if (catalog.source !== 'cardvault') await fillRowClasses(rows, progress);
+  return { rows, catalogSize: catalog.cards.length, source: catalog.source, priced: catalog.priced };
 }
 
 /**
@@ -1668,7 +1736,7 @@ export async function completionExpansion(
   }
   const rows = completionRows(cards, owned, { target, includeGear, by: 'printing', rarities: TIERS[tier] });
   await fillRowClasses(rows, progress);
-  return { rows, catalogSize: cards.length };
+  return { rows, catalogSize: cards.length, source: 'cardnexus', priced: true };
 }
 
 /**

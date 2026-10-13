@@ -124,3 +124,54 @@ test('majestics et légendaires : prix, coût total et tri par prix', async () =
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('catalogue Card Vault : toutes les cartes, prix CardNexus', async () => {
+  // Card Vault liste aussi une carte Pirate que CardNexus ne connaît pas ;
+  // Buckwild bleue (commune chez CardNexus) n'y est pas : ignorée.
+  const V = (cardId, name, pitch, typebox, printId) => ({
+    card_id: cardId, print_id: printId, printed_name: name, printed_pitch: pitch, printed_typebox: typebox,
+    core_talent: null, faces: [{ layout_position: 10, image: { small: null } }],
+  });
+  const vault = {
+    common: [
+      V('buckwild-1', 'Buckwild', 1, 'Brute Action - Attack', 'WTR001'),
+      V('sink-below-1', 'Sink Below', 1, 'Generic Defense Reaction', 'WTR215'),
+      V('pummel-1', 'Pummel', 1, 'Generic Action - Attack', 'HVY001'),
+      V('pummel-3', 'Pummel', 3, 'Generic Action - Attack', 'HVY002'),
+      V('jolly-roger-1', 'Jolly Roger', 1, 'Pirate Action - Attack', 'SEA100'),
+    ],
+    rare: [V('beast-mode-1', 'Beast Mode', 1, 'Brute Action - Attack', 'HVY003')],
+  };
+  const { page, context, errors } = await openApp({
+    inv: INV,
+    locations: [place('Vrac 1'), place('Vrac 2'), place('Classeur'), place('Deck A', 'deck', 'red')],
+    rarity: RARITY,
+    prices: { e1: 0.5, e2: 0.25 },
+    vault,
+  });
+  await page.click('[data-tab="tools"]');
+  await page.click('#tool-completion');
+  await page.click('#completion-run');
+  await page.waitForSelector('#completion-result:not([hidden])');
+
+  assert.equal(await page.textContent('#completion-note'), '');
+  // Pummel 2 + 3, Beast Mode 1, Jolly Roger 3 ; coût 2 × 0,50 + 3 × 0,25.
+  assert.deepEqual(await texts(page, '#completion-stats .stat'), [
+    '4 cartes à compléter', '9 exemplaires manquants', '2 cartes absentes', '≈ 1,75 € pour compléter (2 sans prix)',
+  ]);
+  await page.selectOption('#completion-group', 'name');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Beast Mode', 'Jolly Roger', 'Pummel', 'Pummel']);
+  assert.deepEqual(await texts(page, '.completion-count'), ['2 / 3', '0 / 3', '1 / 3', '0 / 3']);
+  assert.deepEqual(await texts(page, '.completion-price'), ['—', '—', '0,50 €', '0,25 €']);
+  // Classes de Card Vault : Pirate compris.
+  await page.selectOption('#completion-group', 'class');
+  assert.deepEqual(await texts(page, '#completion-list h2'), ['Brute', 'Generic', 'Pirate']);
+
+  // Gardé une semaine : une seconde recherche ne relit ni Card Vault ni CardNexus.
+  const calls = await page.evaluate(() => [window.__cardVaultCalls, window.__catalogCalls]);
+  await page.click('#completion-run');
+  await page.waitForSelector('#completion-result:not([hidden])');
+  assert.deepEqual(await page.evaluate(() => [window.__cardVaultCalls, window.__catalogCalls]), calls);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
