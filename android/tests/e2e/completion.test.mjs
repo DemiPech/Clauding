@@ -32,19 +32,19 @@ test('toutes éditions confondues : les réimpressions s’additionnent', async 
   await page.waitForSelector('#completion-result:not([hidden])');
 
   assert.deepEqual(await texts(page, '#completion-stats .stat'), [
-    '4 cartes à compléter', '9 exemplaires manquants', '2 cartes absentes',
+    '4 cartes à compléter', '9 exemplaires manquants', '2 cartes absentes', '≈ 0,00 € pour compléter (4 sans prix)',
   ]);
   await page.selectOption('#completion-group', 'name');
   assert.deepEqual(await rowsText(page), [
-    'Beast Mode R · HVY003 2 / 3 −1',
-    'Buckwild C · Xp2 0 / 3 −3',
-    'Pummel C · HVY001 1 / 3 −2',
-    'Pummel C · HVY002 0 / 3 −3',
+    'Beast Mode R · HVY003 2 / 3 — −1',
+    'Buckwild C · Xp2 0 / 3 — −3',
+    'Pummel C · HVY001 1 / 3 — −2',
+    'Pummel C · HVY002 0 / 3 — −3',
   ]);
 
   // Filtre de rareté et texte copié.
   await page.click('#completion-rarities [data-rarity="rare"]');
-  assert.deepEqual(await rowsText(page), ['Beast Mode R · HVY003 2 / 3 −1']);
+  assert.deepEqual(await rowsText(page), ['Beast Mode R · HVY003 2 / 3 — −1']);
   await page.click('#completion-rarities [data-rarity=""]');
 
   // Objectif 2 : Beast Mode (2) n'est plus à compléter.
@@ -72,21 +72,55 @@ test('par extension : seule l’impression de l’extension compte', async () =>
   await page.click('#expansion-groups [data-expansion="8"]');
   await page.waitForSelector('#completion-result:not([hidden])');
   // Armory Deck: Kayo ne contient que Sink Below : 2 exemplaires de cette impression.
-  assert.deepEqual(await rowsText(page), ['Sink Below C · AKO008 2 / 3 −1']);
+  assert.deepEqual(await rowsText(page), ['Sink Below C · AKO008 2 / 3 — −1']);
 
   await page.click('#completion-expansion');
   await page.click('#expansion-groups [data-expansion="7"]');
   await page.waitForFunction(() => document.querySelectorAll('.completion-row').length === 3);
   await page.selectOption('#completion-group', 'name');
   assert.deepEqual(await rowsText(page), [
-    'Beast Mode R · HVY003 2 / 3 −1',
-    'Pummel C · HVY001 1 / 3 −2',
-    'Pummel C · HVY002 0 / 3 −3',
+    'Beast Mode R · HVY003 2 / 3 — −1',
+    'Pummel C · HVY001 1 / 3 — −2',
+    'Pummel C · HVY002 0 / 3 — −3',
   ]);
   // Sans armes ni équipements : aucune ici, même résultat.
   await page.uncheck('#completion-gear');
   await page.click('#completion-run');
   await page.waitForFunction(() => document.querySelectorAll('.completion-row').length === 3);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('majestics et légendaires : prix, coût total et tri par prix', async () => {
+  const { page, context, errors } = await openApp({
+    // Enlightened Strike (p5) majestic : 1 possédé ; Dorinthea (p4) héros légendaire ;
+    // « Kayo » (e5) majestic de HVY, une action ici ; Ancestral Empowerment (super rare) hors sujet.
+    inv: [line('a', 'p5', 1, 'Classeur')],
+    locations: [place('Classeur')],
+    rarity: { p4: 'Legendary', p5: 'Majestic' },
+    prices: { p4: 45, p5: 12.5, e5: 8.2 },
+  });
+  await page.click('[data-tab="tools"]');
+  await page.click('#tool-completion-ml');
+  assert.equal(await page.textContent('#completion-title'), 'Majestics et légendaires');
+  await page.click('#completion-run');
+  await page.waitForSelector('#completion-result:not([hidden])');
+
+  // Coût : 2 × 12,50 + 1 × 45 (héros : un exemplaire) + 3 × 8,20 = 94,60 €.
+  assert.deepEqual(await texts(page, '#completion-stats .stat'), [
+    '3 cartes à compléter', '6 exemplaires manquants', '2 cartes absentes', '≈ 94,60 € pour compléter',
+  ]);
+  await page.selectOption('#completion-group', 'price-desc');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Dorinthea Ironsong', 'Enlightened Strike', 'Kayo, Armed and Dangerous']);
+  assert.deepEqual(await texts(page, '.completion-price'), ['45,00 €', '12,50 €', '8,20 €']);
+  await page.selectOption('#completion-group', 'price-asc');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Kayo, Armed and Dangerous', 'Enlightened Strike', 'Dorinthea Ironsong']);
+  assert.deepEqual(await texts(page, '#completion-rarities .chip'), ['Toutes', 'Majestics', 'Légendaires']);
+
+  // Passer aux communes et rares depuis l'écran remet le résultat à zéro.
+  await page.click('#completion-tiers [data-tier="cr"]');
+  assert.equal(await page.textContent('#completion-title'), 'Communes et rares');
+  assert.equal(await page.isVisible('#completion-result'), false);
   assert.deepEqual(errors, []);
   await context.close();
 });

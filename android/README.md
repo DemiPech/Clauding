@@ -202,8 +202,9 @@ Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 
 ## Cartes à compléter
 
-Deux outils (onglet Outils) recensent les **communes et rares** dont vous avez moins
-d'exemplaires que l'objectif (3 par défaut, de 1 à 4) :
+Ces outils (onglet Outils) recensent les cartes dont vous avez moins d'exemplaires que
+l'objectif (3 par défaut, de 1 à 4), pour deux paliers de rareté au choix : **communes et
+rares**, ou **majestics et légendaires**. Deux modes :
 
 - **Toutes éditions confondues** : une carte = un nom + un pitch. Toutes ses impressions
   s'additionnent : 2 Sink Below d'un deck Blitz + 2 de Welcome to Rathe = 4. Les impressions
@@ -213,12 +214,18 @@ d'exemplaires que l'objectif (3 par défaut, de 1 à 4) :
   avec le même sélecteur que l'import).
 
 Les tokens, basiques et raretés supérieures sont exclus. Les héros, armes et équipements ont un
-objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté, extension ou nom, se filtre par
-rareté ou par nom, et se copie en texte (« 2x Sink Below (rouge) »). Toutes les finitions, langues
+objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté, extension ou nom, se trie par prix
+(décroissant ou croissant), se filtre par rareté ou par nom, et se copie en texte
+(« 2x Sink Below (rouge) — 0,25 € »).
+
+**Prix** : la valeur de marché Cardmarket (euros) donnée par le catalogue CardNexus, en finition
+Standard (sinon la moins chère des finitions), et pour une carte la moins chère de ses
+impressions. L'en-tête estime le coût pour tout compléter (prix × exemplaires manquants) et
+signale les cartes sans prix. Les prix sont ceux du moment où le catalogue a été lu. Toutes les finitions, langues
 et états comptent, quel que soit l'emplacement.
 
-Le catalogue des communes et rares (une recherche par rareté, découpée par extensions au-delà de
-10 000 cartes) est gardé une semaine sur le téléphone ; « Relire le catalogue » le recharge. Le
+Le catalogue de chaque palier (une recherche par rareté, découpée par extensions au-delà de
+10 000 cartes) est gardé une semaine sur le téléphone, prix compris ; « Relire le catalogue » le recharge. Le
 calcul lui-même est dans `js/completion.js`.
 
 ## Ranger les vracs

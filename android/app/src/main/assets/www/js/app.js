@@ -131,8 +131,9 @@ els.toolBuild.addEventListener('click', () => {
 });
 els.toolCompare.addEventListener('click', () => openCompare({ pick: true }));
 document.querySelector('#tool-import').addEventListener('click', showImport);
-document.querySelector('#tool-completion').addEventListener('click', () => showCompletion('all'));
-document.querySelector('#tool-completion-set').addEventListener('click', () => showCompletion('expansion'));
+document.querySelector('#tool-completion').addEventListener('click', () => showCompletion('all', 'cr'));
+document.querySelector('#tool-completion-ml').addEventListener('click', () => showCompletion('all', 'ml'));
+document.querySelector('#tool-completion-set').addEventListener('click', () => showCompletion('expansion', 'cr'));
 els.historyTabs.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-history-tab]');
   if (chip) setHistoryTab(chip.dataset.historyTab);

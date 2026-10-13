@@ -7,7 +7,9 @@
 (() => {
   localStorage.setItem('cardnexus_api_key', 'cnk_test');
   const P = (id, name, nameSlug, fabId, pitch, types, subTypes = []) =>
-    ({ id, name, nameSlug, printNumber: 'X' + id, imageUrl: null, productType: 'card', rarity: (window.__mockRarity || {})[id], expansion: { name: (window.__mockExp || {})[id] || 'HNT' }, attributes: { fabId, pitch, types, subTypes, classes: (window.__mockClasses || {})[id] || ['Generic'], talents: (window.__mockTalents || {})[id] || [], cost: 1, attack: 3, defense: 3 } });
+    ({ id, name, nameSlug, printNumber: 'X' + id, imageUrl: null, productType: 'card', rarity: (window.__mockRarity || {})[id],
+      // __mockPrices[id] = prix Cardmarket (euros) en finition Standard.
+      pricesByFinish: (window.__mockPrices || {})[id] != null ? { Standard: { cardmarket: { currency: 'EUR', marketValue: window.__mockPrices[id] } } } : {}, expansion: { name: (window.__mockExp || {})[id] || 'HNT' }, attributes: { fabId, pitch, types, subTypes, classes: (window.__mockClasses || {})[id] || ['Generic'], talents: (window.__mockTalents || {})[id] || [], cost: 1, attack: 3, defense: 3 } });
   const products = [
     P('p1', 'Buckwild (Red)', 'buckwild', 'buckwild-1', 1, ['Action'], ['Attack']),
     P('p2', 'Buckwild (Blue)', 'buckwild', 'buckwild-3', 3, ['Action'], ['Attack']),

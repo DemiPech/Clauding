@@ -15,7 +15,7 @@
  */
 import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
 import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
-import { completionRows } from './completion.js';
+import { completionRows, productPrice, TIERS } from './completion.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
@@ -1448,6 +1448,7 @@ export async function expansionCards(expansionId, progress = silent) {
       expansion: product.expansion?.code || product.expansion?.name || null,
       classes: (attrs.classes || []).filter((c) => c && c !== 'NotClassed'),
       talents: attrs.talents || [],
+      price: productPrice(product),
       rarity: cardRarity(product),
       finishes: product.finishes?.length ? product.finishes : ['Standard'],
       languages: product.languages || [],
@@ -1523,6 +1524,7 @@ export async function addCards({ lines, language = 'en', condition = 'NM', locat
 
 // --- Cartes a completer (communes et rares) ------------------------------------
 
+// Une cle par palier : completion_catalog_cr, completion_catalog_ml.
 const COMPLETION_CATALOG_STORAGE = 'completion_catalog';
 // Le catalogue bouge a chaque extension : on le relit au bout d'une semaine.
 const COMPLETION_CATALOG_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -1541,10 +1543,14 @@ function completionCard(product) {
     talents: attrs.talents || [],
     expansion: product.expansion?.code || product.expansion?.name || null,
     printNumber: product.printNumber || null,
+    price: productPrice(product),
   };
 }
 
-let completionCatalog = null;
+// Raretes demandees au catalogue CardNexus, par palier.
+const TIER_RARITIES = { cr: ['Common', 'Rare'], ml: ['Majestic', 'Legendary'] };
+const RARITY_LABELS = { Common: 'des communes', Rare: 'des rares', Majestic: 'des majestics', Legendary: 'des légendaires' };
+const completionCatalogs = {};
 const CARDS_ONLY = { productType: { op: 'or', values: ['card'] } };
 const EXPANSIONS_PER_CHUNK = 20;
 
@@ -1566,25 +1572,28 @@ async function allProducts(filters, knownTotal, progress, label, first = null) {
 }
 
 /**
- * Toutes les communes et rares du catalogue Flesh and Blood (une recherche
- * par rarete, 200 par page), gardees sur le telephone une semaine.
+ * Toutes les cartes d'un palier de raretes (`cr` : communes et rares, `ml` :
+ * majestics et legendaires) du catalogue Flesh and Blood, une recherche par
+ * rarete, 200 par page. Gardees sur le telephone une semaine (avec les prix
+ * du moment).
  */
-async function commonRareCatalog(progress = silent, { refresh = false } = {}) {
-  if (!refresh && !completionCatalog) {
+async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
+  const storage = `${COMPLETION_CATALOG_STORAGE}_${tier}`;
+  if (!refresh && !completionCatalogs[tier]) {
     try {
-      const stored = JSON.parse(localStorage.getItem(COMPLETION_CATALOG_STORAGE));
-      if (stored && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalog = stored.cards;
+      const stored = JSON.parse(localStorage.getItem(storage));
+      if (stored && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalogs[tier] = stored.cards;
     } catch {
-      completionCatalog = null;
+      completionCatalogs[tier] = null;
     }
   }
-  if (!refresh && completionCatalog) return completionCatalog;
+  if (!refresh && completionCatalogs[tier]) return completionCatalogs[tier];
 
   const cards = [];
-  const rarities = ['Common', 'Rare'];
+  const rarities = TIER_RARITIES[tier];
   for (const [index, rarity] of rarities.entries()) {
     const step = progress.sub(index / rarities.length, (index + 1) / rarities.length);
-    const label = rarity === 'Common' ? 'des communes' : 'des rares';
+    const label = RARITY_LABELS[rarity];
     const filters = { gameFilters: { game: GAME, filters: { rarity: { op: 'or', values: [rarity] } } } };
     // La premiere page dit aussi combien il y en a en tout.
     const first = await call((cn) => cn.products.search({ ...CARDS_ONLY, ...filters, limit: PRODUCT_BATCH, offset: 0 }));
@@ -1605,9 +1614,9 @@ async function commonRareCatalog(progress = silent, { refresh = false } = {}) {
     }
   }
 
-  completionCatalog = cards;
+  completionCatalogs[tier] = cards;
   try {
-    localStorage.setItem(COMPLETION_CATALOG_STORAGE, JSON.stringify({ at: Date.now(), cards }));
+    localStorage.setItem(storage, JSON.stringify({ at: Date.now(), cards }));
   } catch {
     // Memoire pleine : le catalogue sera relu la prochaine fois.
   }
@@ -1619,8 +1628,11 @@ async function commonRareCatalog(progress = silent, { refresh = false } = {}) {
  * confondues : on compte, pour chaque carte (nom + pitch), les exemplaires de
  * toutes ses impressions, y compris celles d'autres raretes (Marvel, promo…).
  */
-export async function completionAll({ target = 3, includeGear = true, refresh = false } = {}, progress = silent) {
-  const catalog = await commonRareCatalog(progress.sub(0, 0.45), { refresh });
+export async function completionAll(
+  { tier = 'cr', target = 3, includeGear = true, refresh = false } = {},
+  progress = silent,
+) {
+  const catalog = await tierCatalog(tier, progress.sub(0, 0.45), { refresh });
   const lines = await allCollectionLines(progress.sub(0.45, 0.85));
 
   const keyByProduct = new Map(catalog.map((card) => [String(card.productId), card.key]));
@@ -1633,7 +1645,7 @@ export async function completionAll({ target = 3, includeGear = true, refresh = 
     const key = keyByProduct.get(String(line.productId));
     if (key) owned.set(key, (owned.get(key) || 0) + line.quantity);
   }
-  const rows = completionRows(catalog, owned, { target, includeGear });
+  const rows = completionRows(catalog, owned, { target, includeGear, rarities: TIERS[tier] });
   await fillRowClasses(rows, progress);
   return { rows, catalogSize: catalog.length };
 }
@@ -1642,7 +1654,11 @@ export async function completionAll({ target = 3, includeGear = true, refresh = 
  * Communes et rares d'une extension a moins de `target` exemplaires de cette
  * impression-la (les autres editions ne comptent pas).
  */
-export async function completionExpansion(expansionId, { target = 3, includeGear = true } = {}, progress = silent) {
+export async function completionExpansion(
+  expansionId,
+  { tier = 'cr', target = 3, includeGear = true } = {},
+  progress = silent,
+) {
   const cards = await expansionCards(expansionId, progress.sub(0, 0.5));
   const lines = await searchAllLines({ expansionId: [Number(expansionId)] }, progress.sub(0.5, 1));
   const owned = new Map();
@@ -1650,7 +1666,7 @@ export async function completionExpansion(expansionId, { target = 3, includeGear
     const key = String(line.productId);
     owned.set(key, (owned.get(key) || 0) + line.quantity);
   }
-  const rows = completionRows(cards, owned, { target, includeGear, by: 'printing' });
+  const rows = completionRows(cards, owned, { target, includeGear, by: 'printing', rarities: TIERS[tier] });
   await fillRowClasses(rows, progress);
   return { rows, catalogSize: cards.length };
 }

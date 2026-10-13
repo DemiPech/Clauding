@@ -28,7 +28,7 @@ test('toutes éditions confondues : 2 + 2 Sink Below = 4, rien à compléter', (
     ['Pummel', 3, 3, 0, 3, 'common'],
   ]);
   assert.deepEqual(rows[2].printings.map((p) => p.expansion), ['HVY', 'HNT']);
-  assert.deepEqual(completionTotals(rows), { cards: 3, missing: 6, absent: 2 });
+  assert.deepEqual(completionTotals(rows), { cards: 3, missing: 6, absent: 2, cost: 0, unpriced: 3 });
 });
 
 test('tokens et raretés supérieures exclus ; héros, armes et équipements au choix, à 1 exemplaire', () => {
@@ -50,4 +50,22 @@ test('par extension : chaque impression compte à part', () => {
     ['Pummel', 'WTR', 0, 3],
     ['Sink Below', 'DRO', 1, 2],
   ]);
+});
+
+test('prix : la moins chère des impressions, coût total, cartes sans prix', async () => {
+  const { productPrice, TIERS } = await import('../../app/src/main/assets/www/js/completion.js');
+  assert.equal(productPrice({ pricesByFinish: { Standard: { cardmarket: { currency: 'EUR', marketValue: 3.2 } } } }), 3.2);
+  assert.equal(productPrice({ pricesByFinish: { 'Cold Foil': { cardmarket: { currency: 'EUR', marketValue: 40 } }, 'Rainbow Foil': { cardmarket: { currency: 'EUR', marketValue: 9 } } } }), 9);
+  assert.equal(productPrice({ pricesByFinish: { Standard: { tcgplayer: { currency: 'USD', marketValue: 5 } } } }), null);
+  const cards = [
+    { ...C(1, 'snatch-1', 'Snatch', 1, 'majestic', 'WTR'), price: 6 },
+    { ...C(2, 'snatch-1', 'Snatch', 1, 'majestic', 'HIS'), price: 4 },
+    { ...C(3, 'helm', 'Crown', null, 'legendary', 'MON', ['Equipment']), price: 30 },
+    { ...C(4, 'x', 'Sans Prix', 2, 'majestic', 'EVR') },
+  ];
+  const rows = completionRows(cards, new Map([['snatch-1', 1]]), { rarities: TIERS.ml });
+  assert.deepEqual(rows.map((r) => [r.name, r.price, r.missing]), [['Crown', 30, 1], ['Sans Prix', null, 3], ['Snatch', 4, 2]]);
+  assert.deepEqual(completionTotals(rows), { cards: 3, missing: 6, absent: 2, cost: 38, unpriced: 1 });
+  // Les communes et rares ne voient pas ces cartes.
+  assert.equal(completionRows(cards, new Map()).length, 0);
 });

@@ -302,6 +302,7 @@ async function route(url, init, progress) {
 
     case '/api/cardnexus/completion': {
       const options = {
+        tier: params.get('tier') === 'ml' ? 'ml' : 'cr',
         target: Math.min(4, Math.max(1, Number(params.get('target')) || 3)),
         includeGear: params.get('gear') !== '0',
         refresh: params.get('refresh') === '1',

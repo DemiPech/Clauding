@@ -1,5 +1,6 @@
-// Outils « Cartes à compléter » : communes et rares à moins de 3 exemplaires,
-// toutes éditions confondues, ou pour une extension.
+// Outils « Cartes à compléter » : communes et rares (ou majestics et
+// légendaires) à moins de 3 exemplaires, toutes éditions confondues ou pour
+// une extension, avec leur prix.
 import { PITCH_COLORS, escapeHtml } from './core.js';
 import { showOnly } from './nav.js';
 import { showToast } from './moves.js';
@@ -28,13 +29,21 @@ const els = {
   rarities: $('#completion-rarities'),
   copy: $('#completion-copy'),
   list: $('#completion-list'),
+  tiers: $('#completion-tiers'),
+  modes: $('#completion-modes'),
 };
 
-const RARITY_LABELS = { common: 'Communes', rare: 'Rares' };
-const RARITY_CODES = { common: 'C', rare: 'R' };
+const RARITY_LABELS = { common: 'Communes', rare: 'Rares', majestic: 'Majestics', legendary: 'Légendaires' };
+const RARITY_CODES = { common: 'C', rare: 'R', majestic: 'M', legendary: 'L' };
+const TIER_RARITIES = { cr: ['common', 'rare'], ml: ['majestic', 'legendary'] };
+const TIER_TEXT = { cr: 'communes et rares', ml: 'majestics et légendaires' };
+
+const euros = (value) =>
+  value == null ? '—' : value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 
 /** Ce qui est affiché : mode, extension choisie, résultat, filtres. */
 const comp = {
+  tier: 'cr',
   mode: 'all',
   expansion: null,
   rows: [],
@@ -42,23 +51,28 @@ const comp = {
   target: 3,
 };
 
-function showCompletion(mode) {
-  if (comp.mode !== mode) {
+function showCompletion(mode, tier = comp.tier) {
+  if (comp.mode !== mode || comp.tier !== tier) {
     comp.rows = [];
+    comp.rarity = null;
     els.result.hidden = true;
     els.note.textContent = '';
   }
   comp.mode = mode;
+  comp.tier = tier;
   const byExpansion = mode === 'expansion';
+  const what = TIER_TEXT[tier];
   els.eyebrow.textContent = 'Cartes à compléter';
-  els.title.textContent = byExpansion ? 'Par extension' : 'Toutes éditions confondues';
+  els.title.textContent = `${what[0].toUpperCase()}${what.slice(1)}`;
   els.byline.textContent = byExpansion
-    ? "Les communes et rares d'une extension dont vous avez moins d'exemplaires que l'objectif, en ne comptant que l'impression de cette extension."
-    : "Les communes et rares dont vous avez moins d'exemplaires que l'objectif, en additionnant toutes leurs impressions (2 de Welcome to Rathe + 2 d'un deck Blitz = 4).";
+    ? `Les ${what} d'une extension dont vous avez moins d'exemplaires que l'objectif, en ne comptant que l'impression de cette extension.`
+    : `Les ${what} dont vous avez moins d'exemplaires que l'objectif, en additionnant toutes leurs impressions (2 de Welcome to Rathe + 2 d'un deck Blitz = 4).`;
   els.expansionField.hidden = !byExpansion;
   els.refresh.hidden = byExpansion;
+  for (const chip of els.tiers.querySelectorAll('[data-tier]')) chip.classList.toggle('is-active', chip.dataset.tier === tier);
+  for (const chip of els.modes.querySelectorAll('[data-mode]')) chip.classList.toggle('is-active', chip.dataset.mode === mode);
   renderExpansionButton();
-  showOnly(view);
+  if (view.hidden) showOnly(view);
 }
 
 function renderExpansionButton() {
@@ -69,7 +83,7 @@ function renderExpansionButton() {
 
 async function runCompletion({ refresh = false } = {}) {
   if (comp.mode === 'expansion' && !comp.expansion) return;
-  const params = new URLSearchParams({ target: els.target.value, gear: els.gear.checked ? '1' : '0' });
+  const params = new URLSearchParams({ tier: comp.tier, target: els.target.value, gear: els.gear.checked ? '1' : '0' });
   if (comp.mode === 'expansion') params.set('expansion', comp.expansion.id);
   if (refresh) params.set('refresh', '1');
 
@@ -83,7 +97,7 @@ async function runCompletion({ refresh = false } = {}) {
     comp.target = Number(els.target.value);
     els.note.textContent = data.catalogSize
       ? ''
-      : 'Aucune commune ni rare trouvée dans le catalogue CardNexus.';
+      : `Aucune carte (${TIER_TEXT[comp.tier]}) trouvée dans le catalogue CardNexus.`;
     els.result.hidden = false;
     renderResult();
   } catch (err) {
@@ -105,9 +119,16 @@ function visibleRows() {
 const classOf = (row) => (row.classes.length ? row.classes.join(' / ') : 'Sans classe');
 const firstPrinting = (row) => row.printings[0]?.expansion || 'Autres';
 
+// Prix décroissant ou croissant ; les cartes sans prix à la fin.
+const byPrice = (direction) => (a, b) =>
+  (a.price == null) - (b.price == null) || direction * ((a.price ?? 0) - (b.price ?? 0)) || a.name.localeCompare(b.name, 'en');
+
 function sections(rows) {
   const by = els.group.value;
   if (by === 'name') return [{ title: null, rows }];
+  if (by === 'price-desc' || by === 'price-asc') {
+    return [{ title: null, rows: rows.slice().sort(byPrice(by === 'price-desc' ? -1 : 1)) }];
+  }
   const keyOf = by === 'rarity' ? (row) => RARITY_LABELS[row.rarity] : by === 'expansion' ? firstPrinting : classOf;
   const groups = new Map();
   for (const row of rows) {
@@ -115,7 +136,10 @@ function sections(rows) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
-  const order = by === 'rarity' ? ['Communes', 'Rares'] : [...groups.keys()].sort((a, b) => a.localeCompare(b, 'fr'));
+  const order =
+    by === 'rarity'
+      ? Object.values(RARITY_LABELS)
+      : [...groups.keys()].sort((a, b) => a.localeCompare(b, 'fr'));
   return order.filter((key) => groups.has(key)).map((key) => ({ title: key, rows: groups.get(key) }));
 }
 
@@ -126,11 +150,12 @@ function renderResult() {
     plural(totals.cards, 'carte') + ' à compléter',
     plural(totals.missing, 'exemplaire') + ' manquant' + (totals.missing > 1 ? 's' : ''),
     plural(totals.absent, 'carte') + ' absente' + (totals.absent > 1 ? 's' : ''),
+    `≈ ${euros(totals.cost)} pour compléter` + (totals.unpriced ? ` (${totals.unpriced} sans prix)` : ''),
   ]
     .map((text) => `<li class="stat">${escapeHtml(text)}</li>`)
     .join('');
 
-  const present = ['common', 'rare'].filter((r) => comp.rows.some((row) => row.rarity === r));
+  const present = TIER_RARITIES[comp.tier].filter((r) => comp.rows.some((row) => row.rarity === r));
   const chip = (key, label) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -150,7 +175,7 @@ function renderList() {
     els.list.replaceChildren(
       Object.assign(document.createElement('p'), {
         className: 'move-note',
-        textContent: `Rien à compléter : vous avez au moins ${comp.target} exemplaire${comp.target > 1 ? 's' : ''} de chaque commune et rare (1 pour les héros, armes et équipements).`,
+        textContent: `Rien à compléter : vous avez au moins ${comp.target} exemplaire${comp.target > 1 ? 's' : ''} de chaque carte (${TIER_TEXT[comp.tier]}), et 1 pour les héros, armes et équipements.`,
       }),
     );
     return;
@@ -165,10 +190,11 @@ function renderList() {
       section.className = 'picker';
       if (title) {
         const missing = group.reduce((sum, row) => sum + row.missing, 0);
+        const cost = group.reduce((sum, row) => sum + (row.price ?? 0) * row.missing, 0);
         section.innerHTML = `
           <div class="section-head">
             <h2>${escapeHtml(title)}</h2>
-            <span class="section-count">${group.length} · −${missing}</span>
+            <span class="section-count">${group.length} · −${missing} · ${escapeHtml(euros(Math.round(cost * 100) / 100))}</span>
           </div>
         `;
       }
@@ -195,24 +221,32 @@ function rowNode(row) {
       <span class="completion-meta">${escapeHtml(meta)}</span>
     </span>
     <span class="completion-count">${row.owned} / ${row.target}</span>
+    <span class="completion-price${row.price == null ? ' is-unknown' : ''}" title="Prix Cardmarket, l'unité">${escapeHtml(euros(row.price))}</span>
     <span class="completion-missing">−${row.missing}</span>
   `;
   return li;
 }
 
-/** La liste en texte : « 2x Sink Below (rouge) », pour un achat ou un échange. */
+/** La liste en texte : « 2x Sink Below (rouge) — 0,25 € », pour un achat ou un échange. */
 function completionAsText() {
-  const rows = visibleRows();
-  const head =
-    comp.mode === 'expansion' && comp.expansion
-      ? `Cartes à compléter — ${comp.expansion.name}`
-      : 'Cartes à compléter — toutes éditions';
-  return [head, '', ...rows.map((row) => `${row.missing}x ${cardLabel(row)}`)].join('\n');
+  const rows = sections(visibleRows()).flatMap((section) => section.rows);
+  const where = comp.mode === 'expansion' && comp.expansion ? comp.expansion.name : 'toutes éditions';
+  const head = `Cartes à compléter (${TIER_TEXT[comp.tier]}) — ${where}`;
+  const price = (row) => (row.price == null ? '' : ` — ${euros(row.price)}`);
+  return [head, '', ...rows.map((row) => `${row.missing}x ${cardLabel(row)}${price(row)}`)].join('\n');
 }
 
 // --- Événements -------------------------------------------------------------------
 
 els.run.addEventListener('click', () => runCompletion());
+els.tiers.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-tier]');
+  if (chip && chip.dataset.tier !== comp.tier) showCompletion(comp.mode, chip.dataset.tier);
+});
+els.modes.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-mode]');
+  if (chip && chip.dataset.mode !== comp.mode) showCompletion(chip.dataset.mode, comp.tier);
+});
 els.refresh.addEventListener('click', () => runCompletion({ refresh: true }));
 els.expansion.addEventListener('click', async () => {
   try {

@@ -77,6 +77,10 @@
             <b>Communes et rares à compléter</b>
             <span>Celles dont vous avez moins de 3 exemplaires, toutes éditions confondues</span>
           </button>
+          <button type="button" class="tool-card" id="tool-completion-ml">
+            <b>Majestics et légendaires à compléter</b>
+            <span>Celles qui vous manquent, avec leur prix, toutes éditions confondues ou par extension</span>
+          </button>
           <button type="button" class="tool-card" id="tool-completion-set">
             <b>À compléter, par extension</b>
             <span>Les communes et rares d'une extension dont il vous manque des exemplaires</span>
@@ -419,6 +423,15 @@
           <p class="byline" id="completion-byline"></p>
         </header>
 
+        <div class="segmented completion-tiers" id="completion-tiers" role="group" aria-label="Raretés">
+          <button type="button" class="chip is-active" data-tier="cr">Communes et rares</button>
+          <button type="button" class="chip" data-tier="ml">Majestics et légendaires</button>
+        </div>
+        <div class="segmented completion-modes" id="completion-modes" role="group" aria-label="Recensement">
+          <button type="button" class="chip is-active" data-mode="all">Toutes éditions</button>
+          <button type="button" class="chip" data-mode="expansion">Par extension</button>
+        </div>
+
         <div class="build-setup import-setup">
           <div class="field import-expansion-field" id="completion-expansion-field" hidden>
             <span id="completion-expansion-label">Extension</span>
@@ -457,6 +470,8 @@
               <option value="rarity">Par rareté</option>
               <option value="expansion">Par extension</option>
               <option value="name">Par nom</option>
+              <option value="price-desc">Prix décroissant</option>
+              <option value="price-asc">Prix croissant</option>
             </select>
           </div>
           <div class="collection-kinds" id="completion-rarities" role="group" aria-label="Raretés"></div>

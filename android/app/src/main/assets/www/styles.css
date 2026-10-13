@@ -2854,3 +2854,26 @@ body.has-importbar .toast {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+.completion-tiers,
+.completion-modes {
+  margin-top: 14px;
+  max-width: none;
+}
+
+.completion-modes {
+  margin-top: 8px;
+}
+
+.completion-price {
+  flex: none;
+  min-width: 58px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.completion-price.is-unknown {
+  color: var(--text-faint);
+}
