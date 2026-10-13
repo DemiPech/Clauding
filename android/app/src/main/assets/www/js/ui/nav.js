@@ -61,7 +61,7 @@ function updateAppBar() {
   else if (current === els.build) title = els.buildEyebrow.textContent.startsWith('Comparer') ? 'Comparer' : 'Monter un deck';
   else if (current === els.tidy) title = 'Ranger les vracs';
   else if (current === importView) title = 'Importer';
-  else if (current === completionView) title = 'À compléter';
+  else if (current === completionView) title = 'Cartes à compléter';
   else if (current === els.loading) title = 'Chargement…';
   else if (current === els.error) title = 'Indisponible';
   els.appTitle.textContent = title;

@@ -38,7 +38,7 @@ import { readCollectionCache } from './ui/collection-cache.js';
 import { listenForProgress } from './ui/progress-view.js';
 import { closeExpansionSheet, importView, showImport } from './ui/import-view.js';
 import { listenForListHistory } from './ui/list-history.js';
-import { completionView, showCompletion } from './ui/completion-view.js';
+import { closeChoiceSheet, completionView, showCompletion } from './ui/completion-view.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -49,6 +49,7 @@ import { completionView, showCompletion } from './ui/completion-view.js';
 window.__appBack = () => {
   if (!els.settings.hidden) return closeSettings(), true;
   if (!document.querySelector('#expansion-sheet').hidden) return closeExpansionSheet(), true;
+  if (!document.querySelector('#choice-sheet').hidden) return closeChoiceSheet(), true;
   if (!els.compare.hidden) return closeCompare(), true;
   if (!els.actions.hidden) return closeActions(), true;
   if (!els.confirm.hidden) return closeConfirm(false), true;
@@ -131,9 +132,7 @@ els.toolBuild.addEventListener('click', () => {
 });
 els.toolCompare.addEventListener('click', () => openCompare({ pick: true }));
 document.querySelector('#tool-import').addEventListener('click', showImport);
-document.querySelector('#tool-completion').addEventListener('click', () => showCompletion('all', 'cr'));
-document.querySelector('#tool-completion-ml').addEventListener('click', () => showCompletion('all', 'ml'));
-document.querySelector('#tool-completion-set').addEventListener('click', () => showCompletion('expansion', 'cr'));
+document.querySelector('#tool-completion').addEventListener('click', () => showCompletion());
 els.historyTabs.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-history-tab]');
   if (chip) setHistoryTab(chip.dataset.historyTab);

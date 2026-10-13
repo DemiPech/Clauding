@@ -26,7 +26,7 @@ test('toutes éditions confondues : les réimpressions s’additionnent', async 
   });
   await page.click('[data-tab="tools"]');
   await page.click('#tool-completion');
-  assert.equal(await page.textContent('#app-title'), 'À compléter');
+  assert.equal(await page.textContent('#app-title'), 'Cartes à compléter');
   assert.equal(await page.isVisible('#completion-expansion-field'), false);
   await page.click('#completion-run');
   await page.waitForSelector('#completion-result:not([hidden])');
@@ -66,7 +66,9 @@ test('par extension : seule l’impression de l’extension compte', async () =>
     rarity: RARITY,
   });
   await page.click('[data-tab="tools"]');
-  await page.click('#tool-completion-set');
+  await page.click('#tool-completion');
+  await page.click('#completion-modes [data-mode="expansion"]');
+  assert.equal(await page.isVisible('#completion-expansion-field'), true);
   assert.equal(await page.isDisabled('#completion-run'), true, 'il faut choisir une extension');
   await page.click('#completion-expansion');
   await page.click('#expansion-groups [data-expansion="8"]');
@@ -101,7 +103,8 @@ test('majestics et légendaires : prix, coût total et tri par prix', async () =
     prices: { p4: 45, p5: 12.5, e5: 8.2 },
   });
   await page.click('[data-tab="tools"]');
-  await page.click('#tool-completion-ml');
+  await page.click('#tool-completion');
+  await page.click('#completion-tiers [data-tier="ml"]');
   assert.equal(await page.textContent('#completion-title'), 'Majestics et légendaires');
   await page.click('#completion-run');
   await page.waitForSelector('#completion-result:not([hidden])');
@@ -167,11 +170,45 @@ test('catalogue Card Vault : toutes les cartes, prix CardNexus', async () => {
   await page.selectOption('#completion-group', 'class');
   assert.deepEqual(await texts(page, '#completion-list h2'), ['Brute', 'Generic', 'Pirate']);
 
+  // Filtre de classes : n'en garder que quelques-unes.
+  await page.selectOption('#completion-group', 'name');
+  await page.click('#completion-classes');
+  assert.equal(await page.textContent('#choice-sheet-title'), 'Classes');
+  assert.deepEqual(await texts(page, '.choice-label'), ['Brute', 'Generic', 'Pirate']);
+  assert.deepEqual(await texts(page, '.choice-count'), ['1', '2', '1']);
+  await page.check('.choice-option input[value="Pirate"]');
+  await page.check('.choice-option input[value="Brute"]');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Beast Mode', 'Jolly Roger']);
+  await back(page);
+  assert.equal(await page.isVisible('#choice-sheet'), false, 'retour : ferme la feuille');
+  assert.equal(await page.textContent('#completion-classes'), 'Classes : Pirate, Brute');
+
+  // Filtre d'extensions, nommées d'après CardNexus quand elle les connaît.
+  await page.click('#completion-expansions');
+  assert.deepEqual(await texts(page, '.choice-label'), ['Heavy Hitters', 'SEA']);
+  await page.check('.choice-option input[value="SEA"]');
+  await page.click('#choice-close');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Jolly Roger']);
+  assert.equal(await page.textContent('#completion-expansions'), 'Extensions : SEA');
+  await page.click('#completion-expansions');
+  await page.click('#choice-all');
+  await page.click('#choice-close');
+  assert.deepEqual(await texts(page, '.completion-name'), ['Beast Mode', 'Jolly Roger']);
+
   // Gardé une semaine : une seconde recherche ne relit ni Card Vault ni CardNexus.
   const calls = await page.evaluate(() => [window.__cardVaultCalls, window.__catalogCalls]);
   await page.click('#completion-run');
   await page.waitForSelector('#completion-result:not([hidden])');
   assert.deepEqual(await page.evaluate(() => [window.__cardVaultCalls, window.__catalogCalls]), calls);
+
+  // Un seul outil : il se rouvre sur le palier, le mode et les classes choisis.
+  await page.click('#completion-tiers [data-tier="ml"]');
+  await page.reload();
+  await page.waitForSelector('#places:not([hidden])');
+  await page.click('[data-tab="tools"]');
+  await page.click('#tool-completion');
+  assert.equal(await page.textContent('#completion-title'), 'Majestics et légendaires');
+  assert.equal(await page.textContent('#completion-classes'), 'Classes : Pirate, Brute');
   assert.deepEqual(errors, []);
   await context.close();
 });

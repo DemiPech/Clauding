@@ -1,6 +1,6 @@
-// Outils « Cartes à compléter » : communes et rares (ou majestics et
+// Outil « Cartes à compléter » : communes et rares (ou majestics et
 // légendaires) à moins de 3 exemplaires, toutes éditions confondues ou pour
-// une extension, avec leur prix.
+// une extension, avec leur prix ; filtres par rareté, classe et extension.
 import { PITCH_COLORS, escapeHtml } from './core.js';
 import { showOnly } from './nav.js';
 import { showToast } from './moves.js';
@@ -31,6 +31,15 @@ const els = {
   list: $('#completion-list'),
   tiers: $('#completion-tiers'),
   modes: $('#completion-modes'),
+  classes: $('#completion-classes'),
+  expansions: $('#completion-expansions'),
+  sheet: $('#choice-sheet'),
+  sheetTitle: $('#choice-sheet-title'),
+  sheetClose: $('#choice-close'),
+  sheetFilter: $('#choice-filter'),
+  sheetAll: $('#choice-all'),
+  sheetSummary: $('#choice-summary'),
+  sheetList: $('#choice-list'),
 };
 
 const RARITY_LABELS = { common: 'Communes', rare: 'Rares', majestic: 'Majestics', legendary: 'Légendaires' };
@@ -41,25 +50,59 @@ const TIER_TEXT = { cr: 'communes et rares', ml: 'majestics et légendaires' };
 const euros = (value) =>
   value == null ? '—' : value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 
-/** Ce qui est affiché : mode, extension choisie, résultat, filtres. */
+const PREFS_STORAGE = 'completion_prefs';
+
+function readPrefs() {
+  try {
+    const prefs = JSON.parse(localStorage.getItem(PREFS_STORAGE)) || {};
+    return {
+      tier: TIER_RARITIES[prefs.tier] ? prefs.tier : 'cr',
+      mode: prefs.mode === 'expansion' ? 'expansion' : 'all',
+      classes: Array.isArray(prefs.classes) ? prefs.classes : [],
+    };
+  } catch {
+    return { tier: 'cr', mode: 'all', classes: [] };
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_STORAGE, JSON.stringify({ tier: comp.tier, mode: comp.mode, classes: [...comp.classes] }));
+  } catch {
+    // Pas de stockage : l'outil repartira des réglages par défaut.
+  }
+}
+
+const prefs = readPrefs();
+
+/**
+ * Ce qui est affiché : palier, mode, extension choisie, résultat, filtres.
+ * `classes` et `expansions` : les valeurs retenues (vide = toutes).
+ */
 const comp = {
-  tier: 'cr',
-  mode: 'all',
+  tier: prefs.tier,
+  mode: prefs.mode,
   expansion: null,
   rows: [],
   rarity: null,
   target: 3,
+  classes: new Set(prefs.classes),
+  expansions: new Set(),
+  expansionNames: new Map(),
 };
 
-function showCompletion(mode, tier = comp.tier) {
+/** Ouvre l'outil, sur le palier et le mode demandés ou sur les derniers utilisés. */
+function showCompletion(mode = comp.mode, tier = comp.tier) {
   if (comp.mode !== mode || comp.tier !== tier) {
     comp.rows = [];
     comp.rarity = null;
+    comp.expansions.clear();
     els.result.hidden = true;
     els.note.textContent = '';
   }
   comp.mode = mode;
   comp.tier = tier;
+  savePrefs();
   const byExpansion = mode === 'expansion';
   const what = TIER_TEXT[tier];
   els.eyebrow.textContent = 'Cartes à compléter';
@@ -69,9 +112,11 @@ function showCompletion(mode, tier = comp.tier) {
     : `Les ${what} dont vous avez moins d'exemplaires que l'objectif, en additionnant toutes leurs impressions (2 de Welcome to Rathe + 2 d'un deck Blitz = 4).`;
   els.expansionField.hidden = !byExpansion;
   els.refresh.hidden = byExpansion;
+  els.expansions.hidden = byExpansion;
   for (const chip of els.tiers.querySelectorAll('[data-tier]')) chip.classList.toggle('is-active', chip.dataset.tier === tier);
   for (const chip of els.modes.querySelectorAll('[data-mode]')) chip.classList.toggle('is-active', chip.dataset.mode === mode);
   renderExpansionButton();
+  renderChoiceButtons();
   if (view.hidden) showOnly(view);
 }
 
@@ -103,6 +148,7 @@ async function runCompletion({ refresh = false } = {}) {
         : '';
     els.result.hidden = false;
     renderResult();
+    loadExpansionNames();
   } catch (err) {
     els.note.textContent = err.message;
   } finally {
@@ -112,17 +158,34 @@ async function runCompletion({ refresh = false } = {}) {
 
 // --- Résultat ---------------------------------------------------------------------
 
+// Une carte sans classe (« Shadow Action ») se range sous son talent.
+const NO_CLASS = 'Sans classe';
+const rowClasses = (row) => (row.classes.length ? row.classes : row.talents.length ? row.talents : [NO_CLASS]);
+const classOf = (row) => rowClasses(row).join(' / ');
+const rowExpansions = (row) => [...new Set(row.printings.map((p) => p.expansion).filter(Boolean))];
+const expansionLabel = (code) => comp.expansionNames.get(code) || code;
+const firstPrinting = (row) => (row.printings[0]?.expansion ? expansionLabel(row.printings[0].expansion) : 'Autres');
+
+/** Les filtres de classe et d'extension (vide = toutes). */
+const CHOICES = {
+  classes: { title: 'Classes', all: 'toutes', of: rowClasses, label: (value) => value, active: () => comp.classes },
+  expansions: { title: 'Extensions', all: 'toutes', of: rowExpansions, label: expansionLabel, active: () => comp.expansions },
+};
+const matches = (kind, row) => {
+  const chosen = CHOICES[kind].active();
+  return !chosen.size || CHOICES[kind].of(row).some((value) => chosen.has(value));
+};
+
 function visibleRows() {
   const text = els.filter.value.trim().toLowerCase();
   return comp.rows.filter(
-    (row) => (!comp.rarity || row.rarity === comp.rarity) && (!text || row.name.toLowerCase().includes(text)),
+    (row) =>
+      (!comp.rarity || row.rarity === comp.rarity) &&
+      (!text || row.name.toLowerCase().includes(text)) &&
+      matches('classes', row) &&
+      (comp.mode === 'expansion' || matches('expansions', row)),
   );
 }
-
-// Une carte sans classe (« Shadow Action ») se range sous son talent.
-const classOf = (row) =>
-  row.classes.length ? row.classes.join(' / ') : row.talents.length ? row.talents.join(' / ') : 'Sans classe';
-const firstPrinting = (row) => row.printings[0]?.expansion || 'Autres';
 
 // Prix décroissant ou croissant ; les cartes sans prix à la fin.
 const byPrice = (direction) => (a, b) =>
@@ -171,7 +234,107 @@ function renderResult() {
     return button;
   };
   els.rarities.replaceChildren(chip(null, 'Toutes'), ...present.map((r) => chip(r, RARITY_LABELS[r])));
+  renderChoiceButtons();
   renderList();
+}
+
+// --- Filtres par classe et par extension ------------------------------------------
+
+function renderChoiceButtons() {
+  for (const [kind, button] of [['classes', els.classes], ['expansions', els.expansions]]) {
+    const choice = CHOICES[kind];
+    const chosen = [...choice.active()];
+    const text = !chosen.length
+      ? choice.all
+      : chosen.length <= 2
+        ? chosen.map(choice.label).join(', ')
+        : `${chosen.length} choisies`;
+    button.textContent = `${choice.title} : ${text}`;
+    button.classList.toggle('is-filtered', chosen.length > 0);
+  }
+}
+
+let choiceKind = null;
+
+function openChoiceSheet(kind) {
+  choiceKind = kind;
+  els.sheetTitle.textContent = CHOICES[kind].title;
+  els.sheetFilter.value = '';
+  renderChoices();
+  els.sheet.hidden = false;
+}
+
+function closeChoiceSheet() {
+  els.sheet.hidden = true;
+  choiceKind = null;
+}
+
+/** Les valeurs présentes dans le résultat, avec le nombre de cartes de chacune. */
+function choiceOptions(kind) {
+  const counts = new Map();
+  for (const row of comp.rows) {
+    for (const value of CHOICES[kind].of(row)) counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  // Une valeur retenue absente du résultat reste visible, pour pouvoir la décocher.
+  for (const value of CHOICES[kind].active()) if (!counts.has(value)) counts.set(value, 0);
+  const label = CHOICES[kind].label;
+  return [...counts]
+    .map(([value, count]) => ({ value, count, label: label(value) }))
+    .sort((a, b) => (a.value === NO_CLASS) - (b.value === NO_CLASS) || a.label.localeCompare(b.label, 'fr'));
+}
+
+function renderChoices() {
+  const kind = choiceKind;
+  if (!kind) return;
+  const chosen = CHOICES[kind].active();
+  const text = els.sheetFilter.value.trim().toLowerCase();
+  const options = choiceOptions(kind).filter((option) => !text || option.label.toLowerCase().includes(text));
+  els.sheetSummary.textContent = chosen.size ? `${chosen.size} choisie${chosen.size > 1 ? 's' : ''}` : 'Toutes affichées';
+  els.sheetAll.disabled = !chosen.size;
+  if (!options.length) {
+    els.sheetList.replaceChildren(
+      Object.assign(document.createElement('li'), { className: 'move-note', textContent: 'Aucun choix ne correspond.' }),
+    );
+    return;
+  }
+  els.sheetList.replaceChildren(
+    ...options.map((option) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <label class="choice-option">
+          <input type="checkbox" value="${escapeHtml(option.value)}"${chosen.has(option.value) ? ' checked' : ''} />
+          <span class="choice-label">${escapeHtml(option.label)}</span>
+          <span class="choice-count">${option.count}</span>
+        </label>
+      `;
+      return li;
+    }),
+  );
+}
+
+function applyChoices() {
+  if (choiceKind === 'classes') savePrefs();
+  renderChoices();
+  renderChoiceButtons();
+  renderList();
+}
+
+/** Les noms des extensions (CardNexus), pour afficher « Heavy Hitters » plutôt que HVY. */
+async function loadExpansionNames() {
+  if (comp.expansionNames.size) return;
+  try {
+    const res = await fetch('/api/cardnexus/expansions', { background: true });
+    const list = await res.json();
+    if (!res.ok || !Array.isArray(list)) return;
+    for (const exp of list) if (exp.code && exp.name) comp.expansionNames.set(exp.code, exp.name);
+    if (!els.result.hidden) {
+      renderChoiceButtons();
+      renderChoices();
+      renderList();
+    }
+  } catch {
+    // Sans les noms, les codes d'extension.
+  }
 }
 
 function renderList() {
@@ -270,6 +433,26 @@ els.expansion.addEventListener('click', async () => {
   }
 });
 els.filter.addEventListener('input', renderList);
+for (const button of [els.classes, els.expansions]) {
+  button.addEventListener('click', () => openChoiceSheet(button.dataset.choice));
+}
+els.sheetClose.addEventListener('click', closeChoiceSheet);
+els.sheet.addEventListener('click', (event) => {
+  if (event.target === els.sheet) closeChoiceSheet();
+});
+els.sheetFilter.addEventListener('input', renderChoices);
+els.sheetAll.addEventListener('click', () => {
+  CHOICES[choiceKind].active().clear();
+  applyChoices();
+});
+els.sheetList.addEventListener('change', (event) => {
+  const box = event.target.closest('input[type="checkbox"]');
+  if (!box || !choiceKind) return;
+  const chosen = CHOICES[choiceKind].active();
+  if (box.checked) chosen.add(box.value);
+  else chosen.delete(box.value);
+  applyChoices();
+});
 els.group.addEventListener('change', renderList);
 els.rarities.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-rarity]');
@@ -286,4 +469,4 @@ els.copy.addEventListener('click', async () => {
   }
 });
 
-export { showCompletion, view as completionView };
+export { closeChoiceSheet, showCompletion, view as completionView };

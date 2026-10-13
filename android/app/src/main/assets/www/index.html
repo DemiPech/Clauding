@@ -74,16 +74,8 @@
             <span>Ajouter un booster ou un achat : choisir l'extension, puis toucher chaque carte</span>
           </button>
           <button type="button" class="tool-card" id="tool-completion">
-            <b>Communes et rares à compléter</b>
-            <span>Celles dont vous avez moins de 3 exemplaires, toutes éditions confondues</span>
-          </button>
-          <button type="button" class="tool-card" id="tool-completion-ml">
-            <b>Majestics et légendaires à compléter</b>
-            <span>Celles qui vous manquent, avec leur prix, toutes éditions confondues ou par extension</span>
-          </button>
-          <button type="button" class="tool-card" id="tool-completion-set">
-            <b>À compléter, par extension</b>
-            <span>Les communes et rares d'une extension dont il vous manque des exemplaires</span>
+            <b>Cartes à compléter</b>
+            <span>Communes et rares, majestics et légendaires qui vous manquent, toutes éditions ou par extension, avec leur prix</span>
           </button>
           <button type="button" class="tool-card" id="open-tidy">
             <b>Ranger les vracs</b>
@@ -419,7 +411,7 @@
       <section id="completion" hidden>
         <header class="build-head">
           <p class="eyebrow" id="completion-eyebrow">Cartes à compléter</p>
-          <h1 id="completion-title">Toutes éditions confondues</h1>
+          <h1 id="completion-title">Communes et rares</h1>
           <p class="byline" id="completion-byline"></p>
         </header>
 
@@ -454,7 +446,7 @@
           <div class="completion-actions">
             <button type="button" class="primary-btn" id="completion-run">Recenser</button>
             <button type="button" class="link-btn" id="completion-refresh"
-              title="Relire le catalogue CardNexus (gardé 7 jours)">Relire le catalogue</button>
+              title="Relire le catalogue Card Vault et les prix CardNexus (gardés 7 jours)">Relire le catalogue</button>
           </div>
         </div>
 
@@ -475,6 +467,10 @@
             </select>
           </div>
           <div class="collection-kinds" id="completion-rarities" role="group" aria-label="Raretés"></div>
+          <div class="completion-filters">
+            <button type="button" class="picker-btn" id="completion-classes" data-choice="classes">Classes : toutes</button>
+            <button type="button" class="picker-btn" id="completion-expansions" data-choice="expansions">Extensions : toutes</button>
+          </div>
           <div class="pickup-actions">
             <button type="button" class="link-btn" id="completion-copy">Copier la liste</button>
           </div>
@@ -738,6 +734,22 @@
           autocomplete="off"
         />
         <div class="expansion-groups" id="expansion-groups"></div>
+      </div>
+    </div>
+
+    <div class="sheet-backdrop" id="choice-sheet" hidden>
+      <div class="sheet expansion-sheet" role="dialog" aria-labelledby="choice-sheet-title">
+        <div class="sheet-head">
+          <h2 id="choice-sheet-title">Classes</h2>
+          <button type="button" class="icon-btn" id="choice-close" aria-label="Fermer">×</button>
+        </div>
+        <input class="collection-filter" id="choice-filter" type="search" placeholder="Filtrer…"
+          aria-label="Filtrer les choix" autocomplete="off" />
+        <div class="choice-actions">
+          <button type="button" class="link-btn" id="choice-all">Toutes</button>
+          <span class="choice-summary" id="choice-summary"></span>
+        </div>
+        <ul class="choice-list" id="choice-list"></ul>
       </div>
     </div>
 

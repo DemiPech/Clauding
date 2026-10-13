@@ -202,9 +202,10 @@ Outils → **Importer des cartes**, pour saisir un booster ou un achat :
 
 ## Cartes à compléter
 
-Ces outils (onglet Outils) recensent les cartes dont vous avez moins d'exemplaires que
-l'objectif (3 par défaut, de 1 à 4), pour deux paliers de rareté au choix : **communes et
-rares**, ou **majestics et légendaires**. Deux modes :
+Cet outil (onglet Outils, « Cartes à compléter ») recense les cartes dont vous avez moins
+d'exemplaires que l'objectif (3 par défaut, de 1 à 4). Deux sélecteurs en haut de l'écran
+choisissent le palier de rareté (**communes et rares**, ou **majestics et légendaires**) et le
+mode ; l'outil se rouvre sur les derniers choisis. Deux modes :
 
 - **Toutes éditions confondues** : une carte = un nom + un pitch. Toutes ses impressions
   s'additionnent : 2 Sink Below d'un deck Blitz + 2 de Welcome to Rathe = 4. Les impressions
@@ -215,8 +216,10 @@ rares**, ou **majestics et légendaires**. Deux modes :
 
 Les tokens, basiques et raretés supérieures sont exclus. Les héros, armes et équipements ont un
 objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté, extension ou nom, se trie par prix
-(décroissant ou croissant), se filtre par rareté ou par nom, et se copie en texte
-(« 2x Sink Below (rouge) — 0,25 € »).
+(décroissant ou croissant), se filtre par rareté, par nom, et par **classes** et **extensions** :
+une liste à cocher (avec le nombre de cartes de chacune) n'en garde que quelques-unes ; rien de
+coché = toutes. Une carte sans classe se range sous son talent. Les classes retenues sont
+gardées d'une fois sur l'autre. Le résultat se copie en texte (« 2x Sink Below (rouge) — 0,25 € »).
 
 **Prix** : la valeur de marché Cardmarket (euros) donnée par le catalogue CardNexus, en finition
 Standard (sinon la moins chère des finitions), et pour une carte la moins chère de ses
@@ -345,7 +348,7 @@ app/src/main/assets/www/
     history.js                            onglet Historique, photos de la collection
     import-view.js                        importer des cartes d'une extension
     list-history.js                       listes consultées (onglet Chercher)
-    completion-view.js                    cartes à compléter (communes et rares)
+    completion-view.js                    cartes à compléter (paliers, modes, filtres)
     progress-view.js                      barre de progression en haut
     collection-cache.js                   liste gardée pour le démarrage instantané
   js/tidy.js, js/snapshots.js             calculs sans réseau (rangement, photos)
