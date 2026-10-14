@@ -78,3 +78,21 @@ test('suggestion : tout prendre dans un deck qui contient déjà la liste', asyn
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('nom ponctué : slug et identifiant CardNexus différents, exemplaires trouvés quand même', async () => {
+  const { page, context, errors } = await openApp({
+    inv: [line('h1', 'p4', 1, 'Binder'), line('r1', 'p1', 3, 'Binder'), line('b1', 'p2', 2, 'Binder'), line('s1', 'p3', 2, 'Binder'), line('w1', 'q3', 6, 'Vrac 1')],
+    locations: [place('Binder'), place('Vrac 1')],
+  });
+  await page.evaluate(() => { window.__mockExtraDeck = [['What Happens Next?', 3, 3]]; });
+  await computeBuild(page, 'Nouveau deck');
+  const row = page.locator('#build-rows > li').filter({ hasText: 'What Happens Next?' });
+  assert.doesNotMatch(await row.textContent(), /manque/);
+  assert.equal(await page.textContent('#build-pickup-count'), '2 endroits · 11 cartes');
+  // Recherche par slug sans résultat, puis par nom.
+  const searches = await page.evaluate(() => window.__requests.filter((r) => /inventory\/search/.test(r.url)).map((r) => JSON.parse(r.body)));
+  assert.ok(searches.some((b) => b.nameSlug === 'what-happens-next'));
+  assert.ok(searches.some((b) => b.name === 'What Happens Next?'));
+  assert.deepEqual(errors, []);
+  await context.close();
+});

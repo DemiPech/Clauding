@@ -418,6 +418,18 @@ const mergeKey = (product) =>
 const cleanName = (name) => name.replace(/\s*\((Red|Yellow|Blue)\)\s*$/i, '');
 
 /**
+ * La cle d'un produit parmi celles d'une liste (`keys`) : son fabId, sinon
+ * son nom + pitch. Le fabId de CardNexus ne suit pas toujours notre slug
+ * (ponctuation, carte renommee) ; le nom, lui, est le meme des deux cotes.
+ */
+function keyAmong(product, keys) {
+  const key = mergeKey(product);
+  if (keys.has(key)) return key;
+  const byName = fabKey(cleanName(product.name), product.attributes?.pitch);
+  return keys.has(byName) ? byName : key;
+}
+
+/**
  * Une ligne d'inventaire telle que l'interface la manipule. `inventoryId` est
  * ce qui identifie la ligne a deplacer : c'est la vraie granularite de l'API,
  * plus fine que la carte affichee.
@@ -758,19 +770,28 @@ export function forgetInventorySearches() {
   slugCache.clear();
 }
 
-/** Toutes les lignes de l'inventaire pour ce slug, pitchs confondus. */
-async function linesForSlug(nameSlug) {
+/**
+ * Toutes les lignes de l'inventaire pour ce slug, pitchs confondus. Le slug
+ * de CardNexus peut differer du notre sur un nom ponctue (« What Happens
+ * Next? ») : sans resultat, on cherche le nom en texte libre (`name`). Les
+ * lignes d'autres cartes que cette recherche ramene sont ecartees ensuite,
+ * au rapprochement par cle.
+ */
+async function linesForSlug(nameSlug, name = null) {
   const hit = slugCache.get(nameSlug);
   if (hit && hit.expiresAt > Date.now()) return hit.lines;
 
-  const lines = [];
-  for (let offset = 0; offset < 2000; offset += SEARCH_PAGE) {
-    const res = await call((cn) =>
-      cn.lines.search({ nameSlug, limit: SEARCH_PAGE, offset, gameFilters: { game: 'fab' } }),
-    );
-    lines.push(...(res.data || []));
-    if (!res.pagination?.hasMore) break;
-  }
+  const searchAll = async (filter) => {
+    const found = [];
+    for (let offset = 0; offset < 2000; offset += SEARCH_PAGE) {
+      const res = await call((cn) => cn.lines.search({ ...filter, limit: SEARCH_PAGE, offset, gameFilters: { game: 'fab' } }));
+      found.push(...(res.data || []));
+      if (!res.pagination?.hasMore) break;
+    }
+    return found;
+  };
+  let lines = await searchAll({ nameSlug });
+  if (!lines.length && name) lines = await searchAll({ name });
 
   slugCache.set(nameSlug, { lines, expiresAt: Date.now() + SLUG_CACHE_TTL_MS });
   return lines;
@@ -999,13 +1020,14 @@ async function surplusInLocation(wanted, destination, progress = silent) {
   const products = await resolveProducts(lines.map((l) => l.productId), progress.sub(0.6, 1));
 
   const wantedByKey = new Map(wanted.map((card) => [fabKey(card.name, card.pitch), card.quantity]));
+  const wantedKeys = new Set(wantedByKey.keys());
 
   const groups = new Map();
   for (const line of lines) {
     const product = products.get(line.productId);
     if (!product) continue;
 
-    const key = mergeKey(product);
+    const key = keyAmong(product, wantedKeys);
     if (!groups.has(key)) groups.set(key, { product, lines: [] });
     groups.get(key).lines.push(describeLine(line, product));
   }
@@ -1081,12 +1103,12 @@ export async function planDeckBuild(
   }
   const wanted = mergeWanted(rawWanted);
 
-  const slugs = [...new Set(wanted.map((card) => slugifyName(card.name)))];
+  const slugs = [...new Map(wanted.map((card) => [slugifyName(card.name), card.name])).entries()];
   // Une recherche par nom de carte : c'est l'essentiel de l'attente.
   const searching = progress.sub(0, 0.8);
   let searched = 0;
-  const pages = await mapWithConcurrency(slugs, 3, async (slug) => {
-    const lines = await linesForSlug(slug);
+  const pages = await mapWithConcurrency(slugs, 3, async ([slug, name]) => {
+    const lines = await linesForSlug(slug, name);
     searched += 1;
     searching.report(searched / slugs.length, `${searched} / ${slugs.length} cartes cherchées`);
     return lines;
@@ -1097,13 +1119,17 @@ export async function planDeckBuild(
   const deckLocations = new Set((await listDeckLocations()).map((l) => l.name));
   progress.report(0.92);
 
-  // Lignes disponibles, rangees par cle de carte.
+  // Lignes disponibles, rangees par cle de carte (une ligne ramenee deux fois
+  // par deux recherches ne compte qu'une fois).
+  const wantedKeys = new Set(wanted.map((card) => fabKey(card.name, card.pitch)));
   const byKey = new Map();
+  const seen = new Set();
   for (const line of allLines) {
     const product = products.get(line.productId);
-    if (!product) continue;
+    if (!product || seen.has(line.id)) continue;
+    seen.add(line.id);
 
-    const key = mergeKey(product);
+    const key = keyAmong(product, wantedKeys);
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push({ ...describeLine(line, product), imageUrl: product.imageUrl });
   }

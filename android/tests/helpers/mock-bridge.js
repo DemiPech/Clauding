@@ -17,6 +17,8 @@
     P('p4', 'Dorinthea Ironsong', 'dorinthea-ironsong', 'dorinthea-ironsong', null, ['Hero']),
     P('p5', 'Enlightened Strike (Red)', 'enlightened-strike', 'enlightened-strike-1', 1, ['Action'], ['Attack']),
     P('pk1', 'Pikachu', 'pikachu', null, null, ['Pokemon']),
+    // Nom ponctué : slug et fabId CardNexus différents des nôtres (« what-happens-next »).
+    P('q3', 'What Happens Next? (Blue)', 'what-happens-next-', 'what-happens-next?-3', 3, ['Action']),
   ];
   // Une extension a importer : « Heavy Hitters » (id 7), raretes et finitions variees.
   const E = (id, name, slug, pitch, rarity, printNumber, finishes, attrs = {}) => {
@@ -115,7 +117,9 @@
         // Comme le vrai FaBrary : getCard est non nul, une carte inconnue annule tout le lot.
         return errors.length ? { data: null, errors } : { data };
       }
-      return { data: { getDeck: fabDeck } };
+      // __mockExtraDeck : [nom, pitch, quantité] ajoutés à la liste.
+      const extra = (window.__mockExtraDeck || []).map(([name, pitch, quantity]) => ({ cardIdentifier: name, quantity, sideboardQuantity: 0, card: card(name, pitch, ['Action']) }));
+      return { data: { getDeck: { ...fabDeck, deckCards: [...fabDeck.deckCards, ...extra] } } };
     }
     const path = u.pathname.replace('/v1', '');
     if (path.startsWith('/inventory/locations/')) {
