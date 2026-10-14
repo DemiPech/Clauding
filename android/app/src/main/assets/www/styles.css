@@ -2952,3 +2952,14 @@ body.has-importbar .toast {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+.completion-order {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.completion-order select {
+  width: 100%;
+}

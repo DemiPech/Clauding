@@ -9,7 +9,7 @@ const SAVE_DELAY_MS = 500;
  * Une empreinte de la clé (pas la clé elle-même) : changer de compte CardNexus
  * ne doit pas afficher les emplacements de l'ancien.
  */
-function keyPrint(key) {
+export function keyPrint(key) {
   let hash = 5381;
   for (const char of key || '') hash = ((hash * 33) ^ char.charCodeAt(0)) >>> 0;
   return hash.toString(36);

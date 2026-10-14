@@ -8,6 +8,9 @@ import { cardLabel } from './build.js';
 import { copyText } from './deck-tools.js';
 import { pickExpansion } from './import-view.js';
 import { completionTotals } from '../completion.js';
+import { getApiKey } from '../cardnexus.js';
+import { storeGet, storeSet } from '../store.js';
+import { keyPrint } from './collection-cache.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#completion');
@@ -26,6 +29,7 @@ const els = {
   stats: $('#completion-stats'),
   filter: $('#completion-filter'),
   group: $('#completion-group'),
+  sort: $('#completion-sort'),
   rarities: $('#completion-rarities'),
   copy: $('#completion-copy'),
   list: $('#completion-list'),
@@ -59,21 +63,46 @@ function readPrefs() {
       tier: TIER_RARITIES[prefs.tier] ? prefs.tier : 'cr',
       mode: prefs.mode === 'expansion' ? 'expansion' : 'all',
       classes: Array.isArray(prefs.classes) ? prefs.classes : [],
+      expansion: prefs.expansion?.id ? prefs.expansion : null,
+      group: prefs.group || 'class',
+      sort: prefs.sort || 'name',
     };
   } catch {
-    return { tier: 'cr', mode: 'all', classes: [] };
+    return { tier: 'cr', mode: 'all', classes: [], expansion: null, group: 'class', sort: 'name' };
   }
 }
 
 function savePrefs() {
   try {
-    localStorage.setItem(PREFS_STORAGE, JSON.stringify({ tier: comp.tier, mode: comp.mode, classes: [...comp.classes] }));
+    localStorage.setItem(
+      PREFS_STORAGE,
+      JSON.stringify({
+        tier: comp.tier,
+        mode: comp.mode,
+        classes: [...comp.classes],
+        expansion: comp.expansion && { id: comp.expansion.id, name: comp.expansion.name },
+        group: els.group.value,
+        sort: els.sort.value,
+      }),
+    );
   } catch {
     // Pas de stockage : l'outil repartira des réglages par défaut.
   }
 }
 
 const prefs = readPrefs();
+els.group.value = prefs.group;
+els.sort.value = prefs.sort;
+if (!els.group.value) els.group.value = 'class';
+if (!els.sort.value) els.sort.value = 'name';
+// L'ancien emplacement du catalogue (désormais dans IndexedDB) : place libérée.
+for (const tier of Object.keys(TIER_RARITIES)) {
+  try {
+    localStorage.removeItem(`completion_catalog_${tier}`);
+  } catch {
+    // Rien à libérer.
+  }
+}
 
 /**
  * Ce qui est affiché : palier, mode, extension choisie, résultat, filtres.
@@ -82,10 +111,11 @@ const prefs = readPrefs();
 const comp = {
   tier: prefs.tier,
   mode: prefs.mode,
-  expansion: null,
+  expansion: prefs.expansion,
   rows: [],
   rarity: null,
   target: 3,
+  at: null,
   classes: new Set(prefs.classes),
   expansions: new Set(),
   expansionNames: new Map(),
@@ -118,6 +148,40 @@ function showCompletion(mode = comp.mode, tier = comp.tier) {
   renderExpansionButton();
   renderChoiceButtons();
   if (view.hidden) showOnly(view);
+  if (!comp.rows.length) restoreResult();
+}
+
+// --- Dernier recensement, gardé sur le téléphone ---------------------------------
+
+/** Un recensement par compte, palier, mode (et extension). */
+function resultKey() {
+  const where = comp.mode === 'expansion' ? `expansion:${comp.expansion?.id}` : 'all';
+  return `completion_result:${keyPrint(getApiKey())}:${comp.tier}:${where}`;
+}
+
+const formatDate = (iso) =>
+  new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+function staleNote() {
+  return comp.at ? `Recensement du ${formatDate(comp.at)}. « Recenser » le met à jour.` : '';
+}
+
+/** Réaffiche le dernier recensement de ce palier et de ce mode, sans rien relire. */
+async function restoreResult() {
+  if (comp.mode === 'expansion' && !comp.expansion) return;
+  const key = resultKey();
+  const stored = await storeGet(key);
+  // Entre-temps, un autre palier, un autre mode ou un recensement neuf.
+  if (!stored || key !== resultKey() || comp.rows.length) return;
+  comp.rows = stored.rows;
+  comp.target = stored.target;
+  comp.at = stored.at;
+  els.target.value = String(stored.target);
+  els.gear.checked = stored.includeGear;
+  els.note.textContent = staleNote();
+  els.result.hidden = false;
+  renderResult();
+  loadExpansionNames();
 }
 
 function renderExpansionButton() {
@@ -140,6 +204,8 @@ async function runCompletion({ refresh = false } = {}) {
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
     comp.rows = data.rows;
     comp.target = Number(els.target.value);
+    comp.at = new Date().toISOString();
+    storeSet(resultKey(), { rows: data.rows, target: comp.target, includeGear: els.gear.checked, at: comp.at });
     const catalogName = data.source === 'cardvault' ? 'Card Vault' : 'CardNexus';
     els.note.textContent = !data.catalogSize
       ? `Aucune carte (${TIER_TEXT[comp.tier]}) trouvée dans le catalogue ${catalogName}.`
@@ -190,16 +256,17 @@ function visibleRows() {
 // Prix décroissant ou croissant ; les cartes sans prix à la fin.
 const byPrice = (direction) => (a, b) =>
   (a.price == null) - (b.price == null) || direction * ((a.price ?? 0) - (b.price ?? 0)) || a.name.localeCompare(b.name, 'en');
+const byName = (a, b) => a.name.localeCompare(b.name, 'en') || (a.pitch ?? 0) - (b.pitch ?? 0);
+const SORTS = { name: byName, 'price-desc': byPrice(-1), 'price-asc': byPrice(1) };
 
+/** Les groupes (classe, rareté, extension ou aucun), chacun trié par nom ou par prix. */
 function sections(rows) {
   const by = els.group.value;
-  if (by === 'name') return [{ title: null, rows }];
-  if (by === 'price-desc' || by === 'price-asc') {
-    return [{ title: null, rows: rows.slice().sort(byPrice(by === 'price-desc' ? -1 : 1)) }];
-  }
+  const sorted = rows.slice().sort(SORTS[els.sort.value] || byName);
+  if (by === 'none') return [{ title: null, rows: sorted }];
   const keyOf = by === 'rarity' ? (row) => RARITY_LABELS[row.rarity] : by === 'expansion' ? firstPrinting : classOf;
   const groups = new Map();
-  for (const row of rows) {
+  for (const row of sorted) {
     const key = keyOf(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
@@ -422,6 +489,7 @@ els.expansion.addEventListener('click', async () => {
       selected: comp.expansion?.id ?? null,
       onPick: (expansion) => {
         comp.expansion = expansion;
+        savePrefs();
         comp.rows = [];
         els.result.hidden = true;
         renderExpansionButton();
@@ -453,7 +521,12 @@ els.sheetList.addEventListener('change', (event) => {
   else chosen.delete(box.value);
   applyChoices();
 });
-els.group.addEventListener('change', renderList);
+for (const select of [els.group, els.sort]) {
+  select.addEventListener('change', () => {
+    savePrefs();
+    renderList();
+  });
+}
 els.rarities.addEventListener('click', (event) => {
   const chip = event.target.closest('[data-rarity]');
   if (!chip) return;

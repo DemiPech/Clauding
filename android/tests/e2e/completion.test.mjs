@@ -34,7 +34,7 @@ test('toutes éditions confondues : les réimpressions s’additionnent', async 
   assert.deepEqual(await texts(page, '#completion-stats .stat'), [
     '4 cartes à compléter', '9 exemplaires manquants', '2 cartes absentes', '≈ 0,00 € pour compléter (4 sans prix)',
   ]);
-  await page.selectOption('#completion-group', 'name');
+  await page.selectOption('#completion-group', 'none');
   assert.deepEqual(await rowsText(page), [
     'Beast Mode R · HVY003 2 / 3 — −1',
     'Buckwild C · Xp2 0 / 3 — −3',
@@ -79,7 +79,7 @@ test('par extension : seule l’impression de l’extension compte', async () =>
   await page.click('#completion-expansion');
   await page.click('#expansion-groups [data-expansion="7"]');
   await page.waitForFunction(() => document.querySelectorAll('.completion-row').length === 3);
-  await page.selectOption('#completion-group', 'name');
+  await page.selectOption('#completion-group', 'none');
   assert.deepEqual(await rowsText(page), [
     'Beast Mode R · HVY003 2 / 3 — −1',
     'Pummel C · HVY001 1 / 3 — −2',
@@ -113,10 +113,11 @@ test('majestics et légendaires : prix, coût total et tri par prix', async () =
   assert.deepEqual(await texts(page, '#completion-stats .stat'), [
     '3 cartes à compléter', '6 exemplaires manquants', '2 cartes absentes', '≈ 94,60 € pour compléter',
   ]);
-  await page.selectOption('#completion-group', 'price-desc');
+  await page.selectOption('#completion-group', 'none');
+  await page.selectOption('#completion-sort', 'price-desc');
   assert.deepEqual(await texts(page, '.completion-name'), ['Dorinthea Ironsong', 'Enlightened Strike', 'Kayo, Armed and Dangerous']);
   assert.deepEqual(await texts(page, '.completion-price'), ['45,00 €', '12,50 €', '8,20 €']);
-  await page.selectOption('#completion-group', 'price-asc');
+  await page.selectOption('#completion-sort', 'price-asc');
   assert.deepEqual(await texts(page, '.completion-name'), ['Kayo, Armed and Dangerous', 'Enlightened Strike', 'Dorinthea Ironsong']);
   assert.deepEqual(await texts(page, '#completion-rarities .chip'), ['Toutes', 'Majestics', 'Légendaires']);
 
@@ -162,7 +163,7 @@ test('catalogue Card Vault : toutes les cartes, prix CardNexus', async () => {
   assert.deepEqual(await texts(page, '#completion-stats .stat'), [
     '4 cartes à compléter', '9 exemplaires manquants', '2 cartes absentes', '≈ 1,75 € pour compléter (2 sans prix)',
   ]);
-  await page.selectOption('#completion-group', 'name');
+  await page.selectOption('#completion-group', 'none');
   assert.deepEqual(await texts(page, '.completion-name'), ['Beast Mode', 'Jolly Roger', 'Pummel', 'Pummel']);
   assert.deepEqual(await texts(page, '.completion-count'), ['2 / 3', '0 / 3', '1 / 3', '0 / 3']);
   assert.deepEqual(await texts(page, '.completion-price'), ['—', '—', '0,50 €', '0,25 €']);
@@ -171,7 +172,7 @@ test('catalogue Card Vault : toutes les cartes, prix CardNexus', async () => {
   assert.deepEqual(await texts(page, '#completion-list h2'), ['Brute', 'Generic', 'Pirate']);
 
   // Filtre de classes : n'en garder que quelques-unes.
-  await page.selectOption('#completion-group', 'name');
+  await page.selectOption('#completion-group', 'none');
   await page.click('#completion-classes');
   assert.equal(await page.textContent('#choice-sheet-title'), 'Classes');
   assert.deepEqual(await texts(page, '.choice-label'), ['Brute', 'Generic', 'Pirate']);
@@ -201,14 +202,47 @@ test('catalogue Card Vault : toutes les cartes, prix CardNexus', async () => {
   await page.waitForSelector('#completion-result:not([hidden])');
   assert.deepEqual(await page.evaluate(() => [window.__cardVaultCalls, window.__catalogCalls]), calls);
 
+  // Groupé par classe et trié par prix : le tri s'applique dans chaque classe.
+  await page.click('#completion-classes');
+  await page.click('#choice-all');
+  await page.click('#choice-close');
+  await page.selectOption('#completion-group', 'class');
+  await page.selectOption('#completion-sort', 'price-desc');
+  assert.deepEqual(await texts(page, '#completion-list h2'), ['Brute', 'Generic', 'Pirate']);
+  assert.deepEqual(await texts(page, '.completion-price'), ['—', '0,50 €', '0,25 €', '—']);
+  await page.selectOption('#completion-sort', 'price-asc');
+  assert.deepEqual(await texts(page, '.completion-price'), ['—', '0,25 €', '0,50 €', '—']);
+
+  // À la réouverture de l'app, le dernier recensement s'affiche sans rien relire.
+  await page.reload();
+  await page.waitForSelector('#places:not([hidden])');
+  await page.click('[data-tab="tools"]');
+  await page.click('#tool-completion');
+  await page.waitForSelector('#completion-result:not([hidden])');
+  // (Seules passent les requêtes du démarrage : emplacements et decks.)
+  const toolRequests = () =>
+    page.evaluate(() => window.__requests.filter((r) => /cardvault/.test(r.url) || /"rarity"/.test(r.body || '') || (/inventory\/search/.test(r.url) && !/"location"/.test(r.body || ''))).length);
+  assert.equal(await toolRequests(), 0);
+  assert.match(await page.textContent('#completion-note'), /^Recensement du .*« Recenser » le met à jour\.$/);
+  assert.equal(await page.inputValue('#completion-group'), 'class', 'groupement gardé');
+  assert.equal(await page.inputValue('#completion-sort'), 'price-asc', 'tri gardé');
+  assert.deepEqual(await texts(page, '.completion-price'), ['—', '0,25 €', '0,50 €', '—']);
+  // Recenser de nouveau : le catalogue vient du cache (IndexedDB), pas du réseau.
+  await page.click('#completion-run');
+  await page.waitForFunction(() => document.querySelector('#completion-note').textContent === '');
+  assert.equal(await page.evaluate(() => window.__requests.filter((r) => /cardvault/.test(r.url)).length), 0);
+
   // Un seul outil : il se rouvre sur le palier, le mode et les classes choisis.
+  await page.click('#completion-classes');
+  await page.check('.choice-option input[value="Pirate"]');
+  await page.click('#choice-close');
   await page.click('#completion-tiers [data-tier="ml"]');
   await page.reload();
   await page.waitForSelector('#places:not([hidden])');
   await page.click('[data-tab="tools"]');
   await page.click('#tool-completion');
   assert.equal(await page.textContent('#completion-title'), 'Majestics et légendaires');
-  assert.equal(await page.textContent('#completion-classes'), 'Classes : Pirate, Brute');
+  assert.equal(await page.textContent('#completion-classes'), 'Classes : Pirate');
   assert.deepEqual(errors, []);
   await context.close();
 });

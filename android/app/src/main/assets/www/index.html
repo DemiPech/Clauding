@@ -457,14 +457,25 @@
           <div class="import-filters">
             <input class="collection-filter" id="completion-filter" type="search"
               placeholder="Filtrer par nom…" aria-label="Filtrer les cartes" autocomplete="off" />
-            <select id="completion-group" aria-label="Grouper par">
-              <option value="class">Par classe</option>
-              <option value="rarity">Par rareté</option>
-              <option value="expansion">Par extension</option>
-              <option value="name">Par nom</option>
-              <option value="price-desc">Prix décroissant</option>
-              <option value="price-asc">Prix croissant</option>
-            </select>
+          </div>
+          <div class="completion-order">
+            <label class="field">
+              <span>Grouper</span>
+              <select id="completion-group">
+                <option value="class">Par classe</option>
+                <option value="rarity">Par rareté</option>
+                <option value="expansion">Par extension</option>
+                <option value="none">Sans groupe</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Trier</span>
+              <select id="completion-sort">
+                <option value="name">Par nom</option>
+                <option value="price-desc">Prix décroissant</option>
+                <option value="price-asc">Prix croissant</option>
+              </select>
+            </label>
           </div>
           <div class="collection-kinds" id="completion-rarities" role="group" aria-label="Raretés"></div>
           <div class="completion-filters">

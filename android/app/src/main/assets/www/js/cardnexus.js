@@ -17,6 +17,7 @@ import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
 import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
 import { completionRows, productPrice, TIERS } from './completion.js';
 import { vaultCatalog } from './cardvault.js';
+import { storeGet, storeSet } from './store.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
 
@@ -1641,17 +1642,13 @@ export function mergeCatalogs(vault, nexus) {
 /**
  * Toutes les cartes d'un palier de raretes (`cr` : communes et rares, `ml` :
  * majestics et legendaires). Gardees sur le telephone une semaine (avec les
- * prix du moment). Rend { cards, aliases, source, priced }.
+ * prix du moment), dans IndexedDB. Rend { cards, aliases, source, priced }.
  */
 async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
   const storage = `${COMPLETION_CATALOG_STORAGE}_${tier}`;
   if (!refresh && !completionCatalogs[tier]) {
-    try {
-      const stored = JSON.parse(localStorage.getItem(storage));
-      if (stored?.v === 2 && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalogs[tier] = stored.catalog;
-    } catch {
-      completionCatalogs[tier] = null;
-    }
+    const stored = await storeGet(storage);
+    if (stored?.v === 2 && Date.now() - stored.at < COMPLETION_CATALOG_TTL_MS) completionCatalogs[tier] = stored.catalog;
   }
   if (!refresh && completionCatalogs[tier]) return completionCatalogs[tier];
 
@@ -1672,11 +1669,8 @@ async function tierCatalog(tier, progress = silent, { refresh = false } = {}) {
     ? { ...mergeCatalogs(vault, nexus || []), source: 'cardvault', priced: Boolean(nexus) }
     : { cards: nexus, aliases: {}, source: 'cardnexus', priced: true };
   completionCatalogs[tier] = catalog;
-  try {
-    localStorage.setItem(storage, JSON.stringify({ v: 2, at: Date.now(), catalog }));
-  } catch {
-    // Memoire pleine : le catalogue sera relu la prochaine fois.
-  }
+  // IndexedDB plutot que localStorage : le catalogue pese plusieurs Mo.
+  await storeSet(storage, { v: 2, at: Date.now(), catalog });
   return catalog;
 }
 

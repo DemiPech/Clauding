@@ -215,8 +215,8 @@ mode ; l'outil se rouvre sur les derniers choisis. Deux modes :
   avec le même sélecteur que l'import).
 
 Les tokens, basiques et raretés supérieures sont exclus. Les héros, armes et équipements ont un
-objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté, extension ou nom, se trie par prix
-(décroissant ou croissant), se filtre par rareté, par nom, et par **classes** et **extensions** :
+objectif d'un exemplaire, et peuvent être retirés du recensement. Le résultat se groupe par classe, rareté ou extension (ou sans groupe),
+et se trie par nom ou par prix (décroissant ou croissant) à l'intérieur de chaque groupe ; ces deux choix sont gardés. Il se filtre par rareté, par nom, et par **classes** et **extensions** :
 une liste à cocher (avec le nombre de cartes de chacune) n'en garde que quelques-unes ; rien de
 coché = toutes. Une carte sans classe se range sous son talent. Les classes retenues sont
 gardées d'une fois sur l'autre. Le résultat se copie en texte (« 2x Sink Below (rouge) — 0,25 € »).
@@ -235,8 +235,11 @@ par extensions au-delà de 10 000 cartes), rattaché carte par carte (identifian
 pitch). Si Card Vault ne répond pas, le catalogue CardNexus sert seul ; si CardNexus ne répond
 pas, la liste s'affiche sans prix. Le mode par extension, lui, lit l'extension sur CardNexus.
 
-Le catalogue de chaque palier est gardé une semaine sur le téléphone, prix compris ; « Relire le
-catalogue » le recharge. Le calcul lui-même est dans `js/completion.js`.
+Le catalogue de chaque palier est gardé une semaine sur le téléphone (IndexedDB, `js/store.js` :
+il pèse plusieurs Mo, trop pour localStorage), prix compris ; « Relire le catalogue » le recharge.
+Le dernier recensement de chaque palier et mode (et de chaque extension) est gardé aussi : à la
+réouverture de l'app, il s'affiche aussitôt, daté, sans rien relire ; « Recenser » le met à jour
+(collection relue, catalogue pris dans le cache). Le calcul lui-même est dans `js/completion.js`.
 
 ## Ranger les vracs
 
