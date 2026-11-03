@@ -76,7 +76,19 @@
   function handle(method, url, body) {
     const u = new URL(url);
     if (u.host.startsWith('cognito')) {
+      // __mockFabraryPool : le seul pool d'identités qui existe encore (FaBrary en a changé).
+      window.__cognitoCalls = (window.__cognitoCalls || 0) + 1;
+      const pool = window.__mockFabraryPool;
+      if (pool && body.IdentityPoolId && body.IdentityPoolId !== pool) {
+        return { __status: 400, __json: { __type: 'ResourceNotFoundException', message: `IdentityPool '${body.IdentityPoolId}' not found.` } };
+      }
       return body.IdentityPoolId ? { IdentityId: 'id' } : { Credentials: { AccessKeyId: 'A', SecretKey: 'S', SessionToken: 'T', Expiration: Date.now() / 1000 + 3600 } };
+    }
+    // Le site fabrary.net : __mockFabrarySite[chemin] = contenu (page, scripts).
+    if (u.host === 'fabrary.net') {
+      window.__fabrarySiteCalls = (window.__fabrarySiteCalls || 0) + 1;
+      const content = (window.__mockFabrarySite || {})[u.pathname];
+      return content == null ? { __status: 404, __html: 'Not found' } : { __html: content };
     }
     // Decklists fabtcg.com : __mockFabtcgPages[chemin] = HTML de la page.
     if (u.host === 'fabtcg.com') {
@@ -242,6 +254,10 @@
         }
         try {
           const res = handle(method, url, hasBody ? JSON.parse(body) : null);
+          if (res && res.__json !== undefined) {
+            window.__androidHttpDone(id, res.__status || 200, JSON.stringify(JSON_TYPE), JSON.stringify(res.__json), '');
+            return;
+          }
           if (res && res.__html !== undefined) {
             window.__androidHttpDone(id, res.__status || 200, JSON.stringify({ 'content-type': 'text/html; charset=utf-8' }), res.__html, '');
             return;

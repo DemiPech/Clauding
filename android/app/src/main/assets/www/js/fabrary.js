@@ -13,10 +13,31 @@
 import { silent } from './progress.js';
 import { httpFetch } from './http.js';
 
-const REGION = 'us-east-2';
-const IDENTITY_POOL_ID = 'us-east-2:e50f3ed7-32ed-4b22-a05e-10b3e7e03fe0';
-const GRAPHQL_ENDPOINT = `https://42xrd23ihbd47fjvsrt27ufpfe.appsync-api.${REGION}.amazonaws.com/graphql`;
 const CONTENT_BASE = 'https://content.fabrary.net';
+const SITE = 'https://fabrary.net/';
+
+/**
+ * Configuration AWS de FaBrary : pool d'identites invite et API AppSync.
+ * FaBrary peut en changer (nouveau pool, nouvelle API) : on la relit alors
+ * dans le code du site (`discoverConfig`) et on la garde sur le telephone.
+ */
+const DEFAULT_CONFIG = {
+  region: 'us-east-2',
+  identityPoolId: 'us-east-2:e50f3ed7-32ed-4b22-a05e-10b3e7e03fe0',
+  endpoint: 'https://42xrd23ihbd47fjvsrt27ufpfe.appsync-api.us-east-2.amazonaws.com/graphql',
+};
+const CONFIG_STORAGE = 'fabrary_config';
+
+function readStoredConfig() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CONFIG_STORAGE));
+    return stored?.identityPoolId && stored?.endpoint ? { ...DEFAULT_CONFIG, ...stored } : null;
+  } catch {
+    return null;
+  }
+}
+
+let config = readStoredConfig() || DEFAULT_CONFIG;
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -30,8 +51,17 @@ const BROWSER_HEADERS = {
 
 let cachedCredentials = null;
 
+/** Une erreur AWS, avec son type (« ResourceNotFoundException »…). */
+class AwsError extends Error {
+  constructor(message, type) {
+    super(message);
+    this.awsType = type || null;
+  }
+}
+
 async function cognitoCall(target, body) {
-  const res = await httpFetch(`https://cognito-identity.${REGION}.amazonaws.com/`, {
+  const region = config.identityPoolId.split(':')[0] || config.region;
+  const res = await httpFetch(`https://cognito-identity.${region}.amazonaws.com/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
@@ -41,7 +71,15 @@ async function cognitoCall(target, body) {
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`Cognito ${target} a repondu ${res.status}: ${text}`);
+  if (!res.ok) {
+    let type = null;
+    try {
+      type = String(JSON.parse(text).__type || '').split('#').pop() || null;
+    } catch {
+      type = null;
+    }
+    throw new AwsError(`Cognito ${target} a repondu ${res.status}: ${text}`, type);
+  }
   return JSON.parse(text);
 }
 
@@ -50,7 +88,7 @@ async function getGuestCredentials() {
   if (cachedCredentials && cachedCredentials.expiresAt - 120_000 > Date.now()) {
     return cachedCredentials.value;
   }
-  const { IdentityId } = await cognitoCall('GetId', { IdentityPoolId: IDENTITY_POOL_ID });
+  const { IdentityId } = await cognitoCall('GetId', { IdentityPoolId: config.identityPoolId });
   const { Credentials } = await cognitoCall('GetCredentialsForIdentity', { IdentityId });
   cachedCredentials = {
     value: Credentials,
@@ -102,11 +140,12 @@ async function signRequest({ credentials, url, payload }) {
     await sha256Hex(payload),
   ].join('\n');
 
-  const scope = `${dateStamp}/${REGION}/appsync/aws4_request`;
+  const region = parsed.host.match(/\.appsync-api\.([a-z0-9-]+)\.amazonaws\.com$/)?.[1] || config.region;
+  const scope = `${dateStamp}/${region}/appsync/aws4_request`;
   const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, await sha256Hex(canonicalRequest)].join('\n');
 
   let key = await hmac(`AWS4${credentials.SecretKey}`, dateStamp);
-  key = await hmac(key, REGION);
+  key = await hmac(key, region);
   key = await hmac(key, 'appsync');
   key = await hmac(key, 'aws4_request');
   const signature = toHex(await hmac(key, stringToSign));
@@ -199,21 +238,153 @@ export function parseDeckId(input) {
 
 export const cardImageUrl = (image) => (image ? `${CONTENT_BASE}/cards/${image}.webp` : null);
 
+// --- Configuration relue sur le site ----------------------------------------
+
+/**
+ * Le pool d'identites et l'API AppSync cites dans un texte (le code du site) :
+ * { identityPoolId, endpoint, region }, chaque champ pouvant manquer.
+ */
+export function findFabraryConfig(text) {
+  const source = String(text);
+  const pool = source.match(/["'`]([a-z]{2}(?:-[a-z]+)+-\d:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["'`]/);
+  const api = source.match(/https:\/\/[a-z0-9]+\.appsync-api\.([a-z0-9-]+)\.amazonaws\.com\/graphql/);
+  return {
+    identityPoolId: pool?.[1] || null,
+    endpoint: api?.[0] || null,
+    region: api?.[1] || pool?.[1]?.split(':')[0] || null,
+  };
+}
+
+const MAX_SCRIPTS = 25;
+
+/** Les scripts d'une page ou d'un script : <script src>, modulepreload, imports de morceaux. */
+function scriptUrls(text, base) {
+  const urls = new Set();
+  const patterns = [
+    /<script\b[^>]*\bsrc=["']([^"']+)["']/gi,
+    /<link\b[^>]*\bhref=["']([^"']+\.js)["']/gi,
+    /["'`]((?:\.{0,2}\/)?(?:assets|static\/js|_next\/static|js)\/[^"'`\s]+\.js)["'`]/gi,
+    // Imports relatifs entre morceaux : import("./config-c3d4.js").
+    /["'`](\.{1,2}\/[^"'`\s]+\.js)["'`]/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const [, src] of String(text).matchAll(pattern)) {
+      try {
+        const url = new URL(src, base);
+        if (url.hostname.endsWith('fabrary.net')) urls.add(url.href);
+      } catch {
+        // Adresse illisible : ignoree.
+      }
+    }
+  }
+  return [...urls];
+}
+
+/**
+ * Relit la configuration dans le code de fabrary.net : la page, puis ses
+ * scripts (et les morceaux qu'ils chargent), jusqu'a trouver le pool
+ * d'identites. Rend true si elle a change.
+ */
+async function discoverConfig(progress = silent) {
+  progress.detail?.('FaBrary a changé de configuration : relecture du site');
+  const read = async (url) => {
+    const res = await httpFetch(url, { method: 'GET', headers: { ...BROWSER_HEADERS, Accept: 'text/html,*/*' } });
+    return res.ok ? res.text() : '';
+  };
+  const found = { identityPoolId: null, endpoint: null, region: null };
+  const merge = (text) => {
+    const hit = findFabraryConfig(text);
+    for (const key of Object.keys(found)) found[key] ||= hit[key];
+  };
+  const page = await read(SITE);
+  merge(page);
+  const queue = scriptUrls(page, SITE);
+  const seen = new Set(queue);
+  for (let i = 0; i < queue.length && i < MAX_SCRIPTS && !(found.identityPoolId && found.endpoint); i += 1) {
+    const text = await read(queue[i]);
+    merge(text);
+    for (const url of scriptUrls(text, queue[i])) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        queue.push(url);
+      }
+    }
+  }
+  if (!found.identityPoolId) return false;
+
+  const next = {
+    region: found.region || config.region,
+    identityPoolId: found.identityPoolId,
+    endpoint: found.endpoint || config.endpoint,
+  };
+  if (next.identityPoolId === config.identityPoolId && next.endpoint === config.endpoint) return false;
+  config = next;
+  cachedCredentials = null;
+  try {
+    localStorage.setItem(CONFIG_STORAGE, JSON.stringify({ ...next, at: new Date().toISOString() }));
+  } catch {
+    // Pas de stockage : elle sera relue au prochain demarrage.
+  }
+  return true;
+}
+
+/** Les erreurs qui signalent une configuration perimee (pool ou API disparus). */
+const STALE_TYPES = ['ResourceNotFoundException', 'InvalidIdentityPoolConfigurationException'];
+const isStaleConfig = (err) =>
+  STALE_TYPES.includes(err?.awsType) || err?.staleEndpoint === true;
+
+let discovering = null;
+
+/** `run()`, et une seconde fois apres relecture de la configuration si elle etait perimee. */
+async function withFreshConfig(run, progress) {
+  try {
+    return await run();
+  } catch (err) {
+    if (!isStaleConfig(err)) throw err;
+    discovering ||= discoverConfig(progress).finally(() => {
+      discovering = null;
+    });
+    let changed = false;
+    try {
+      changed = await discovering;
+    } catch {
+      changed = false;
+    }
+    if (!changed) {
+      throw new FabraryError(
+        "FaBrary a changé sa configuration et l'app n'a pas su la retrouver sur fabrary.net. " +
+          `(${err.message})`,
+        502,
+      );
+    }
+    return run();
+  }
+}
+
 /**
  * `partial` : une requete groupee (plusieurs cartes). On rend alors { data,
  * errors } tels quels, pour que l'appelant sache quelles cartes ont echoue ;
  * on ne leve d'erreur que si aucune erreur ne designe une carte.
  */
-async function graphql(query, variables, progress = silent, { partial = false } = {}) {
+function graphql(query, variables, progress = silent, options = {}) {
+  return withFreshConfig(() => graphqlOnce(query, variables, progress, options), progress);
+}
+
+async function graphqlOnce(query, variables, progress = silent, { partial = false } = {}) {
   progress.report(0.05, 'Connexion à FaBrary');
   const credentials = await getGuestCredentials();
   progress.report(0.4, partial ? 'Lecture des cartes' : 'Lecture de la liste');
   const payload = JSON.stringify({ query, variables });
-  const res = await httpFetch(GRAPHQL_ENDPOINT, {
+  const endpoint = config.endpoint;
+  const res = await httpFetch(endpoint, {
     method: 'POST',
-    headers: { ...(await signRequest({ credentials, url: GRAPHQL_ENDPOINT, payload })), ...BROWSER_HEADERS },
+    headers: { ...(await signRequest({ credentials, url: endpoint, payload })), ...BROWSER_HEADERS },
     body: payload,
   });
+  // L'API n'existe plus a cette adresse.
+  if (res.status === 404) {
+    throw Object.assign(new FabraryError(`L'API FaBrary a répondu 404.`, 502), { staleEndpoint: true });
+  }
 
   let json;
   try {
