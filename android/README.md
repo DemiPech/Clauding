@@ -84,10 +84,6 @@ Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis q
 - **Cartes inconnues de FaBrary** : `getCard` ne peut pas renvoyer « rien », donc une seule carte
   inconnue fait échouer toute la requête groupée. L'erreur désigne la carte : l'app la note
   inconnue et redemande les autres. Ça vaut aussi pour le complément des classes et talents.
-- **Configuration FaBrary** : l'app lit FaBrary en invité (pool d'identités Cognito + API
-  AppSync). Si FaBrary en change (« IdentityPool … not found »), l'app relit la page de
-  fabrary.net et ses scripts, y retrouve le nouveau pool et la nouvelle API, les garde sur le
-  téléphone (`fabrary_config`) et réessaie (`js/fabrary.js`).
 - **Listes consultées** : chaque liste ouverte (FaBrary ou fabtcg.com) est notée dans l'onglet
   Chercher, sous le champ de recherche. Elles sont groupées par héros (le plus récent en premier),
   avec un filtre par héros. Toucher une liste la rouvre, ✕ la retire de l'historique. L'historique
