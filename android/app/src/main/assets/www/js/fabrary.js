@@ -50,7 +50,20 @@ async function getGuestCredentials() {
   if (cachedCredentials && cachedCredentials.expiresAt - 120_000 > Date.now()) {
     return cachedCredentials.value;
   }
-  const { IdentityId } = await cognitoCall('GetId', { IdentityPoolId: IDENTITY_POOL_ID });
+  let IdentityId;
+  try {
+    ({ IdentityId } = await cognitoCall('GetId', { IdentityPoolId: IDENTITY_POOL_ID }));
+  } catch (err) {
+    // FaBrary a supprime son acces invite : plus de lecture directe des listes.
+    if (/ResourceNotFoundException/.test(err.message)) {
+      throw new FabraryError(
+        "FaBrary ne permet plus d'ouvrir ses listes depuis l'app. Dans FaBrary, copiez la liste " +
+          '(bouton « Copier » du deck), puis collez-la ici avec « Coller une liste ».',
+        503,
+      );
+    }
+    throw err;
+  }
   const { Credentials } = await cognitoCall('GetCredentialsForIdentity', { IdentityId });
   cachedCredentials = {
     value: Credentials,
@@ -371,129 +384,3 @@ export function fabraryIdentifier(name, pitch) {
     .replace(/^-+|-+$/g, '');
   return PITCH_COLORS[pitch] ? `${slug}-${PITCH_COLORS[pitch]}` : slug;
 }
-
-const CARDS_PER_QUERY = 40;
-
-/** « NECROMANCER », « necromancer » → « Necromancer ». */
-const titleCase = (word) =>
-  String(word)
-    .toLowerCase()
-    .replace(/(^|[\s-])([a-z])/g, (_, sep, letter) => sep + letter.toUpperCase());
-
-/**
- * Fiches de ces cartes selon FaBrary : { identifiant: fiche }, ou null pour une
- * carte que FaBrary ne connait pas. Les cartes sont demandees par groupes, une
- * requete GraphQL par groupe (alias c0, c1…). `fields` : les champs voulus.
- */
-async function fetchCards(identifiers, fields, progress = silent) {
-  const ids = [...new Set(identifiers)];
-  const found = {};
-  for (let i = 0; i < ids.length; i += CARDS_PER_QUERY) {
-    const step = progress.sub(i / ids.length, Math.min(ids.length, i + CARDS_PER_QUERY) / ids.length);
-    let batch = ids.slice(i, i + CARDS_PER_QUERY);
-    // getCard ne peut pas rendre « rien » : une seule carte inconnue fait
-    // echouer tout le lot (data: null). L'erreur designe la carte (path) : on
-    // la note inconnue, et on redemande le reste du lot.
-    for (let attempt = 0; batch.length && attempt <= CARDS_PER_QUERY; attempt += 1) {
-      const variables = Object.fromEntries(batch.map((id, n) => [`c${n}`, id]));
-      const query = `query cards(${batch.map((_, n) => `$c${n}: ID!`).join(', ')}) {
-${batch.map((_, n) => `  c${n}: getCard(cardIdentifier: $c${n}) { ${fields} }`).join('\n')}
-}`;
-      const { data, errors } = await graphql(query, variables, step, { partial: true });
-      const failed = new Set(
-        errors.map((error) => error.path?.[0]).filter((alias) => typeof alias === 'string' && /^c\d+$/.test(alias)),
-      );
-      if (data) {
-        batch.forEach((id, n) => {
-          found[id] = data[`c${n}`] || null;
-        });
-        break;
-      }
-      if (!failed.size) throw new FabraryError('FaBrary n’a pas répondu pour ces cartes.', 502);
-      const retry = [];
-      batch.forEach((id, n) => {
-        if (failed.has(`c${n}`)) found[id] = null;
-        else retry.push(id);
-      });
-      batch = retry;
-    }
-    step.report(1);
-  }
-  return found;
-}
-
-/**
- * Classes et talents de ces cartes selon FaBrary : { identifiant: { classes,
- * talents } }, ou null pour une carte que FaBrary ne connait pas.
- */
-export async function fetchCardClasses(identifiers, progress = silent) {
-  const cards = await fetchCards(identifiers, 'cardIdentifier classes talents', progress);
-  return Object.fromEntries(
-    Object.entries(cards).map(([id, card]) => [
-      id,
-      card
-        ? {
-            classes: (card.classes || []).map(titleCase).filter((c) => c !== 'Notclassed'),
-            talents: (card.talents || []).map(titleCase),
-          }
-        : null,
-    ]),
-  );
-}
-
-const CARD_FIELDS = `cardIdentifier name defaultImage pitch cost power defense life intellect
-  types subtypes talents classes keywords rarity typeText functionalText`;
-
-/**
- * Une liste donnee par noms de cartes (decklist d'un autre site), completee par
- * FaBrary : `entries` = [{ name, pitch, quantity }]. Rend le deck dans la meme
- * forme que fetchDeck ; une carte inconnue de FaBrary garde son seul nom.
- */
-export async function deckFromNames(entries, { heroName = null } = {}, progress = silent) {
-  const ids = entries.map((entry) => fabraryIdentifier(entry.name, entry.pitch));
-  const cards = await fetchCards(ids, CARD_FIELDS, progress);
-
-  let hero = null;
-  const weapons = [];
-  const equipment = [];
-  const main = [];
-  entries.forEach((entry, index) => {
-    const id = ids[index];
-    const card = cards[id] || { cardIdentifier: id, name: entry.name, pitch: entry.pitch ?? null, types: [] };
-    const isHero = (card.types || []).includes('Hero') || (heroName && sameName(entry.name, heroName));
-    if (isHero && !hero) {
-      hero = {
-        id,
-        name: card.name,
-        image: card.defaultImage || null,
-        imageUrl: cardImageUrl(card.defaultImage) || entry.imageUrl || null,
-        intellect: card.intellect ?? null,
-        life: card.life ?? null,
-        classes: card.classes || [],
-        talents: card.talents || [],
-        typeText: card.typeText || '',
-        text: card.functionalText || '',
-      };
-      return;
-    }
-    const normalized = normalizeCard({ cardIdentifier: id, card }, entry.quantity);
-    // L'image de la page d'origine, quand FaBrary n'en a pas.
-    if (!normalized.imageUrl && entry.imageUrl) normalized.imageUrl = entry.imageUrl;
-    const zone = zoneOf(card);
-    (zone === 'weapons' ? weapons : zone === 'equipment' ? equipment : main).push(normalized);
-  });
-
-  [weapons, equipment, main].forEach((list) => list.sort(byNameThenPitch));
-  const total = (list) => list.reduce((sum, c) => sum + c.quantity, 0);
-  return {
-    hero,
-    weapons,
-    equipment,
-    deck: main,
-    sideboard: [],
-    counts: { deck: total(main), weapons: total(weapons), equipment: total(equipment), sideboard: 0, unique: main.length },
-    unknown: entries.filter((_, index) => !cards[ids[index]]).map((entry) => entry.name),
-  };
-}
-
-const sameName = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();

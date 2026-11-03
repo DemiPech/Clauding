@@ -8,6 +8,8 @@
  */
 import { fetchDeck, parseDeckId, FabraryError } from './fabrary.js';
 import { fetchFabtcgDeck, parseFabtcgUrl } from './fabtcg.js';
+import { DecklistError, fetchPastedDeck, isPastedRef } from './decklist.js';
+import { CardVaultError } from './cardvault.js';
 import {
   listDeckLocations,
   listLocations,
@@ -76,8 +78,11 @@ async function respond(load, fallback) {
   try {
     return json(200, await load());
   } catch (err) {
-    if (err instanceof FabraryError || err instanceof CardnexusError) {
+    if (err instanceof FabraryError || err instanceof CardnexusError || err instanceof DecklistError) {
       return json(err.status || 502, { error: err.message });
+    }
+    if (err instanceof CardVaultError) {
+      return json(502, { error: `${err.message} Les fiches des cartes viennent de Card Vault : réessayez dans un moment.` });
     }
     console.error('[api]', err);
     return json(502, { error: err?.message ? `${fallback} (${err.message})` : fallback });
@@ -91,10 +96,12 @@ function readJsonBody(init) {
 }
 
 /**
- * Une liste a afficher ou a monter : lien (ou identifiant) FaBrary, ou lien de
- * decklist fabtcg.com. Rend une fonction de chargement (mise en cache), ou null.
+ * Une liste a afficher ou a monter : lien (ou identifiant) FaBrary, lien de
+ * decklist fabtcg.com, ou liste collee (« paste:… »). Rend une fonction de
+ * chargement (mise en cache), ou null.
  */
 function listLoader(raw) {
+  if (isPastedRef(raw)) return (progress) => cached(`paste:${raw}`, () => fetchPastedDeck(raw, progress));
   const fabtcgUrl = parseFabtcgUrl(raw);
   if (fabtcgUrl) return (progress) => cached(`fabtcg:${fabtcgUrl}`, () => fetchFabtcgDeck(fabtcgUrl, progress));
   const deckId = parseDeckId(raw);
@@ -102,7 +109,7 @@ function listLoader(raw) {
   return null;
 }
 
-const INVALID_LIST = 'Lien de liste invalide. Collez un lien fabrary.net/decks/… (ou son identifiant), ou fabtcg.com/decklists/….';
+const INVALID_LIST = 'Lien de liste invalide. Collez un lien fabtcg.com/decklists/…, ou le texte d’une liste avec « Coller une liste ».';
 
 function handleListDeck(raw, progress) {
   const load = listLoader(raw);

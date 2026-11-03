@@ -14,9 +14,9 @@
  * par android/sdk) ; ses requetes empruntent le pont natif via sdkFetch.
  */
 import CardNexus, { APIError } from './vendor/cardnexus-sdk.js';
-import { cardImageUrl, fabraryIdentifier, fetchCardClasses } from './fabrary.js';
+import { cardImageUrl, fabraryIdentifier } from './fabrary.js';
 import { completionRows, productPrice, TIERS } from './completion.js';
-import { vaultCatalog } from './cardvault.js';
+import { vaultCardClasses, vaultCatalog } from './cardvault.js';
 import { storeGet, storeSet } from './store.js';
 import { sdkFetch, uuid } from './http.js';
 import { silent, pauseFor, formatCount } from './progress.js';
@@ -308,18 +308,19 @@ async function resolveProducts(productIds, progress = silent) {
   return products;
 }
 
-// --- Classes et talents manquants : FaBrary en renfort --------------------------
+// --- Classes et talents manquants : Card Vault en renfort -----------------------
 //
 // CardNexus ne connait pas encore certaines classes (Pirate, Necromancer…) ni
-// certains talents (Revered, Reviled…) : ces cartes arrivent sans. FaBrary,
-// lui, les connait. Pour chaque carte sans classe ou sans talent, on lui
-// demande les siens, et on garde la reponse sur le telephone : une carte ne
-// change pas de classe. Une carte vraiment sans talent n'est demandee qu'une
+// certains talents (Revered, Reviled…) : ces cartes arrivent sans. Card Vault,
+// la base officielle, les connait. Pour chaque carte sans classe ou sans
+// talent, on cherche les siens dans l'index Card Vault (toutes les cartes,
+// garde une semaine), et on garde la reponse sur le telephone : une carte ne
+// change pas de classe. Une carte vraiment sans talent n'est cherchee qu'une
 // fois, puis la reponse gardee suffit.
 
 const CLASS_CACHE_STORAGE = 'fabrary_classes';
-// Une carte que FaBrary ne connait pas encore (extension toute neuve) est
-// redemandee le lendemain.
+// Une carte que Card Vault ne connait pas encore (extension toute neuve) est
+// recherchee le lendemain.
 const CLASS_RETRY_MS = 24 * 3600 * 1000;
 const classChecked = new WeakSet();
 
@@ -342,10 +343,20 @@ function writeClassCache(cache) {
   }
 }
 
-/** Identifiant FaBrary d'un produit CardNexus. */
+/** Cle d'une carte dans le cache des classes (nom + couleur de pitch). */
 const fabraryIdOf = (product) => fabraryIdentifier(cleanName(product.name), product.attributes?.pitch);
 
-/** Complete, d'apres FaBrary, les classes et talents des cartes qui n'en ont pas. */
+/**
+ * Cherche dans Card Vault les classes et talents de ces cartes
+ * (`cards` : [{ id, name, pitch }]) et les note dans le cache.
+ */
+async function lookUpClasses(cards, cache, now, progress) {
+  const found = await vaultCardClasses(cards, progress);
+  for (const { id } of cards) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
+  writeClassCache(cache);
+}
+
+/** Complete, d'apres Card Vault, les classes et talents des cartes qui n'en ont pas. */
 async function completeClasses(products, progress = silent) {
   const todo = products.filter(
     (product) =>
@@ -355,18 +366,23 @@ async function completeClasses(products, progress = silent) {
 
   const cache = readClassCache();
   const now = Date.now();
-  const unknown = [...new Set(todo.map(fabraryIdOf))].filter((id) => {
+  const unknown = [
+    ...new Map(
+      todo.map((product) => [
+        fabraryIdOf(product),
+        { id: fabraryIdOf(product), name: cleanName(product.name), pitch: product.attributes?.pitch ?? null },
+      ]),
+    ).values(),
+  ].filter(({ id }) => {
     const hit = cache[id];
     return !hit || (hit.missing && now - hit.at > CLASS_RETRY_MS);
   });
   if (unknown.length) {
-    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
+    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur Card Vault`);
     try {
-      const found = await fetchCardClasses(unknown, progress);
-      for (const id of unknown) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
-      writeClassCache(cache);
+      await lookUpClasses(unknown, cache, now, progress);
     } catch {
-      // FaBrary injoignable : on s'en tient a ce que dit CardNexus, et on
+      // Card Vault injoignable : on s'en tient a ce que dit CardNexus, et on
       // reessaiera au prochain affichage.
       return;
     }
@@ -376,7 +392,7 @@ async function completeClasses(products, progress = silent) {
     classChecked.add(product);
     const hit = cache[fabraryIdOf(product)];
     if (!hit || hit.missing) continue;
-    // Ce que CardNexus sait deja l'emporte ; FaBrary ne fait que combler.
+    // Ce que CardNexus sait deja l'emporte ; Card Vault ne fait que combler.
     const attrs = product.attributes || {};
     product.attributes = {
       ...attrs,
@@ -1761,7 +1777,7 @@ export async function completionExpansion(
 
 /**
  * Classes et talents des cartes a completer que CardNexus ne connait pas :
- * meme renfort FaBrary (et meme cache) que pour l'inventaire.
+ * meme renfort Card Vault (et meme cache) que pour l'inventaire.
  */
 async function fillRowClasses(rows, progress = silent) {
   const todo = rows.filter((row) => !row.classes.length || !row.talents.length);
@@ -1769,18 +1785,18 @@ async function fillRowClasses(rows, progress = silent) {
   const cache = readClassCache();
   const now = Date.now();
   const idOf = (row) => fabraryIdentifier(row.name, row.pitch);
-  const unknown = [...new Set(todo.map(idOf))].filter((id) => {
+  const unknown = [
+    ...new Map(todo.map((row) => [idOf(row), { id: idOf(row), name: row.name, pitch: row.pitch }])).values(),
+  ].filter(({ id }) => {
     const hit = cache[id];
     return !hit || (hit.missing && now - hit.at > CLASS_RETRY_MS);
   });
   if (unknown.length) {
-    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur FaBrary`);
+    progress.detail(`Classes et talents : ${formatCount(unknown.length)} carte${unknown.length > 1 ? 's' : ''} sur Card Vault`);
     try {
-      const found = await fetchCardClasses(unknown, progress);
-      for (const id of unknown) cache[id] = found[id] ? { ...found[id], at: now } : { missing: true, at: now };
-      writeClassCache(cache);
+      await lookUpClasses(unknown, cache, now, progress);
     } catch {
-      // FaBrary injoignable : les cartes restent comme CardNexus les donne.
+      // Card Vault injoignable : les cartes restent comme CardNexus les donne.
     }
   }
   for (const row of todo) {

@@ -114,7 +114,7 @@ function entryNode(entry) {
   li.className = 'history-list';
   li.dataset.ref = entry.ref;
   const date = new Date(entry.visitedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-  const meta = [entry.author, entry.format, entry.source === 'fabtcg' ? 'fabtcg.com' : 'FaBrary', date]
+  const meta = [entry.author, entry.format, ({ fabtcg: 'fabtcg.com', paste: 'liste collée' })[entry.source] || 'FaBrary', date]
     .filter(Boolean)
     .join(' · ');
   li.innerHTML = `

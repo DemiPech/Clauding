@@ -39,6 +39,7 @@ import { listenForProgress } from './ui/progress-view.js';
 import { closeExpansionSheet, importView, showImport } from './ui/import-view.js';
 import { listenForListHistory } from './ui/list-history.js';
 import { closeChoiceSheet, completionView, showCompletion } from './ui/completion-view.js';
+import { parseDecklistText, savePastedList } from './decklist.js';
 
 // --- Retour Android --------------------------------------------------------
 
@@ -95,11 +96,35 @@ els.form.addEventListener('submit', (event) => {
   runPlacesSearch(value);
 });
 
-els.search.addEventListener('click', (event) => {
-  const example = event.target.closest('[data-example]');
-  if (!example) return;
-  els.input.value = example.dataset.example;
-  loadFabraryDeck(example.dataset.example);
+// --- Coller une liste (texte copié depuis FaBrary, ou toute liste « 3x Nom ») --------
+
+const paste = {
+  box: document.querySelector('#paste-list'),
+  text: document.querySelector('#paste-text'),
+  open: document.querySelector('#paste-open'),
+  note: document.querySelector('#paste-note'),
+};
+
+function openPastedList() {
+  const text = paste.text.value.trim();
+  if (!parseDecklistText(text).entries.length) {
+    paste.note.textContent = 'Aucune carte reconnue : il faut des lignes « 3x Nom (red) ».';
+    return;
+  }
+  paste.note.textContent = '';
+  paste.text.blur();
+  loadFabraryDeck(savePastedList(text));
+}
+
+paste.open.addEventListener('click', openPastedList);
+// Une liste de plusieurs lignes collée dans le champ de recherche : on l'ouvre.
+els.input.addEventListener('paste', (event) => {
+  const text = event.clipboardData?.getData('text') || '';
+  if (!/\n/.test(text.trim()) || !parseDecklistText(text).entries.length) return;
+  event.preventDefault();
+  paste.box.open = true;
+  paste.text.value = text.trim();
+  openPastedList();
 });
 
 els.appBack.addEventListener('click', () => window.__appBack());

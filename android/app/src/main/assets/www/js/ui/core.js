@@ -246,7 +246,7 @@ function typeLabel(card) {
 }
 
 /** Une liste de deck (FaBrary ou decklist fabtcg.com), par opposition à l'inventaire. */
-const isListSource = (source) => source === 'fabrary' || source === 'fabtcg';
+const isListSource = (source) => source === 'fabrary' || source === 'fabtcg' || source === 'paste';
 
 const escapeHtml = (text) =>
   String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);

@@ -5,7 +5,7 @@ import { openApp, close, line, place, texts, openFabrary, back } from '../helper
 
 after(close);
 
-const { FABTCG_PATH: PATH, FABTCG_URL: URL, FABTCG_PAGE: PAGE, FABRARY_CARDS: CARDS } = await import(
+const { FABTCG_PATH: PATH, FABTCG_URL: URL, FABTCG_PAGE: PAGE, VAULT_CARDS: CARDS } = await import(
   '../fixtures/fabtcg-decklist.mjs'
 );
 
@@ -20,7 +20,7 @@ test('une decklist fabtcg.com s’ouvre comme une liste FaBrary et se monte', as
   const { page, context, errors } = await openApp({ inv: [line('a', 'p1', 3, 'Vrac 1')], locations: [place('Vrac 1')] });
   await page.evaluate(({ path, html, cards }) => {
     window.__mockFabtcgPages = { [path]: html };
-    window.__mockFabraryCards = cards;
+    window.__mockVaultCards = cards;
   }, { path: PATH, html: PAGE, cards: CARDS });
 
   await openFabtcg(page);
@@ -29,11 +29,11 @@ test('une decklist fabtcg.com s’ouvre comme une liste FaBrary et se monte', as
   assert.equal(await page.textContent('#deck-byline'), 'par Michel Verissimo da Silva Luiz');
   // Héros + 2 Obsidian Fire Vein + Mystery Helm + 3 + 3 + 2 + 2 = 14 cartes, 7 différentes (héros compris).
   assert.deepEqual(await texts(page, '#deck-stats .stat'), ['14 cartes', '7 différentes']);
-  // Une carte inconnue de FaBrary n'empêche pas les autres d'être reconnues (même lot).
-  assert.match(await page.textContent('#deck-notes'), /non reconnues par FaBrary .*: Mystery Helm\./);
+  // Une carte inconnue de Card Vault n'empêche pas les autres d'être reconnues.
+  assert.match(await page.textContent('#deck-notes'), /non reconnues par Card Vault .*: Mystery Helm\./);
   assert.equal(
     await page.$eval('#hero-art', (img) => img.getAttribute('src')),
-    'https://content.fabrary.net/cards/HNT098.webp',
+    'https://legendstory-production-s3-public.s3.amazonaws.com/media/cards/normal/HNT098.webp',
   );
   assert.equal(await page.isVisible('#build-btn'), true, 'Monter dans CardNexus');
   await page.click('#more-btn');
@@ -55,7 +55,7 @@ test('historique des listes : par héros, filtre, réouverture et retrait', asyn
   const { page, context, errors } = await openApp({ inv: [], locations: [place('Vrac 1')] });
   await page.evaluate(({ path, html, cards }) => {
     window.__mockFabtcgPages = { [path]: html };
-    window.__mockFabraryCards = cards;
+    window.__mockVaultCards = cards;
   }, { path: PATH, html: PAGE, cards: CARDS });
 
   await page.click('[data-tab="search"]');

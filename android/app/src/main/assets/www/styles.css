@@ -2963,3 +2963,43 @@ body.has-importbar .toast {
 .completion-order select {
   width: 100%;
 }
+
+/* ---------- Coller une liste ---------- */
+
+.paste-list {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised, var(--bg-sunken));
+}
+
+.paste-list summary {
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.paste-list textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+.paste-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.paste-actions .move-note {
+  margin: 0;
+}

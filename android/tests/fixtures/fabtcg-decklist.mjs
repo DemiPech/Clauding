@@ -42,12 +42,29 @@ ${list(false)}
 <div class="grid-view">${list(true)}</div>
 </body></html>`;
 
-/** Fiches FaBrary des cartes de la page (Mystery Helm : inconnue de FaBrary). */
-export const FABRARY_CARDS = {
-  'fang-dracai-of-blades': { name: 'Fang, Dracai of Blades', types: ['Hero'], classes: ['Warrior'], talents: ['Draconic'], defaultImage: 'HNT098', life: 20, intellect: 4 },
-  'obsidian-fire-vein': { name: 'Obsidian Fire Vein', types: ['Weapon'], subtypes: ['Dagger'], classes: ['Warrior'], defaultImage: 'HNT100' },
-  'buckwild-red': { name: 'Buckwild', pitch: 1, types: ['Action'], subtypes: ['Attack'], classes: ['Brute'], defaultImage: 'WTR001' },
-  'buckwild-blue': { name: 'Buckwild', pitch: 3, types: ['Action'], subtypes: ['Attack'], classes: ['Brute'], defaultImage: 'WTR003' },
-  'hunts-end-red': { name: "Hunt's End", pitch: 1, types: ['Attack Reaction'], classes: ['Warrior'], defaultImage: 'HNT103' },
-  'blunten-yellow': { name: 'Blunten', pitch: 2, types: ['Block'], classes: ['Warrior'], defaultImage: 'PEN049' },
-};
+/** Une carte telle que la rend la recherche Card Vault. */
+export const vaultItem = (name, pitch, typebox, code, talent = null) => ({
+  card_id: `${name.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}${pitch ? `-${pitch}` : ''}`,
+  print_id: code,
+  printed_name: name,
+  printed_pitch: pitch,
+  printed_typebox: typebox,
+  printed_cost: '1',
+  printed_power: '3',
+  printed_defense: '3',
+  printed_life: typebox.includes('Hero') ? '20' : '',
+  printed_intellect: typebox.includes('Hero') ? '4' : '',
+  printed_rules_text: '',
+  core_talent: talent,
+  faces: [{ layout_position: 10, image: { normal: `${IMG}/${code}.webp`, small: `${IMG}/${code}.webp` } }],
+});
+
+/** Fiches Card Vault des cartes de la page (Mystery Helm : inconnue de Card Vault). */
+export const VAULT_CARDS = [
+  vaultItem('Fang, Dracai of Blades', null, 'Draconic Warrior Hero - Young', 'HNT098'),
+  vaultItem('Obsidian Fire Vein', null, 'Warrior Weapon - Dagger (1H)', 'HNT100'),
+  vaultItem('Buckwild', 1, 'Brute Action - Attack', 'WTR001'),
+  vaultItem('Buckwild', 3, 'Brute Action - Attack', 'WTR003'),
+  vaultItem("Hunt's End", 1, 'Warrior Attack Reaction', 'HNT103'),
+  vaultItem('Blunten', 2, 'Warrior Block', 'PEN049'),
+];

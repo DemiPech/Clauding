@@ -33,7 +33,7 @@
       <section id="search-view" hidden>
         <header class="view-head">
           <h1>Chercher</h1>
-          <p class="byline">Une carte de votre collection, ou le lien d'une liste FaBrary ou fabtcg.com.</p>
+          <p class="byline">Une carte de votre collection, le lien d'une decklist fabtcg.com, ou une liste collée.</p>
         </header>
 
         <form class="search" id="search-form" autocomplete="off">
@@ -41,19 +41,30 @@
             id="deck-input"
             type="search"
             placeholder="Nom de carte, ou lien de liste"
-            aria-label="Nom de carte, ou lien de liste FaBrary ou fabtcg.com"
+            aria-label="Nom de carte, ou lien de decklist fabtcg.com"
             spellcheck="false"
             autocapitalize="off"
           />
           <button type="submit" id="load-btn">Chercher</button>
         </form>
         <p class="move-note" id="search-hint">
-          Un nom de carte montre où sont vos exemplaires ; un lien fabrary.net/decks/… ou
-          fabtcg.com/decklists/… ouvre la liste.
-          <button class="link-btn link-btn-inline" data-example="01M3266BQFH7Y98S5E859NZK4Z">
-            Voir un exemple FaBrary
-          </button>
+          Un nom de carte montre où sont vos exemplaires ; un lien fabtcg.com/decklists/… ouvre la
+          liste.
         </p>
+        <details class="paste-list" id="paste-list">
+          <summary>Coller une liste</summary>
+          <p class="move-note">
+            Dans FaBrary, ouvrez le deck et touchez « Copier » (la liste en texte), puis collez-la ici.
+            Toute liste de lignes « 3x Nom (red) » convient.
+          </p>
+          <textarea id="paste-text" rows="7" spellcheck="false" autocapitalize="off"
+            aria-label="Liste à coller"
+            placeholder="Name: Mon deck&#10;Hero: Fang, Dracai of Blades&#10;&#10;Deck cards&#10;3x Blood Runs Deep (red)"></textarea>
+          <div class="paste-actions">
+            <button type="button" class="primary-btn" id="paste-open">Ouvrir la liste</button>
+            <span class="move-note" id="paste-note"></span>
+          </div>
+        </details>
         <p class="move-note" id="places-search-note"></p>
         <div id="places-search-results"></div>
 

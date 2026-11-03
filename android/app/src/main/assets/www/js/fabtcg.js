@@ -14,9 +14,10 @@
  *
  * On recupere la page (par le pont natif : pas de CORS), on la reduit a des
  * lignes de texte, et on y lit les cartes : quantite, nom, pitch. Le reste
- * (types, image, classes) vient de FaBrary, carte par carte (fabrary.js).
+ * (types, image, classes) vient de Card Vault, carte par carte (decklist.js).
  */
-import { deckFromNames, FabraryError } from './fabrary.js';
+import { deckFromNames } from './decklist.js';
+import { FabraryError } from './fabrary.js';
 import { httpFetch } from './http.js';
 import { silent } from './progress.js';
 
@@ -186,7 +187,7 @@ export async function fetchFabtcgDeck(input, progress = silent) {
     throw new FabraryError('Aucune carte trouvée sur cette page fabtcg.com (format de page inattendu ?).', 422);
   }
 
-  progress.report(0.3, 'Fiches des cartes sur FaBrary');
+  progress.report(0.3, 'Fiches des cartes sur Card Vault');
   const deck = await deckFromNames(entries, { heroName }, progress.sub(0.3, 1));
   progress.report(1);
 
@@ -203,7 +204,7 @@ export async function fetchFabtcgDeck(input, progress = silent) {
     name: title || 'Decklist fabtcg.com',
     format: [event, fields.rank].filter(Boolean).join(' · ') || null,
     notes: deck.unknown.length
-      ? `Cartes non reconnues par FaBrary (affichées sans type ni statistiques) : ${deck.unknown.join(', ')}.`
+      ? `Cartes non reconnues par Card Vault (affichées sans type ni statistiques) : ${deck.unknown.join(', ')}.`
       : null,
     tags: [],
     tournament: null,

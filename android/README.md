@@ -31,8 +31,8 @@ Quatre onglets en bas de l'écran :
   haut de la page, ou toucher ↻, relit les emplacements et les decks sans le cache de l'app
   (par exemple après en avoir créé un sur le site).
 - **Chercher** : un seul champ. Un nom de carte montre où sont les exemplaires dans la
-  collection, et on peut les déplacer depuis la barre du bas. Un lien de deck FaBrary (ou son
-  identifiant de 26 caractères) ouvre la liste.
+  collection, et on peut les déplacer depuis la barre du bas. Un lien de decklist fabtcg.com
+  ouvre la liste ; « Coller une liste » ouvre une liste copiée depuis FaBrary (voir plus bas).
 - **Outils** : Ranger les vracs, Monter une liste FaBrary, Comparer un deck à une liste
   (on y choisit le deck).
 - **Historique** : journal de l'app, changements entre photos, modifié récemment.
@@ -78,13 +78,19 @@ Le bouton retour du téléphone y ramène, puis ramène à la Collection, puis q
   FaBrary (onglet Chercher, Comparer, Monter). L'app lit la page (`js/fabtcg.js`) : les champs
   Player, Event, Rank et Hero, puis les sections « Hero / Weapon / Equipment », « Pitch 1/2/3 »
   et leurs lignes « 3x Nom (red) » (la page affiche la liste deux fois : seule la première est
-  lue). Elle demande ensuite à FaBrary la fiche de chaque carte (type, image, classe) d'après son
-  nom et son pitch. Une carte que FaBrary ne reconnaît pas reste dans la liste avec son nom et
-  l'image officielle de la page, et une note l'indique.
-- **Cartes inconnues de FaBrary** : `getCard` ne peut pas renvoyer « rien », donc une seule carte
-  inconnue fait échouer toute la requête groupée. L'erreur désigne la carte : l'app la note
-  inconnue et redemande les autres. Ça vaut aussi pour le complément des classes et talents.
-- **Listes consultées** : chaque liste ouverte (FaBrary ou fabtcg.com) est notée dans l'onglet
+  lue). Elle cherche ensuite sur Card Vault la fiche de chaque carte (type, image, classe,
+  statistiques) d'après son nom et son pitch (`js/decklist.js`, une recherche par nom, quatre à
+  la fois). Une carte que Card Vault ne reconnaît pas reste dans la liste avec son nom et l'image
+  officielle de la page, et une note l'indique.
+- **Listes FaBrary : coller la liste** : FaBrary a supprimé l'accès invité par lequel l'app
+  lisait ses decks ; un lien FaBrary affiche désormais un message qui renvoie ici. Dans FaBrary,
+  le bouton « Copier » d'un deck copie la liste en texte (« Name: … / Hero: … / Arena cards /
+  Deck cards / 3x Nom (red) … ») ; collée dans « Coller une liste » (onglet Chercher), ou
+  directement dans le champ de recherche, elle s'ouvre comme une liste FaBrary : fiches Card
+  Vault, « Voir sur FaBrary » (le lien est dans le texte), Monter, Comparer. Toute liste de
+  lignes « 3x Nom (red) » convient ; une section « Sideboard » va en réserve. Le texte est gardé
+  sur le téléphone (50 listes au plus) pour rouvrir la liste depuis l'historique.
+- **Listes consultées** : chaque liste ouverte (fabtcg.com, liste collée) est notée dans l'onglet
   Chercher, sous le champ de recherche. Elles sont groupées par héros (le plus récent en premier),
   avec un filtre par héros. Toucher une liste la rouvre, ✕ la retire de l'historique. L'historique
   reste sur le téléphone et s'efface devant des résultats de recherche de carte.
@@ -288,19 +294,19 @@ Les cartes des autres jeux restent invisibles et intactes. Elles ne sont ni comp
 rangées, ni comparées entre deux photos. Seule exception, la suppression d'un emplacement
 avertit s'il contient encore des lignes d'autres jeux, car elles perdraient leur emplacement.
 
-## Classes et talents manquants (FaBrary en renfort)
+## Classes et talents manquants (Card Vault en renfort)
 
 CardNexus ne connaît pas encore certaines classes (Pirate, Necromancer…) ni certains talents
 (Revered, Reviled…) : ces cartes arrivent sans. Pour chaque carte sans classe ou sans talent,
-l'app demande les siens à FaBrary (requête `getCard`, plusieurs cartes par requête grâce aux
-alias GraphQL), d'après son nom et son pitch (`buckwild-red`). Ce que CardNexus sait déjà
-l'emporte : FaBrary ne fait que combler les trous.
+l'app cherche les siens dans l'index Card Vault : toutes les cartes imprimées en anglais
+(environ 5 000, six pages, une trentaine de secondes), réduites à nom, pitch, classes et talents,
+lues une fois par semaine et gardées sur le téléphone (IndexedDB). Ce que CardNexus sait déjà
+l'emporte : Card Vault ne fait que combler les trous.
 
-La réponse est gardée sur le téléphone (`fabrary_classes`) : une carte n'est demandée qu'une
-fois, y compris une carte vraiment sans talent. La première ouverture d'un gros vrac interroge
-donc FaBrary pour beaucoup de cartes (40 par requête), les suivantes plus du tout. Une carte que
-FaBrary ne connaît pas encore est redemandée le lendemain. Si FaBrary ne répond pas, la carte
-reste comme CardNexus la donne et l'app continue normalement.
+La réponse est gardée aussi, carte par carte (`fabrary_classes`, clé nom + couleur :
+`buckwild-red`) : une carte n'est cherchée qu'une fois, y compris une carte vraiment sans
+talent. Une carte que Card Vault ne connaît pas encore est recherchée le lendemain. Si Card
+Vault ne répond pas, la carte reste comme CardNexus la donne et l'app continue normalement.
 
 Les classes et talents complétés servent partout : groupement par classe, talent ou classe +
 talent, rangement des vracs.
@@ -359,7 +365,9 @@ app/src/main/assets/www/
   js/api.js                               remplace server.js : répond aux fetch('/api/…')
   js/fabrary.js, js/cardnexus.js          les clients de lib/, portés au navigateur
   js/fabtcg.js                            decklists du site officiel fabtcg.com
-  js/cardvault.js                         catalogue officiel Card Vault (cartes à compléter)
+  js/cardvault.js                         Card Vault : catalogue, fiches par nom, classes et talents
+  js/decklist.js                          listes par noms : liste collée, fiches des cartes
+  js/store.js                             stockage IndexedDB (catalogues, recensements)
   js/http.js                              requêtes sortantes via le pont natif (et fetch du SDK)
   js/vendor/cardnexus-sdk.js              SDK CardNexus assemblé (généré par android/sdk)
 ```

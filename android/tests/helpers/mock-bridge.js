@@ -76,6 +76,8 @@
   function handle(method, url, body) {
     const u = new URL(url);
     if (u.host.startsWith('cognito')) {
+      // __mockFabraryGone : FaBrary a supprimé son accès invité.
+      if (window.__mockFabraryGone) throw new Error(`{"__type":"ResourceNotFoundException","message":"IdentityPool not found."}`);
       return body.IdentityPoolId ? { IdentityId: 'id' } : { Credentials: { AccessKeyId: 'A', SecretKey: 'S', SessionToken: 'T', Expiration: Date.now() / 1000 + 3600 } };
     }
     // Decklists fabtcg.com : __mockFabtcgPages[chemin] = HTML de la page.
@@ -84,20 +86,37 @@
       window.__fabtcgCalls = (window.__fabtcgCalls || 0) + 1;
       return page ? { __html: page } : { __status: 404, __html: '<h1>Not found</h1>' };
     }
-    // Card Vault : __mockCardVault[rarete] = cartes de la recherche ; sans lui, injoignable.
+    // Card Vault : __mockCardVault[rarete] = cartes de la recherche par rareté ;
+    // __mockVaultCards = toutes les cartes (recherche par nom, index complet).
+    // Sans l'un ni l'autre (ou avec __mockVaultDown), Card Vault est injoignable.
     if (u.host === 'api.cardvault.fabtcg.com') {
       window.__cardVaultCalls = (window.__cardVaultCalls || 0) + 1;
       const vault = window.__mockCardVault;
-      if (!vault) throw new Error('Card Vault indisponible');
+      const all = window.__mockVaultCards;
+      if (window.__mockVaultDown || (!vault && !all)) throw new Error('Card Vault indisponible');
       const list = (names) => ({ count: names.length, next: null, results: names.map((name, id) => ({ id, name, name_en: name })) });
-      if (u.pathname.endsWith('/core-classes/')) return list(['Generic', 'Brute', 'Ninja', 'Pirate', 'Necromancer', 'Warrior']);
-      if (u.pathname.endsWith('/core-talents/')) return list(['Shadow', 'Light', 'Lightning']);
-      if (u.pathname.endsWith('/core-types/')) return list(['Action', 'Attack Reaction', 'Defense Reaction', 'Hero', 'Weapon', 'Equipment', 'Token']);
+      if (u.pathname.endsWith('/core-classes/')) return list(['Generic', 'Brute', 'Ninja', 'Pirate', 'Necromancer', 'Warrior', 'Guardian']);
+      if (u.pathname.endsWith('/core-talents/')) return list(['Shadow', 'Light', 'Lightning', 'Draconic', 'Revered', 'Reviled', 'Royal']);
+      if (u.pathname.endsWith('/core-types/')) return list(['Action', 'Attack Reaction', 'Defense Reaction', 'Block', 'Instant', 'Hero', 'Weapon', 'Equipment', 'Token']);
       if (u.pathname.endsWith('/advanced-search/')) {
-        const all = vault[u.searchParams.get('rarities')] || [];
+        const name = u.searchParams.get('name');
+        const rarity = u.searchParams.get('rarities');
+        let found;
+        if (name) {
+          window.__vaultNameCalls = (window.__vaultNameCalls || 0) + 1;
+          // Comme le vrai : recherche plein texte (l'app garde les noms exacts),
+          // qui ne trouve pas « Hunt’s End » écrit avec l'apostrophe courbe.
+          found = (all || []).filter((c) => c.printed_name.toLowerCase().includes(name.toLowerCase()));
+        } else if (rarity) {
+          if (!vault) throw new Error('Card Vault indisponible');
+          found = vault[rarity] || [];
+        } else {
+          window.__vaultIndexCalls = (window.__vaultIndexCalls || 0) + 1;
+          found = all || [];
+        }
         const size = Number(u.searchParams.get('page_size')), page = Number(u.searchParams.get('page'));
-        const results = all.slice((page - 1) * size, page * size);
-        return { count: all.length, next: page * size < all.length ? 'next' : null, previous: null, results };
+        const results = found.slice((page - 1) * size, page * size);
+        return { count: found.length, next: page * size < found.length ? 'next' : null, previous: null, results };
       }
     }
     if (u.host.includes('appsync')) {
