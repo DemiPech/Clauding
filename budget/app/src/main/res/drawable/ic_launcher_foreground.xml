@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Portefeuille stylisé, centré dans la zone sûre (66dp) de l'icône adaptative. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,38h40a4,4 0,0 1,4 4v26a4,4 0,0 1,-4 4h-40a4,4 0,0 1,-4 -4v-26a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#00696E"
+        android:pathData="M60,48h18v14h-18a4,4 0,0 1,-4 -4v-6a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,55m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+</vector>
