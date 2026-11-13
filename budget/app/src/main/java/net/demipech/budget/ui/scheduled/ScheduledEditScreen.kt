@@ -57,15 +57,23 @@ import net.demipech.budget.ui.components.weekdayName
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.components.unit
 import net.demipech.budget.ui.repository
+import net.demipech.budget.data.isTransfer
+import net.demipech.budget.ui.components.kind
+import net.demipech.budget.ui.components.EntryTypeSelector
+import net.demipech.budget.ui.components.EntryType
 import net.demipech.budget.domain.DeferredDebit
 import net.demipech.budget.ui.components.DeferredSwitch
 import java.time.LocalDate
 
 class ScheduledEditViewModel(private val repo: BudgetRepository, private val id: Long?) : ViewModel() {
-    var kind by mutableStateOf(Kind.EXPENSE)
+    var type by mutableStateOf(EntryType.EXPENSE)
         private set
+    val kind: Kind get() = type.kind
+    val isTransfer get() = type == EntryType.TRANSFER
     var amount by mutableStateOf("")
     var accountId by mutableStateOf<Long?>(null)
+    /** Compte crédité d'un virement planifié. */
+    var toAccountId by mutableStateOf<Long?>(null)
     var categoryId by mutableStateOf<Long?>(null)
     var note by mutableStateOf("")
     var deferred by mutableStateOf(true)
@@ -91,7 +99,12 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
         if (id != null) viewModelScope.launch {
             repo.scheduled(id)?.let { s ->
                 original = s
-                kind = s.kind
+                type = when {
+                    s.isTransfer -> EntryType.TRANSFER
+                    s.kind == Kind.INCOME -> EntryType.INCOME
+                    else -> EntryType.EXPENSE
+                }
+                toAccountId = s.toAccountId
                 amount = Money.toInput(s.amountCents)
                 accountId = s.accountId
                 categoryId = s.categoryId
@@ -123,6 +136,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
 
     val canSave
         get() = amountCents != null && accountId != null && (!needsRuleN || ruleNValue != null) &&
+            (!isTransfer || (toAccountId != null && toAccountId != accountId)) &&
             (frequency == Frequency.NONE || (intervalValue != null && (endless || countValue != null)))
 
     /** Planification telle que saisie, null si le formulaire est incomplet. */
@@ -133,7 +147,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
         return ScheduledOperation(
             id = id ?: 0,
             accountId = accountId ?: return null,
-            categoryId = categoryId,
+            categoryId = if (isTransfer) null else categoryId,
             kind = kind,
             amountCents = amountCents ?: return null,
             note = note.trim(),
@@ -155,13 +169,14 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
             },
             ruleWeekday = ruleWeekday,
             adjust = if (Recurrence.usesAdjust(frequency, rule)) adjust else DateAdjust.NONE,
-            deferred = deferred,
+            deferred = deferred && !isTransfer,
+            toAccountId = if (isTransfer) toAccountId ?: return null else null,
         )
     }
 
-    fun changeKind(value: Kind) {
-        kind = value
-        if (categories.value.find { it.id == categoryId }?.kind != value) categoryId = null
+    fun changeType(value: EntryType) {
+        type = value
+        if (value == EntryType.TRANSFER || categories.value.find { it.id == categoryId }?.kind != value.kind) categoryId = null
     }
 
     fun save(onDone: () -> Unit) = viewModelScope.launch {
@@ -212,7 +227,7 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            KindSelector(vm.kind, vm::changeKind)
+            EntryTypeSelector(vm.type, vm::changeType)
             AmountField(
                 value = vm.amount,
                 onValueChange = { vm.amount = it },
@@ -220,15 +235,25 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
                 isError = vm.amount.isNotEmpty() && vm.amountCents == null,
             )
             Selector(
-                label = "Compte",
+                label = if (vm.isTransfer) "Depuis le compte" else "Compte",
                 options = accountList,
                 selected = accountList.find { it.id == vm.accountId },
-                optionLabel = { it.name },
+                optionLabel = { "${it.icon} ${it.name}" },
                 onSelect = { vm.accountId = it.id },
             )
-            CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
-            accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
-                DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
+            if (vm.isTransfer) {
+                Selector(
+                    label = "Vers le compte",
+                    options = accountList.filter { it.id != vm.accountId },
+                    selected = accountList.find { it.id == vm.toAccountId && it.id != vm.accountId },
+                    optionLabel = { "${it.icon} ${it.name}" },
+                    onSelect = { vm.toAccountId = it.id },
+                )
+            } else {
+                CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
+                accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
+                    DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
+                }
             }
             OutlinedTextField(
                 value = vm.note,

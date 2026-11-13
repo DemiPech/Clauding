@@ -1,5 +1,6 @@
 package net.demipech.budget.ui.operations
 
+import net.demipech.budget.data.isTransfer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -88,7 +89,9 @@ class TransactionsViewModel(repo: BudgetRepository, private val accountId: Long?
 
     val scheduled: StateFlow<List<ScheduledDetails>> =
         repo.scheduled()
-            .map { list -> list.filter { accountId == null || it.scheduled.accountId == accountId } }
+            .map { list ->
+                list.filter { accountId == null || it.scheduled.accountId == accountId || it.scheduled.toAccountId == accountId }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val debits: StateFlow<List<DeferredDebitTotal>> =
@@ -103,10 +106,13 @@ class TransactionsViewModel(repo: BudgetRepository, private val accountId: Long?
 
 private data class DayTotals(val income: Long, val expense: Long)
 
-private fun List<OperationDetails>.totals() = DayTotals(
-    income = filter { it.operation.kind == Kind.INCOME }.sumOf { it.operation.amountCents },
-    expense = filter { it.operation.kind == Kind.EXPENSE }.sumOf { it.operation.amountCents },
-)
+/** Revenus et dépenses, sans les virements (ni l'un ni l'autre). */
+private fun List<OperationDetails>.totals() = filter { !it.operation.isTransfer }.let { ops ->
+    DayTotals(
+        income = ops.filter { it.operation.kind == Kind.INCOME }.sumOf { it.operation.amountCents },
+        expense = ops.filter { it.operation.kind == Kind.EXPENSE }.sumOf { it.operation.amountCents },
+    )
+}
 
 /**
  * Opérations d'un mois, façon Money Manager : vue Liste (groupée par jour) ou
@@ -180,7 +186,7 @@ fun TransactionsScreen(
         val monthTotals = remember(list) { list.totals() }
         val byDay = remember(list) { list.groupBy { it.operation.date } }
         val recurrences = remember(scheduled, month) {
-            Forecast.upcoming(scheduled, month.atDay(1), month.atEndOfMonth())
+            Forecast.upcoming(scheduled, month.atDay(1), month.atEndOfMonth(), accountId)
         }
 
         LazyColumn(
@@ -227,7 +233,7 @@ fun TransactionsScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
-                    operationItems(ops, onEditOperation)
+                    operationItems(ops, onEditOperation, accountId != null)
                 }
             } else {
                 item(key = "calendar") {
@@ -247,15 +253,15 @@ fun TransactionsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
-                operationItems(dayOps, onEditOperation)
+                operationItems(dayOps, onEditOperation, accountId != null)
             }
         }
     }
 }
 
-private fun LazyListScope.operationItems(ops: List<OperationDetails>, onEdit: (Long) -> Unit) {
+private fun LazyListScope.operationItems(ops: List<OperationDetails>, onEdit: (Long) -> Unit, accountView: Boolean) {
     items(ops, key = { it.operation.id }) { op ->
-        OperationLine(op, onClick = { onEdit(op.operation.id) })
+        OperationLine(op, onClick = { onEdit(op.operation.id) }, accountView = accountView)
     }
 }
 

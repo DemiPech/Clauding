@@ -545,3 +545,19 @@ fun DeferredSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, debitDa
         androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+
+/** Type saisi dans les formulaires : une dépense, une rentrée ou un virement entre comptes. */
+enum class EntryType { EXPENSE, INCOME, TRANSFER }
+
+fun EntryType.label(): String = when (this) {
+    EntryType.EXPENSE -> "Dépense"
+    EntryType.INCOME -> "Rentrée"
+    EntryType.TRANSFER -> "Virement"
+}
+
+val EntryType.kind: Kind get() = if (this == EntryType.INCOME) Kind.INCOME else Kind.EXPENSE
+
+@Composable
+fun EntryTypeSelector(type: EntryType, onTypeChange: (EntryType) -> Unit, modifier: Modifier = Modifier) {
+    Segmented(EntryType.entries, type, { it.label() }, onTypeChange, modifier)
+}

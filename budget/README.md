@@ -72,6 +72,15 @@ Quatre onglets :
     Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
     novembre, 25 décembre), calculés pour chaque année.
   - Le formulaire montre en direct les prochaines dates de la série.
+- **Virements entre comptes** : choix « Virement » à côté de Dépense / Rentrée, dans le
+  formulaire d'opération comme dans les planifications (ex. épargne chaque mois).
+  - Un virement est une sortie sur le compte débité et une entrée sur le compte crédité, liées :
+    les deux soldes sont justes, et modifier ou supprimer l'une agit sur les deux.
+  - Il ne compte ni en revenu ni en dépense (totaux du mois, calendrier, Stats, structure des
+    dépenses) ; il apparaît en gris « Boursorama → Fortuneo » dans la liste de tous les
+    comptes, et en sortie ou entrée colorée dans la page d'un compte.
+  - Un virement planifié vers un compte supprimé est supprimé avec lui ; un virement passé garde
+    son autre côté comme simple opération.
 - **Carte à débit différé** (réglage du compte, crayon sur la page du compte) : jour d'arrêté
   des dépenses (ex. le 20, 31 = fin de mois) et jour de débit (dernier jour du mois, dernier
   jour ouvré, ou un jour fixe). Arrêté le 20, débit le dernier jour : une dépense du 13/11 est
@@ -135,12 +144,12 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 5. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 6. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements.
 
 ## Pistes
 
-Virements entre comptes, recherche et filtres, vues « Mois » et « Total » de Money Manager,
+Recherche et filtres, vues « Mois » et « Total » de Money Manager,
 détail d'une catégorie par sous-catégorie dans Stats, budgets mensuels, rappels
 (WorkManager + notification), export CSV / sauvegarde.

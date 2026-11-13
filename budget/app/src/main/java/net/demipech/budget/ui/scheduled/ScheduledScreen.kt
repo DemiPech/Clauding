@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.stateIn
 import net.demipech.budget.data.BudgetRepository
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.ScheduledDetails
+import net.demipech.budget.data.isTransfer
 import net.demipech.budget.data.title
 import net.demipech.budget.domain.Recurrence
 import net.demipech.budget.ui.components.AmountText
@@ -216,12 +217,19 @@ private fun ScheduledRow(item: ScheduledDetails, onClick: () -> Unit) {
         else -> "Prochaine : ${next.format(DayFormat)} · $remaining restantes"
     }
     ListItem(
-        leadingContent = { CategoryBadge(item.categoryEmoji, item.categoryColor) },
+        leadingContent = { CategoryBadge(if (s.isTransfer) "⇄" else item.categoryEmoji, item.categoryColor) },
         headlineContent = { Text(title) },
         supportingContent = {
-            Text("${describeSchedule(s)} · ${item.accountName}\n$progress")
+            val accounts = if (s.isTransfer) "${item.accountName} → ${item.toAccountName}" else item.accountName
+            Text("${describeSchedule(s)} · $accounts\n$progress")
         },
-        trailingContent = { AmountText(if (s.kind == Kind.INCOME) s.amountCents else -s.amountCents) },
+        trailingContent = {
+            if (s.isTransfer) {
+                Text(Money.format(s.amountCents), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                AmountText(if (s.kind == Kind.INCOME) s.amountCents else -s.amountCents)
+            }
+        },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.clickable(onClick = onClick),
     )

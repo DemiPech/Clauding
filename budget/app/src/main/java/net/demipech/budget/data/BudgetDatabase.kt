@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class],
-    version = 5,
+    version = 6,
 )
 @TypeConverters(Converters::class)
 abstract class BudgetDatabase : RoomDatabase() {
@@ -23,7 +23,7 @@ abstract class BudgetDatabase : RoomDatabase() {
         fun create(context: Context): BudgetDatabase =
             Room.databaseBuilder(context, BudgetDatabase::class.java, "budget.db")
                 .addCallback(SeedCategories)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }
@@ -83,6 +83,15 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("ALTER TABLE operations ADD COLUMN debitDate INTEGER NOT NULL DEFAULT 0")
         db.execSQL("UPDATE operations SET debitDate = date")
         db.execSQL("ALTER TABLE scheduled ADD COLUMN deferred INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** v6 : virements entre comptes. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE operations ADD COLUMN transferId INTEGER")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_operations_transferId` ON `operations` (`transferId`)")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN toAccountId INTEGER")
     }
 }
 

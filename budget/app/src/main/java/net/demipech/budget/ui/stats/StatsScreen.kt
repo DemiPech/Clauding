@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.stateIn
 import net.demipech.budget.data.BudgetRepository
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.OperationDetails
+import net.demipech.budget.data.isTransfer
 import net.demipech.budget.domain.Forecast
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.components.CategoryBadge
@@ -80,8 +81,8 @@ fun StatsScreen() {
         },
     ) { padding ->
         val list = operations ?: return@Scaffold
-        val incomeTotal = remember(list) { list.filter { it.operation.kind == Kind.INCOME }.sumOf { it.operation.amountCents } }
-        val expenseTotal = remember(list) { list.filter { it.operation.kind == Kind.EXPENSE }.sumOf { it.operation.amountCents } }
+        val incomeTotal = remember(list) { list.filter { it.operation.kind == Kind.INCOME && !it.operation.isTransfer }.sumOf { it.operation.amountCents } }
+        val expenseTotal = remember(list) { list.filter { it.operation.kind == Kind.EXPENSE && !it.operation.isTransfer }.sumOf { it.operation.amountCents } }
         val slices = remember(list, kind) { Forecast.breakdown(list, kind) }
         val total = slices.sumOf { it.cents }
         val fallback = MaterialTheme.colorScheme.outline

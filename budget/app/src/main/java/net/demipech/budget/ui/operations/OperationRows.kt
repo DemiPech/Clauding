@@ -1,5 +1,7 @@
 package net.demipech.budget.ui.operations
 
+import net.demipech.budget.data.Kind
+import net.demipech.budget.data.isTransfer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +39,16 @@ import java.util.Locale
 
 /** Libellé d'une opération : sa note, à défaut sa (sous-)catégorie. */
 val OperationDetails.title: String
-    get() = operation.note.ifBlank { subcategoryName ?: categoryName ?: operation.kind.label() }
+    get() = operation.note.ifBlank {
+        if (operation.isTransfer) "Virement" else subcategoryName ?: categoryName ?: operation.kind.label()
+    }
+
+/** « Boursorama → Fortuneo » pour un virement, quel que soit le côté affiché. */
+val OperationDetails.transferRoute: String
+    get() {
+        val other = transferAccountName ?: "compte supprimé"
+        return if (operation.kind == Kind.EXPENSE) "$accountName → $other" else "$other → $accountName"
+    }
 
 private val WeekdayFormat = DateTimeFormatter.ofPattern("EEE", Locale.FRENCH)
 private val MonthYearFormat = DateTimeFormatter.ofPattern("MM.yyyy", Locale.FRENCH)
@@ -84,7 +95,14 @@ fun DayHeader(date: LocalDate, income: Long, expense: Long, modifier: Modifier =
  * compte (avec le rythme si l'opération vient d'une planification), montant coloré.
  */
 @Composable
-fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun OperationLine(
+    op: OperationDetails,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Vue d'un seul compte : un virement y est coloré comme une sortie ou une entrée. */
+    accountView: Boolean = false,
+) {
+    val transfer = op.operation.isTransfer
     Row(
         modifier
             .fillMaxWidth()
@@ -95,7 +113,8 @@ fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier 
     ) {
         Column(Modifier.width(112.dp)) {
             Text(
-                listOfNotNull(op.categoryEmoji?.takeIf { it.isNotBlank() }, op.categoryName ?: "Autres").joinToString(" "),
+                if (transfer) "⇄ Virement"
+                else listOfNotNull(op.categoryEmoji?.takeIf { it.isNotBlank() }, op.categoryName ?: "Autres").joinToString(" "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -120,7 +139,7 @@ fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier 
             }
             val debit = if (op.isDeferred) " · débit le ${op.operation.debitDate.format(ShortDayFormat)}" else ""
             Text(
-                op.accountName + rhythm + debit,
+                (if (transfer) op.transferRoute else op.accountName) + rhythm + debit,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -129,7 +148,7 @@ fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier 
         }
         Text(
             Money.format(op.operation.amountCents),
-            color = kindColor(op.operation.kind),
+            color = if (transfer && !accountView) MaterialTheme.colorScheme.onSurfaceVariant else kindColor(op.operation.kind),
             style = MaterialTheme.typography.bodyLarge,
         )
     }
@@ -146,11 +165,13 @@ fun OperationCardRow(op: OperationDetails, onClick: () -> Unit, modifier: Modifi
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        CategoryBadge(op.categoryEmoji, op.categoryColor)
+        val transfer = op.operation.isTransfer
+        CategoryBadge(if (transfer) "⇄" else op.categoryEmoji, op.categoryColor)
         Column(Modifier.weight(1f)) {
             Text(op.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                listOfNotNull(op.subcategoryName ?: op.categoryName, op.accountName).joinToString(" · "),
+                if (transfer) op.transferRoute
+                else listOfNotNull(op.subcategoryName ?: op.categoryName, op.accountName).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -158,7 +179,15 @@ fun OperationCardRow(op: OperationDetails, onClick: () -> Unit, modifier: Modifi
             )
         }
         Column(horizontalAlignment = Alignment.End) {
-            AmountText(op.operation.signedCents)
+            if (transfer) {
+                Text(
+                    Money.format(op.operation.amountCents),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            } else {
+                AmountText(op.operation.signedCents)
+            }
             Text(
                 op.operation.date.format(DayFormat),
                 style = MaterialTheme.typography.bodySmall,

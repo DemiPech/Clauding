@@ -6,6 +6,7 @@ import net.demipech.budget.data.Operation
 import net.demipech.budget.data.OperationDetails
 import net.demipech.budget.data.ScheduledDetails
 import net.demipech.budget.data.ScheduledOperation
+import net.demipech.budget.data.signedCentsFor
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -54,5 +55,26 @@ class ForecastTest {
         val upcoming = Forecast.upcoming(items, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 12, 31))
         assertEquals(listOf("Salaire", "Loyer", "Salaire", "Loyer"), upcoming.map { it.details.scheduled.note })
         assertEquals(0L, upcoming.sumOf { it.signedCents })
+    }
+
+    @Test
+    fun transfersAreNeitherIncomeNorExpense() {
+        val transferOut = op(Kind.EXPENSE, 50000, null, null).let { it.copy(operation = it.operation.copy(transferId = 7)) }
+        val slices = Forecast.breakdown(listOf(transferOut, op(Kind.EXPENSE, 1000, 1, "Loisirs")), Kind.EXPENSE)
+        assertEquals(listOf(1000L), slices.map { it.cents })
+    }
+
+    @Test
+    fun plannedTransferIsSignedFromEachAccountPointOfView() {
+        val transfer = ScheduledOperation(
+            accountId = 1, categoryId = null, kind = Kind.EXPENSE, amountCents = 20000,
+            startDate = LocalDate.of(2026, 11, 20), frequency = Frequency.MONTHLY, occurrences = null, toAccountId = 2,
+        )
+        assertEquals(0L, transfer.signedCentsFor(null))
+        assertEquals(-20000L, transfer.signedCentsFor(1))
+        assertEquals(20000L, transfer.signedCentsFor(2))
+        val details = ScheduledDetails(transfer, "Courant", "Épargne", null, null, null, null)
+        val upcoming = Forecast.upcoming(listOf(details), LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30), accountId = 2)
+        assertEquals(listOf(20000L), upcoming.map { it.signedCents })
     }
 }

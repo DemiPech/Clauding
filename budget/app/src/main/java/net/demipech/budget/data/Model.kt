@@ -129,7 +129,22 @@ data class ScheduledOperation(
     val planSize: Int = 0,
     /** Les opérations créées suivent le débit différé du compte. */
     val deferred: Boolean = false,
+    /** Virement planifié vers ce compte (accountId = compte débité, kind = EXPENSE). */
+    val toAccountId: Long? = null,
 )
+
+val ScheduledOperation.isTransfer: Boolean get() = toAccountId != null
+
+/**
+ * Montant signé vu d'un compte ([accountId] null = tous les comptes) : un virement
+ * est neutre pour l'ensemble, négatif pour le compte débité, positif pour l'autre.
+ */
+fun ScheduledOperation.signedCentsFor(accountId: Long?): Long = when {
+    !isTransfer -> signedCents
+    accountId == null -> 0
+    accountId == toAccountId -> amountCents
+    else -> -amountCents
+}
 
 @Entity(
     tableName = "operations",
@@ -153,7 +168,7 @@ data class ScheduledOperation(
             onDelete = ForeignKey.SET_NULL,
         ),
     ],
-    indices = [Index("accountId"), Index("categoryId"), Index("scheduledId"), Index("date")],
+    indices = [Index("accountId"), Index("categoryId"), Index("scheduledId"), Index("date"), Index("transferId")],
 )
 data class Operation(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -173,7 +188,14 @@ data class Operation(
      * date réelle de la dépense.
      */
     val debitDate: LocalDate = date,
+    /**
+     * Virement : la sortie (EXPENSE) et l'entrée (INCOME) partagent ce numéro,
+     * qui est l'id de la sortie. Un virement ne compte ni en revenu ni en dépense.
+     */
+    val transferId: Long? = null,
 )
+
+val Operation.isTransfer: Boolean get() = transferId != null
 
 val Operation.signedCents: Long get() = if (kind == Kind.INCOME) amountCents else -amountCents
 
@@ -213,6 +235,8 @@ data class OperationDetails(
     val scheduledPlanIndex: Int? = null,
     val scheduledPlanSize: Int? = null,
     val accountDeferred: Boolean = false,
+    /** Pour un virement : l'autre compte. */
+    val transferAccountName: String? = null,
 )
 
 /** Dépense en débit différé : elle pèse sur le solde à [Operation.debitDate]. */
@@ -222,6 +246,7 @@ val OperationDetails.isDeferred: Boolean
 data class ScheduledDetails(
     @Embedded val scheduled: ScheduledOperation,
     val accountName: String,
+    val toAccountName: String? = null,
     val categoryName: String?,
     val subcategoryName: String?,
     val categoryEmoji: String?,
@@ -232,4 +257,6 @@ val ScheduledOperation.signedCents: Long get() = if (kind == Kind.INCOME) amount
 
 /** Libellé d'une planification : sa note, à défaut sa (sous-)catégorie. */
 val ScheduledDetails.title: String
-    get() = scheduled.note.ifBlank { subcategoryName ?: categoryName ?: "" }
+    get() = scheduled.note.ifBlank {
+        if (scheduled.isTransfer) "Virement vers ${toAccountName ?: "?"}" else subcategoryName ?: categoryName ?: ""
+    }

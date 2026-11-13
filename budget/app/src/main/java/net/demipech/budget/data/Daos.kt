@@ -86,9 +86,12 @@ private const val OPERATION_DETAILS = """
         COALESCE(p.id, c.id) AS rootCategoryId,
         s.frequency AS scheduledFrequency, s.interval AS scheduledInterval,
         s.planIndex AS scheduledPlanIndex, s.planSize AS scheduledPlanSize,
-        a.deferredDebit AS accountDeferred
+        a.deferredDebit AS accountDeferred,
+        ta.name AS transferAccountName
     FROM operations o
     JOIN accounts a ON a.id = o.accountId
+    LEFT JOIN operations t ON o.transferId IS NOT NULL AND t.transferId = o.transferId AND t.id != o.id
+    LEFT JOIN accounts ta ON ta.id = t.accountId
     LEFT JOIN categories c ON c.id = o.categoryId
     LEFT JOIN categories p ON p.id = c.parentId
     LEFT JOIN scheduled s ON s.id = o.scheduledId
@@ -100,12 +103,19 @@ interface OperationDao {
     @Query(
         OPERATION_DETAILS + """
         WHERE o.date BETWEEN :from AND :to AND (:accountId IS NULL OR o.accountId = :accountId)
+            AND (:accountId IS NOT NULL OR o.transferId IS NULL OR o.kind = 'EXPENSE')
         ORDER BY o.date DESC, o.id DESC
         """
     )
     fun observeBetween(from: LocalDate, to: LocalDate, accountId: Long?): Flow<List<OperationDetails>>
 
-    @Query(OPERATION_DETAILS + " ORDER BY o.date DESC, o.id DESC LIMIT :limit")
+    /** Sans l'entrée des virements (une ligne par virement). */
+    @Query(
+        OPERATION_DETAILS + """
+        WHERE o.transferId IS NULL OR o.kind = 'EXPENSE'
+        ORDER BY o.date DESC, o.id DESC LIMIT :limit
+        """
+    )
     fun observeRecent(limit: Int): Flow<List<OperationDetails>>
 
     @Query("SELECT * FROM operations WHERE id = :id")
@@ -113,6 +123,12 @@ interface OperationDao {
 
     @Query("SELECT * FROM operations WHERE accountId = :accountId")
     suspend fun getByAccount(accountId: Long): List<Operation>
+
+    @Query("SELECT * FROM operations WHERE transferId = :transferId")
+    suspend fun getTransfer(transferId: Long): List<Operation>
+
+    @Query("DELETE FROM operations WHERE transferId = :transferId")
+    suspend fun deleteTransfer(transferId: Long)
 
     /** Débits différés (par compte et date de débit) entre deux dates incluses. */
     @Query(
@@ -147,13 +163,14 @@ interface OperationDao {
 interface ScheduledDao {
     @Query(
         """
-        SELECT s.*, a.name AS accountName,
+        SELECT s.*, a.name AS accountName, ta.name AS toAccountName,
             COALESCE(p.name, c.name) AS categoryName,
             CASE WHEN p.id IS NULL THEN NULL ELSE c.name END AS subcategoryName,
             COALESCE(p.emoji, c.emoji) AS categoryEmoji,
             COALESCE(p.color, c.color) AS categoryColor
         FROM scheduled s
         JOIN accounts a ON a.id = s.accountId
+        LEFT JOIN accounts ta ON ta.id = s.toAccountId
         LEFT JOIN categories c ON c.id = s.categoryId
         LEFT JOIN categories p ON p.id = c.parentId
         ORDER BY s.startDate
@@ -175,6 +192,9 @@ interface ScheduledDao {
 
     @Query("DELETE FROM scheduled WHERE planId = :planId")
     suspend fun deletePlan(planId: Long)
+
+    @Query("DELETE FROM scheduled WHERE toAccountId = :accountId")
+    suspend fun deleteTransfersTo(accountId: Long)
 
     @Query("UPDATE scheduled SET planSize = :size, note = :note WHERE planId = :planId")
     suspend fun updatePlan(planId: Long, size: Int, note: String)

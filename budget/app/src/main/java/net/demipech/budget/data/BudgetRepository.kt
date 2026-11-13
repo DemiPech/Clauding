@@ -33,8 +33,14 @@ class BudgetRepository(private val db: BudgetDatabase) {
             account.id
         }
     }
-    /** Supprime aussi ses opérations et ses planifications. */
-    suspend fun delete(account: Account) = accounts.delete(account)
+    /**
+     * Supprime aussi ses opérations, ses planifications et les virements planifiés
+     * vers lui. L'autre côté d'un virement passé reste, comme simple opération.
+     */
+    suspend fun delete(account: Account) = db.withTransaction {
+        scheduled.deleteTransfersTo(account.id)
+        accounts.delete(account)
+    }
 
     // Catégories
     fun categories(): Flow<List<Category>> = categories.observeAll()
@@ -63,6 +69,56 @@ class BudgetRepository(private val db: BudgetDatabase) {
     suspend fun save(operation: Operation): Long {
         val op = withDebitDate(operation, accounts.get(operation.accountId))
         return if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+    }
+
+    // Virements
+    suspend fun transferLegs(transferId: Long): List<Operation> = operations.getTransfer(transferId)
+
+    /**
+     * Crée ou met à jour un virement de [fromAccountId] vers [toAccountId] : une sortie
+     * et une entrée liées par le même transferId. Renvoie ce transferId.
+     */
+    suspend fun saveTransfer(
+        transferId: Long?,
+        fromAccountId: Long,
+        toAccountId: Long,
+        amountCents: Long,
+        date: LocalDate,
+        note: String,
+    ): Long = db.withTransaction {
+        val legs = transferId?.let { operations.getTransfer(it) }.orEmpty()
+        writeTransfer(legs, fromAccountId, toAccountId, amountCents, date, note, scheduledId = legs.firstOrNull()?.scheduledId)
+    }
+
+    suspend fun deleteTransfer(transferId: Long) = operations.deleteTransfer(transferId)
+
+    /** Écrit les deux côtés d'un virement (à appeler dans une transaction). */
+    private suspend fun writeTransfer(
+        legs: List<Operation>,
+        fromAccountId: Long,
+        toAccountId: Long,
+        amountCents: Long,
+        date: LocalDate,
+        note: String,
+        scheduledId: Long?,
+    ): Long {
+        val out = legs.find { it.kind == Kind.EXPENSE }
+        val inn = legs.find { it.kind == Kind.INCOME }
+        val outOp = Operation(
+            id = out?.id ?: 0, accountId = fromAccountId, categoryId = null, kind = Kind.EXPENSE,
+            amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
+            transferId = out?.transferId,
+        )
+        val outId = if (out == null) operations.insert(outOp) else out.id.also { operations.update(outOp) }
+        val transferId = out?.transferId ?: outId
+        if (out == null) operations.update(outOp.copy(id = outId, transferId = transferId))
+        val inOp = Operation(
+            id = inn?.id ?: 0, accountId = toAccountId, categoryId = null, kind = Kind.INCOME,
+            amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
+            transferId = transferId,
+        )
+        if (inn == null) operations.insert(inOp) else operations.update(inOp)
+        return transferId
     }
 
     private fun withDebitDate(op: Operation, account: Account?): Operation =
@@ -128,6 +184,18 @@ class BudgetRepository(private val db: BudgetDatabase) {
             for (item in scheduled.getAll()) {
                 val dates = Recurrence.dueDates(item, today)
                 if (dates.isEmpty()) continue
+                val target = item.toAccountId
+                if (target != null) {
+                    // Virement planifié : les deux côtés, si le compte cible existe encore.
+                    if (target in accountsById) {
+                        dates.forEach { date ->
+                            writeTransfer(emptyList(), item.accountId, target, item.amountCents, date, item.note, item.id)
+                        }
+                    }
+                    scheduled.update(item.copy(generatedCount = item.generatedCount + dates.size))
+                    created += dates.size
+                    continue
+                }
                 operations.insertAll(
                     dates.map { date ->
                         Operation(

@@ -1,5 +1,6 @@
 package net.demipech.budget.ui.home
 
+import net.demipech.budget.data.isTransfer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -329,11 +330,12 @@ private fun UpcomingCard(upcoming: List<Upcoming>, onShowMore: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                CategoryBadge(d.categoryEmoji, d.categoryColor)
+                CategoryBadge(if (d.scheduled.isTransfer) "⇄" else d.categoryEmoji, d.categoryColor)
                 Column(Modifier.weight(1f)) {
                     Text(d.title.ifBlank { "Opération planifiée" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "${describeSchedule(d.scheduled)} · ${d.accountName}",
+                        describeSchedule(d.scheduled) + " · " +
+                            if (d.scheduled.isTransfer) "${d.accountName} → ${d.toAccountName}" else d.accountName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -341,7 +343,11 @@ private fun UpcomingCard(upcoming: List<Upcoming>, onShowMore: () -> Unit) {
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    AmountText(item.signedCents)
+                    if (d.scheduled.isTransfer) {
+                        Text(Money.format(d.scheduled.amountCents), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        AmountText(item.signedCents)
+                    }
                     Text(
                         item.date.format(DayFormat),
                         style = MaterialTheme.typography.bodySmall,
