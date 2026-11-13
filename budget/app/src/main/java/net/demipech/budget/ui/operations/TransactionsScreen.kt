@@ -94,7 +94,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class TransactionsViewModel(repo: BudgetRepository, private val accountId: Long?) : ViewModel() {
+class TransactionsViewModel(private val repo: BudgetRepository, private val accountId: Long?) : ViewModel() {
     val month = MutableStateFlow(YearMonth.now())
 
     val operations: StateFlow<List<OperationDetails>?> =
