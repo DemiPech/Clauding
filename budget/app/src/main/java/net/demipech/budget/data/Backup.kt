@@ -10,6 +10,7 @@ data class BackupData(
     val categories: List<Category>,
     val scheduled: List<ScheduledOperation>,
     val operations: List<Operation>,
+    val budgets: List<Budget> = emptyList(),
     val exportedAt: String? = null,
 )
 
@@ -31,6 +32,7 @@ object BackupJson {
         put("categories", JSONArray(data.categories.map(::categoryJson)))
         put("scheduled", JSONArray(data.scheduled.map(::scheduledJson)))
         put("operations", JSONArray(data.operations.map(::operationJson)))
+        put("budgets", JSONArray(data.budgets.map { b -> JSONObject().put("categoryId", b.categoryId).put("amountCents", b.amountCents) }))
     }.toString(1)
 
     fun read(text: String): BackupData {
@@ -48,6 +50,7 @@ object BackupJson {
             categories = root.objects("categories").map(::category),
             scheduled = root.objects("scheduled").map(::scheduled),
             operations = root.objects("operations").map(::operation),
+            budgets = root.objects("budgets").map { Budget(it.getLong("categoryId"), it.getLong("amountCents")) },
             exportedAt = root.optString("exportedAt").ifBlank { null },
         )
     }

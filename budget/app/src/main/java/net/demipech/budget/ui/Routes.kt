@@ -16,6 +16,9 @@ object Routes {
     const val MORE = "more"
 
     const val SCHEDULED = "scheduled"
+    const val BUDGETS = "budgets"
+    const val FORECAST = "forecast"
+    const val SEARCH = "search"
     const val CATEGORIES = "categories"
 
     const val ACCOUNT = "account/{id}"
@@ -27,9 +30,10 @@ object Routes {
     const val ACCOUNT_EDIT = "account-edit?id={id}"
     fun accountEdit(id: Long? = null) = "account-edit?id=${id ?: -1}"
 
-    const val OPERATION_EDIT = "operation-edit?id={id}&accountId={accountId}&date={date}"
-    fun operationEdit(id: Long? = null, accountId: Long? = null, date: LocalDate? = null) =
-        "operation-edit?id=${id ?: -1}&accountId=${accountId ?: -1}" + (date?.let { "&date=${it.toEpochDay()}" } ?: "")
+    const val OPERATION_EDIT = "operation-edit?id={id}&accountId={accountId}&date={date}&copyOf={copyOf}"
+    fun operationEdit(id: Long? = null, accountId: Long? = null, date: LocalDate? = null, copyOf: Long? = null) =
+        "operation-edit?id=${id ?: -1}&accountId=${accountId ?: -1}&copyOf=${copyOf ?: -1}" +
+            (date?.let { "&date=${it.toEpochDay()}" } ?: "")
 
     const val INSTALLMENTS_EDIT =
         "installments-edit?planId={planId}&amount={amount}&accountId={accountId}&categoryId={categoryId}&note={note}"

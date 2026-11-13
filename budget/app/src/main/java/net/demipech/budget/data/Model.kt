@@ -208,6 +208,23 @@ val Operation.isTransfer: Boolean get() = transferId != null
 
 val Operation.signedCents: Long get() = if (kind == Kind.INCOME) amountCents else -amountCents
 
+/** Budget mensuel d'une catégorie principale (ses sous-catégories comprises). */
+@Entity(
+    tableName = "budgets",
+    foreignKeys = [
+        ForeignKey(
+            entity = Category::class,
+            parentColumns = ["id"],
+            childColumns = ["categoryId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class Budget(
+    @PrimaryKey val categoryId: Long,
+    val amountCents: Long,
+)
+
 data class AccountWithBalance(
     @Embedded val account: Account,
     /** Solde à ce jour (les dépenses différées comptent à leur date de débit). */

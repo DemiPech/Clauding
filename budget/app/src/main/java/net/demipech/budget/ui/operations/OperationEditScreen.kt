@@ -43,6 +43,14 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.components.CategoryGrid
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import net.demipech.budget.ui.components.SectionCard
 import net.demipech.budget.data.isLocked
 import net.demipech.budget.data.ClearStatus
@@ -59,6 +67,8 @@ class OperationEditViewModel(
     private val id: Long?,
     presetAccountId: Long?,
     presetDate: LocalDate?,
+    /** Dupliquer : on part de cette opération, datée d'aujourd'hui. */
+    copyOf: Long? = null,
 ) : ViewModel() {
     var type by mutableStateOf(EntryType.EXPENSE)
         private set
@@ -82,12 +92,18 @@ class OperationEditViewModel(
     val categories: StateFlow<List<Category>> =
         repo.categories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Opérations passées dont le libellé commence comme celui saisi. */
+    var suggestions by mutableStateOf<List<Operation>>(emptyList())
+        private set
+    private var suggestionJob: Job? = null
+
     init {
-        if (id != null) viewModelScope.launch {
-            repo.operation(id)?.let { op ->
-                original = op
+        val sourceId = id ?: copyOf
+        if (sourceId != null) viewModelScope.launch {
+            repo.operation(sourceId)?.let { op ->
+                if (id != null) original = op
                 amount = Money.toInput(op.amountCents)
-                date = op.date
+                date = if (id != null) op.date else presetDate ?: LocalDate.now()
                 note = op.note
                 deferred = op.deferred
                 val transferId = op.transferId
@@ -108,6 +124,30 @@ class OperationEditViewModel(
     }
 
     val isNew get() = id == null
+
+    fun changeNote(value: String) {
+        note = value
+        suggestionJob?.cancel()
+        if (!isNew || isTransfer || value.trim().length < 2) {
+            suggestions = emptyList()
+            return
+        }
+        suggestionJob = viewModelScope.launch {
+            delay(150)
+            suggestions = repo.suggestions(value).filter { it.note != value.trim() }
+        }
+    }
+
+    /** Reprend libellé, sens, catégorie, compte (et montant s'il est vide) d'une opération passée. */
+    fun applySuggestion(op: Operation) {
+        note = op.note
+        type = if (op.kind == Kind.INCOME) EntryType.INCOME else EntryType.EXPENSE
+        categoryId = op.categoryId
+        accountId = op.accountId
+        deferred = op.deferred
+        if (amountCents == null) amount = Money.toInput(op.amountCents)
+        suggestions = emptyList()
+    }
     val isTransfer get() = type == EntryType.TRANSFER
     val amountCents get() = Money.parse(amount)?.takeIf { it > 0 }
     val canSave
@@ -176,11 +216,14 @@ fun OperationEditScreen(
     presetDate: LocalDate?,
     onDone: () -> Unit,
     onSplit: (InstallmentPreset) -> Unit,
+    copyOf: Long? = null,
+    onDuplicate: (Long) -> Unit = {},
 ) {
     val repo = repository()
-    val vm = viewModel(key = "operation-$id-$presetAccountId-$presetDate") {
-        OperationEditViewModel(repo, id, presetAccountId, presetDate)
+    val vm = viewModel(key = "operation-$id-$presetAccountId-$presetDate-$copyOf") {
+        OperationEditViewModel(repo, id, presetAccountId, presetDate, copyOf)
     }
+    val amountFocus = remember { FocusRequester() }
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
@@ -199,6 +242,9 @@ fun OperationEditScreen(
                 },
                 onBack = onDone,
                 onDelete = if (vm.isNew || vm.isLocked) null else ({ confirmDelete = true }),
+                extraActions = {
+                    if (id != null) TextButton(onClick = { onDuplicate(id) }) { Text("Dupliquer") }
+                },
             )
         },
     ) { padding ->
@@ -231,14 +277,30 @@ fun OperationEditScreen(
                 onValueChange = { vm.amount = it },
                 label = "Montant",
                 isError = vm.amount.isNotEmpty() && vm.amountCents == null,
+                modifier = Modifier.focusRequester(amountFocus),
             )
+            // Nouvelle opération : le clavier s'ouvre directement sur le montant.
+            LaunchedEffect(Unit) { if (vm.isNew && copyOf == null) runCatching { amountFocus.requestFocus() } }
             OutlinedTextField(
                 value = vm.note,
-                onValueChange = { vm.note = it },
+                onValueChange = vm::changeNote,
                 label = { Text("Libellé (facultatif)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (vm.suggestions.isNotEmpty()) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    vm.suggestions.forEach { op ->
+                        SuggestionChip(
+                            onClick = { vm.applySuggestion(op) },
+                            label = { Text("${op.note} · ${Money.format(op.amountCents)}") },
+                        )
+                    }
+                }
+            }
             Selector(
                 label = if (vm.isTransfer) "Depuis le compte" else "Compte",
                 options = accountList,
@@ -262,7 +324,7 @@ fun OperationEditScreen(
                     )
                 }
             } else {
-                CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
+                CategoryGrid(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
                 accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
                     DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
                 }

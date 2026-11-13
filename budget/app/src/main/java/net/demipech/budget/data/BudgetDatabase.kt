@@ -9,8 +9,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class],
-    version = 7,
+    entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class, Budget::class],
+    version = 8,
 )
 @TypeConverters(Converters::class)
 abstract class BudgetDatabase : RoomDatabase() {
@@ -18,12 +18,13 @@ abstract class BudgetDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun operationDao(): OperationDao
     abstract fun scheduledDao(): ScheduledDao
+    abstract fun budgetDao(): BudgetDao
 
     companion object {
         fun create(context: Context): BudgetDatabase =
             Room.databaseBuilder(context, BudgetDatabase::class.java, "budget.db")
                 .addCallback(SeedCategories)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .build()
     }
 }
@@ -99,6 +100,17 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE operations ADD COLUMN status TEXT NOT NULL DEFAULT 'NONE'")
+    }
+}
+
+/** v8 : budgets mensuels par catégorie. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `budgets` (`categoryId` INTEGER NOT NULL, `amountCents` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`categoryId`), FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) " +
+                "ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
     }
 }
 

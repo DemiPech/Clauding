@@ -152,7 +152,12 @@ fun AmountText(cents: Long, modifier: Modifier = Modifier, signed: Boolean = tru
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FormTopBar(title: String, onBack: () -> Unit, onDelete: (() -> Unit)? = null) {
+fun FormTopBar(
+    title: String,
+    onBack: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+    extraActions: @Composable () -> Unit = {},
+) {
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
@@ -161,6 +166,7 @@ fun FormTopBar(title: String, onBack: () -> Unit, onDelete: (() -> Unit)? = null
             }
         },
         actions = {
+            extraActions()
             if (onDelete != null) {
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Supprimer") }
             }

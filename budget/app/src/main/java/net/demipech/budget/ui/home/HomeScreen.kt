@@ -59,6 +59,9 @@ import net.demipech.budget.ui.components.SectionCard
 import net.demipech.budget.ui.components.describeSchedule
 import net.demipech.budget.ui.operations.OperationCardRow
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.components.BudgetProgress
+import net.demipech.budget.data.Category
+import net.demipech.budget.data.Budget
 import net.demipech.budget.data.DeferredDebitTotal
 import net.demipech.budget.ui.theme.amountColor
 import java.time.LocalDate
@@ -77,6 +80,11 @@ class HomeViewModel(repo: BudgetRepository) : ViewModel() {
     val scheduled: StateFlow<List<ScheduledDetails>> =
         repo.scheduled().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val budgets: StateFlow<List<Budget>> =
+        repo.budgets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val categories: StateFlow<List<Category>> =
+        repo.categories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** Débits différés pas encore passés (deux mois à venir). */
     val debits: StateFlow<List<DeferredDebitTotal>> =
         LocalDate.now().let { today -> repo.deferredDebits(today.plusDays(1), today.plusMonths(2)) }
@@ -92,6 +100,8 @@ fun HomeScreen(
     onShowOperations: () -> Unit,
     onShowStats: () -> Unit,
     onShowScheduled: () -> Unit,
+    onShowBudgets: () -> Unit = {},
+    onShowForecast: () -> Unit = {},
 ) {
     val repo = repository()
     val vm = viewModel { HomeViewModel(repo) }
@@ -100,6 +110,8 @@ fun HomeScreen(
     val recent by vm.recent.collectAsStateWithLifecycle()
     val scheduled by vm.scheduled.collectAsStateWithLifecycle()
     val debits by vm.debits.collectAsStateWithLifecycle()
+    val budgets by vm.budgets.collectAsStateWithLifecycle()
+    val categories by vm.categories.collectAsStateWithLifecycle()
 
     val today = LocalDate.now()
     val upcoming = remember(scheduled, today) { Forecast.upcoming(scheduled, today, today.plusDays(30)) }
@@ -143,9 +155,10 @@ fun HomeScreen(
             item {
                 val monthEnd = YearMonth.from(today).atEndOfMonth()
                 val debitsThisMonth = debits.filter { !it.debitDate.isAfter(monthEnd) }.sumOf { it.cents }
-                BalanceCard(total, total + untilMonthEnd - debitsThisMonth, debits.take(3))
+                BalanceCard(total, total + untilMonthEnd - debitsThisMonth, debits.take(3), onShowForecast)
             }
             item { SpendingCard(monthOps, onShowStats) }
+            if (budgets.isNotEmpty()) item { BudgetsCard(budgets, categories, monthOps, onShowBudgets) }
             item { RecentCard(recent, onEditOperation, onShowOperations) }
             item { UpcomingCard(upcoming.take(5), onShowScheduled) }
         }
@@ -223,8 +236,8 @@ private fun AddAccountTile(onClick: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun BalanceCard(today: Long, endOfMonth: Long, debits: List<DeferredDebitTotal>) {
-    SectionCard(title = "Solde réel") {
+private fun BalanceCard(today: Long, endOfMonth: Long, debits: List<DeferredDebitTotal>, onShowMore: () -> Unit) {
+    SectionCard(title = "Solde réel", onShowMore = onShowMore) {
         Row(Modifier.padding(horizontal = 16.dp)) {
             Column(Modifier.weight(1f)) {
                 Overline("Aujourd'hui")
@@ -245,6 +258,29 @@ private fun BalanceCard(today: Long, endOfMonth: Long, debits: List<DeferredDebi
                         modifier = Modifier.weight(1f),
                     )
                     AmountText(-debit.cents)
+                }
+            }
+        }
+    }
+}
+
+/** Les budgets les plus entamés du mois. */
+@Composable
+private fun BudgetsCard(budgets: List<Budget>, categories: List<Category>, monthOps: List<OperationDetails>, onShowMore: () -> Unit) {
+    val spent = remember(monthOps) { Forecast.breakdown(monthOps, Kind.EXPENSE).associate { it.categoryId to it.cents } }
+    val rows = budgets.mapNotNull { b -> categories.find { it.id == b.categoryId }?.let { Triple(it, spent[it.id] ?: 0L, b.amountCents) } }
+        .sortedByDescending { (_, s, b) -> s.toDouble() / b }
+    SectionCard(title = "Budgets du mois", onShowMore = onShowMore) {
+        rows.take(4).forEach { (category, s, b) ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CategoryBadge(category.emoji, category.color, size = 32)
+                Column(Modifier.weight(1f)) {
+                    Text(category.name, style = MaterialTheme.typography.bodyMedium)
+                    BudgetProgress(s, b)
                 }
             }
         }

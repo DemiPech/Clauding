@@ -41,7 +41,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import net.demipech.budget.ui.accounts.AccountEditScreen
 import net.demipech.budget.ui.categories.CategoriesScreen
+import net.demipech.budget.ui.budgets.BudgetsScreen
+import net.demipech.budget.ui.forecast.ForecastScreen
 import net.demipech.budget.ui.home.HomeScreen
+import net.demipech.budget.ui.search.SearchScreen
 import net.demipech.budget.ui.installments.InstallmentEditScreen
 import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.more.MoreScreen
@@ -150,6 +153,8 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     onShowOperations = { openTab(Routes.OPERATIONS) },
                     onShowStats = { openTab(Routes.STATS) },
                     onShowScheduled = { nav.navigate(Routes.SCHEDULED) },
+                    onShowBudgets = { nav.navigate(Routes.BUDGETS) },
+                    onShowForecast = { nav.navigate(Routes.FORECAST) },
                 )
             }
             composable(Routes.OPERATIONS) {
@@ -158,11 +163,18 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     onEditOperation = editOperation,
                     onAddOperation = { date -> nav.navigate(Routes.operationEdit(date = date)) },
                     onShowScheduled = { nav.navigate(Routes.SCHEDULED) },
+                    onSearch = { nav.navigate(Routes.SEARCH) },
+                    onBudgets = { nav.navigate(Routes.BUDGETS) },
                 )
             }
-            composable(Routes.STATS) { StatsScreen() }
+            composable(Routes.STATS) { StatsScreen(onBudgets = { nav.navigate(Routes.BUDGETS) }) }
+            composable(Routes.BUDGETS) { BudgetsScreen(onBack = back) }
+            composable(Routes.FORECAST) { ForecastScreen(onBack = back) }
+            composable(Routes.SEARCH) { SearchScreen(onBack = back, onEditOperation = editOperation) }
             composable(Routes.MORE) {
                 MoreScreen(
+                    onBudgets = { nav.navigate(Routes.BUDGETS) },
+                    onForecast = { nav.navigate(Routes.FORECAST) },
                     onScheduled = { nav.navigate(Routes.SCHEDULED) },
                     onCategories = { nav.navigate(Routes.CATEGORIES) },
                     onAddAccount = { nav.navigate(Routes.accountEdit()) },
@@ -190,6 +202,7 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     onBack = back,
                     onEditAccount = { nav.navigate(Routes.accountEdit(accountId)) },
                     onReconcile = { nav.navigate(Routes.reconcile(accountId)) },
+                    onSearch = { nav.navigate(Routes.SEARCH) },
                 )
             }
             composable(Routes.RECONCILE, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
@@ -208,6 +221,7 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     idArg,
                     navArgument("accountId") { type = NavType.LongType; defaultValue = -1L },
                     navArgument("date") { type = NavType.LongType; defaultValue = Long.MIN_VALUE },
+                    navArgument("copyOf") { type = NavType.LongType; defaultValue = -1L },
                 ),
             ) { entry ->
                 val args = entry.arguments!!
@@ -215,6 +229,12 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     id = args.getLong("id").orNull(),
                     presetAccountId = args.getLong("accountId").orNull(),
                     presetDate = args.getLong("date").takeIf { it != Long.MIN_VALUE }?.let(LocalDate::ofEpochDay),
+                    copyOf = args.getLong("copyOf").orNull(),
+                    onDuplicate = { sourceId ->
+                        nav.navigate(Routes.operationEdit(copyOf = sourceId)) {
+                            popUpTo(Routes.OPERATION_EDIT) { inclusive = true }
+                        }
+                    },
                     onDone = back,
                     onSplit = { preset ->
                         nav.navigate(

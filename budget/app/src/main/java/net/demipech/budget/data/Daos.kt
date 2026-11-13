@@ -3,10 +3,32 @@ package net.demipech.budget.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
+
+@Dao
+interface BudgetDao {
+    @Query("SELECT * FROM budgets")
+    fun observeAll(): Flow<List<Budget>>
+
+    @Query("SELECT * FROM budgets")
+    suspend fun getAll(): List<Budget>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(budget: Budget)
+
+    @Insert
+    suspend fun insertAll(budgets: List<Budget>)
+
+    @Query("DELETE FROM budgets WHERE categoryId = :categoryId")
+    suspend fun delete(categoryId: Long)
+
+    @Query("DELETE FROM budgets")
+    suspend fun deleteAll()
+}
 
 @Dao
 interface AccountDao {
@@ -127,6 +149,16 @@ interface OperationDao {
         """
     )
     fun observeBetween(from: LocalDate, to: LocalDate, accountId: Long?): Flow<List<OperationDetails>>
+
+    /** Libellés déjà saisis commençant par [prefix] (suggestions), du plus récent au plus ancien. */
+    @Query(
+        """
+        SELECT * FROM operations
+        WHERE transferId IS NULL AND note != '' AND note LIKE :prefix || '%'
+        ORDER BY date DESC, id DESC LIMIT 50
+        """
+    )
+    suspend fun findByNotePrefix(prefix: String): List<Operation>
 
     /** Sans l'entrée des virements (une ligne par virement). */
     @Query(

@@ -72,6 +72,27 @@ Quatre onglets :
     Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
     novembre, 25 décembre), calculés pour chaque année.
   - Le formulaire montre en direct les prochaines dates de la série.
+- **Budgets mensuels** (Plus › Budgets, ou Stats › Budgets) : un montant par mois pour chaque
+  catégorie de dépense principale (sous-catégories comprises). Barre de progression orange à
+  80 %, rouge au-delà de 100 % ; les budgets les plus entamés sont sur l'accueil.
+- **Solde prévisionnel** (Plus, ou « Afficher plus » sous le solde réel) : courbe du solde jour
+  par jour sur 30 jours à 1 an, pour tous les comptes ou un seul, avec les opérations
+  planifiées, virements et débits différés à venir ; le point le plus bas et une alerte si le
+  solde passe sous zéro, puis la liste des mouvements prévus.
+- **Stats sur la durée** : « Ce mois » (donut, budgets, détail d'une catégorie par
+  sous-catégorie en la touchant) ou « 12 derniers mois » (barres revenus / dépenses par mois,
+  moyennes mensuelles, épargne, tableau mois par mois).
+- **Recherche et filtres** (loupe de l'onglet Opérations) : texte libre (libellé, catégorie,
+  compte, montant, sans tenir compte des accents), période, type, compte, catégorie, montant
+  min / max ; nombre de résultats et totaux.
+- **Saisie rapide** : le clavier s'ouvre sur le montant ; catégories en grille d'emojis (puis
+  sous-catégories) ; suggestions d'après les libellés déjà saisis, qui reprennent catégorie,
+  compte et montant ; « Dupliquer » une opération ; glisser une opération vers la gauche pour
+  la supprimer (annulable).
+- **Vues Mois et Total** (onglet Opérations, à côté de Liste et Calendrier) : « Mois » = les 12
+  mois de l'année avec revenus, dépenses et bilan (toucher un mois l'ouvre en liste) ;
+  « Total » = budget du mois, comparaison avec le mois précédent, moyennes, soldes des comptes
+  et plus grosses dépenses.
 - **Pointage / rapprochement** (bouton « Pointer » sur la page d'un compte) : on saisit le solde
   du relevé, on coche chaque opération retrouvée sur le relevé, l'écran affiche le solde pointé
   et l'écart. Quand l'écart est nul, « Rapprocher » verrouille les opérations pointées.
@@ -136,6 +157,7 @@ app/src/main/java/net/demipech/budget/
   domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
   domain/Installments.kt          répartition d'un paiement en plusieurs fois (testé)
   domain/DeferredDebit.kt         date de débit d'une carte à débit différé (testé)
+  domain/Analytics.kt             totaux mensuels, budgets, projection, recherche (testé)
   domain/Forecast.kt              échéances à venir, répartition par catégorie (testé)
   domain/Money.kt                 saisie et affichage des montants (testé)
   ui/                             navigation, thème, composants, un dossier par écran
@@ -158,12 +180,11 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 7. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 8. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage ; 7 → 8 les budgets.
 
 ## Pistes
 
-Recherche et filtres, vues « Mois » et « Total » de Money Manager,
-détail d'une catégorie par sous-catégorie dans Stats, budgets mensuels, rappels
-(WorkManager + notification), export CSV / sauvegarde.
+Rappels (WorkManager + notification), export CSV, sauvegarde automatique, widget d'écran
+d'accueil, import des relevés bancaires.

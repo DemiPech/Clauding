@@ -15,6 +15,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
     private val categories = db.categoryDao()
     private val operations = db.operationDao()
     private val scheduled = db.scheduledDao()
+    private val budgets = db.budgetDao()
     private val materializeLock = Mutex()
 
     // Annulation d'une suppression : on garde la base telle qu'elle était juste avant.
@@ -26,12 +27,13 @@ class BudgetRepository(private val db: BudgetDatabase) {
 
     /** Contenu complet de la base (sauvegarde, annulation). */
     suspend fun snapshot(): BackupData = db.withTransaction {
-        BackupData(accounts.getAll(), categories.getAll(), scheduled.getAll(), operations.getAll())
+        BackupData(accounts.getAll(), categories.getAll(), scheduled.getAll(), operations.getAll(), budgets.getAll())
     }
 
     /** Remplace tout le contenu de la base par [data]. */
     suspend fun restore(data: BackupData) {
         db.withTransaction {
+            budgets.deleteAll()
             operations.deleteAll()
             scheduled.deleteAll()
             categories.deleteAll()
@@ -40,6 +42,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
             categories.insertAll(data.categories)
             scheduled.insertAll(data.scheduled)
             operations.insertAll(data.operations)
+            budgets.insertAll(data.budgets)
         }
         undoSnapshot = null
     }
@@ -60,6 +63,20 @@ class BudgetRepository(private val db: BudgetDatabase) {
         val before = undoSnapshot ?: return
         restore(before)
     }
+
+    // Budgets
+    fun budgets(): Flow<List<Budget>> = budgets.observeAll()
+
+    /** Fixe le budget mensuel d'une catégorie ; null ou 0 le retire. */
+    suspend fun setBudget(categoryId: Long, amountCents: Long?) {
+        if (amountCents == null || amountCents <= 0) budgets.delete(categoryId)
+        else budgets.upsert(Budget(categoryId, amountCents))
+    }
+
+    /** Opérations dont le libellé commence par [prefix], une par libellé (la plus récente). */
+    suspend fun suggestions(prefix: String, limit: Int = 5): List<Operation> =
+        if (prefix.isBlank()) emptyList()
+        else operations.findByNotePrefix(prefix.trim()).distinctBy { it.note.lowercase() }.take(limit)
 
     // Pointage
     fun unreconciled(accountId: Long): Flow<List<OperationDetails>> = operations.observeUnreconciled(accountId)

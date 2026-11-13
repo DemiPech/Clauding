@@ -37,7 +37,13 @@ import java.time.LocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoreScreen(onScheduled: () -> Unit, onCategories: () -> Unit, onAddAccount: () -> Unit) {
+fun MoreScreen(
+    onBudgets: () -> Unit,
+    onForecast: () -> Unit,
+    onScheduled: () -> Unit,
+    onCategories: () -> Unit,
+    onAddAccount: () -> Unit,
+) {
     val context = LocalContext.current
     val repo = repository()
     val scope = rememberCoroutineScope()
@@ -80,6 +86,8 @@ fun MoreScreen(onScheduled: () -> Unit, onCategories: () -> Unit, onAddAccount: 
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionCard {
+                Entry("🎯", "Budgets", "Budget mensuel par catégorie", onBudgets)
+                Entry("📈", "Solde prévisionnel", "Courbe du solde avec les échéances à venir", onForecast)
                 Entry("🔁", "Opérations planifiées", "Récurrences, virements et paiements à venir", onScheduled)
                 Entry("🏷️", "Catégories", "Catégories, sous-catégories, emojis et couleurs", onCategories)
                 Entry("🏦", "Ajouter un compte", "Les comptes se modifient depuis leur page (crayon)", onAddAccount)

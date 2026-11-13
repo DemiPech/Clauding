@@ -2,6 +2,19 @@ package net.demipech.budget.ui.operations
 
 import net.demipech.budget.data.isTransfer
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import net.demipech.budget.data.Budget
+import net.demipech.budget.data.Operation
+import net.demipech.budget.data.isLocked
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -99,6 +112,31 @@ class TransactionsViewModel(repo: BudgetRepository, private val accountId: Long?
         month.flatMapLatest { m -> repo.deferredDebits(m.atDay(1), m.atEndOfMonth(), accountId) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Opérations de toute l'année du mois affiché (vue « Mois »). */
+    val yearOps: StateFlow<List<OperationDetails>> =
+        month.map { it.year }.distinctUntilChanged()
+            .flatMapLatest { y -> repo.operationsBetween(LocalDate.of(y, 1, 1), LocalDate.of(y, 12, 31), accountId) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Mois précédent, pour la comparaison de la vue « Total ». */
+    val previousOps: StateFlow<List<OperationDetails>> =
+        month.flatMapLatest { m ->
+            m.minusMonths(1).let { p -> repo.operationsBetween(p.atDay(1), p.atEndOfMonth(), accountId) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val budgets: StateFlow<List<Budget>> =
+        repo.budgets().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val balances: StateFlow<List<AccountWithBalance>> =
+        repo.accountsWithBalance().map { list -> list.filter { accountId == null || it.account.id == accountId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Suppression par glissement (annulable). */
+    fun delete(op: Operation) = viewModelScope.launch {
+        val transferId = op.transferId
+        if (transferId != null) repo.deleteTransfer(transferId) else repo.delete(op)
+    }
+
     val account: StateFlow<AccountWithBalance?> =
         (if (accountId == null) flowOf(null)
         else repo.accountsWithBalance().map { list -> list.find { it.account.id == accountId } })
@@ -129,6 +167,8 @@ fun TransactionsScreen(
     onBack: (() -> Unit)? = null,
     onEditAccount: (() -> Unit)? = null,
     onReconcile: (() -> Unit)? = null,
+    onSearch: () -> Unit = {},
+    onBudgets: () -> Unit = {},
 ) {
     val repo = repository()
     val vm = viewModel(key = "transactions-$accountId") { TransactionsViewModel(repo, accountId) }
@@ -137,6 +177,10 @@ fun TransactionsScreen(
     val scheduled by vm.scheduled.collectAsStateWithLifecycle()
     val account by vm.account.collectAsStateWithLifecycle()
     val debits by vm.debits.collectAsStateWithLifecycle()
+    val yearOps by vm.yearOps.collectAsStateWithLifecycle()
+    val previousOps by vm.previousOps.collectAsStateWithLifecycle()
+    val budgets by vm.budgets.collectAsStateWithLifecycle()
+    val balances by vm.balances.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
     var selectedDay by remember(month) {
         mutableStateOf(if (YearMonth.now() == month) LocalDate.now() else month.atDay(1))
@@ -166,6 +210,7 @@ fun TransactionsScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = "Rechercher") }
                     if (onReconcile != null) {
                         TextButton(onClick = onReconcile) { Text("Pointer") }
                     }
@@ -204,7 +249,7 @@ fun TransactionsScreen(
                         selectedTabIndex = tab,
                         containerColor = MaterialTheme.colorScheme.surface,
                     ) {
-                        listOf("Liste", "Calendrier").forEachIndexed { index, label ->
+                        listOf("Liste", "Calendrier", "Mois", "Total").forEachIndexed { index, label ->
                             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
                         }
                     }
@@ -238,8 +283,18 @@ fun TransactionsScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
-                    operationItems(ops, onEditOperation, accountId != null)
+                    operationItems(ops, onEditOperation, accountId != null, vm::delete)
                 }
+            } else if (tab == 2) {
+                yearMonthsItems(yearOps, month) { picked ->
+                    vm.month.value = picked
+                    tab = 0
+                }
+            } else if (tab == 3) {
+                monthTotalItems(
+                    month, list, previousOps, budgets, balances,
+                    showBudgets = accountId == null, onBudgets = onBudgets, onEdit = onEditOperation,
+                )
             } else {
                 item(key = "calendar") {
                     MonthCalendar(
@@ -258,16 +313,57 @@ fun TransactionsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
-                operationItems(dayOps, onEditOperation, accountId != null)
+                operationItems(dayOps, onEditOperation, accountId != null, vm::delete)
             }
         }
     }
 }
 
-private fun LazyListScope.operationItems(ops: List<OperationDetails>, onEdit: (Long) -> Unit, accountView: Boolean) {
+private fun LazyListScope.operationItems(
+    ops: List<OperationDetails>,
+    onEdit: (Long) -> Unit,
+    accountView: Boolean,
+    onDelete: (Operation) -> Unit,
+) {
     items(ops, key = { it.operation.id }) { op ->
-        OperationLine(op, onClick = { onEdit(op.operation.id) }, accountView = accountView)
+        if (op.operation.isLocked) {
+            OperationLine(op, onClick = { onEdit(op.operation.id) }, accountView = accountView)
+        } else {
+            SwipeToDelete(onDelete = { onDelete(op.operation) }) {
+                OperationLine(op, onClick = { onEdit(op.operation.id) }, accountView = accountView)
+            }
+        }
     }
+}
+
+/** Glisser vers la gauche pour supprimer (le bandeau Annuler permet de revenir en arrière). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDelete(onDelete: () -> Unit, content: @Composable () -> Unit) {
+    var done by remember { mutableStateOf(false) }
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart && !done) {
+                done = true
+                onDelete()
+                true
+            } else {
+                false
+            }
+        },
+    )
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().background(expenseColor()).padding(end = 24.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = "Supprimer", tint = Color.White)
+            }
+        },
+    ) { content() }
 }
 
 /** « Récurrences  Téléphone, Google One…  17/11, 18/11  -136,65 € ». */
