@@ -57,6 +57,8 @@ import net.demipech.budget.ui.components.weekdayName
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.components.unit
 import net.demipech.budget.ui.repository
+import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.ui.components.DeferredSwitch
 import java.time.LocalDate
 
 class ScheduledEditViewModel(private val repo: BudgetRepository, private val id: Long?) : ViewModel() {
@@ -66,6 +68,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
     var accountId by mutableStateOf<Long?>(null)
     var categoryId by mutableStateOf<Long?>(null)
     var note by mutableStateOf("")
+    var deferred by mutableStateOf(true)
     var date: LocalDate by mutableStateOf(LocalDate.now())
     var frequency by mutableStateOf(Frequency.MONTHLY)
     var interval by mutableStateOf("1")
@@ -93,6 +96,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
                 accountId = s.accountId
                 categoryId = s.categoryId
                 note = s.note
+                deferred = s.deferred
                 frequency = s.frequency
                 interval = s.interval.toString()
                 dayRule = s.dayRule
@@ -151,6 +155,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
             },
             ruleWeekday = ruleWeekday,
             adjust = if (Recurrence.usesAdjust(frequency, rule)) adjust else DateAdjust.NONE,
+            deferred = deferred,
         )
     }
 
@@ -222,6 +227,9 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
                 onSelect = { vm.accountId = it.id },
             )
             CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
+            accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
+                DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
+            }
             OutlinedTextField(
                 value = vm.note,
                 onValueChange = { vm.note = it },

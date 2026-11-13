@@ -28,6 +28,9 @@ enum class DayRule {
     NTH_WEEKDAY,
 }
 
+/** Jour de débit d'une carte à débit différé. */
+enum class DebitDay { LAST_DAY, LAST_BUSINESS_DAY, DAY_OF_MONTH }
+
 /** Que faire quand l'échéance tombe un week-end ou un jour férié. */
 enum class DateAdjust { NONE, NEXT_BUSINESS_DAY, PREVIOUS_BUSINESS_DAY }
 
@@ -41,6 +44,13 @@ data class Account(
     val color: Long = DEFAULT_ACCOUNT_COLOR,
     /** Emoji affiché sur la tuile. */
     val icon: String = DEFAULT_ACCOUNT_ICON,
+    /** Carte à débit différé : les dépenses sont débitées en une fois chaque mois. */
+    val deferredDebit: Boolean = false,
+    /** Jour d'arrêté des dépenses (31 = fin de mois). */
+    val cutoffDay: Int = 31,
+    val debitDay: DebitDay = DebitDay.LAST_DAY,
+    /** Jour du mois pour DebitDay.DAY_OF_MONTH. */
+    val debitDayOfMonth: Int = 5,
 )
 
 const val DEFAULT_ACCOUNT_COLOR = 0xFF1E88E5
@@ -117,6 +127,8 @@ data class ScheduledOperation(
     val planId: Long? = null,
     val planIndex: Int = 0,
     val planSize: Int = 0,
+    /** Les opérations créées suivent le débit différé du compte. */
+    val deferred: Boolean = false,
 )
 
 @Entity(
@@ -153,13 +165,33 @@ data class Operation(
     val note: String = "",
     /** Planification qui a créé cette opération, le cas échéant. */
     val scheduledId: Long? = null,
+    /** Dépense payée par la carte à débit différé du compte (sans effet ailleurs). */
+    val deferred: Boolean = false,
+    /**
+     * Date à laquelle l'opération pèse sur le solde : sa date, ou la date de débit
+     * pour une dépense en débit différé. Calculée par le dépôt ; [date] reste la
+     * date réelle de la dépense.
+     */
+    val debitDate: LocalDate = date,
 )
 
 val Operation.signedCents: Long get() = if (kind == Kind.INCOME) amountCents else -amountCents
 
 data class AccountWithBalance(
     @Embedded val account: Account,
+    /** Solde à ce jour (les dépenses différées comptent à leur date de débit). */
     val balanceCents: Long,
+    /** Dépenses différées pas encore débitées (négatif). */
+    val pendingCents: Long = 0,
+)
+
+/** Total des dépenses différées d'un compte débitées à une même date. */
+data class DeferredDebitTotal(
+    val accountId: Long,
+    val accountName: String,
+    val debitDate: LocalDate,
+    val cents: Long,
+    val count: Int,
 )
 
 /**
@@ -180,7 +212,12 @@ data class OperationDetails(
     val scheduledInterval: Int?,
     val scheduledPlanIndex: Int? = null,
     val scheduledPlanSize: Int? = null,
+    val accountDeferred: Boolean = false,
 )
+
+/** Dépense en débit différé : elle pèse sur le solde à [Operation.debitDate]. */
+val OperationDetails.isDeferred: Boolean
+    get() = accountDeferred && operation.deferred && operation.kind == Kind.EXPENSE
 
 data class ScheduledDetails(
     @Embedded val scheduled: ScheduledOperation,

@@ -43,6 +43,8 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.repository
+import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.ui.components.DeferredSwitch
 import java.time.LocalDate
 
 class OperationEditViewModel(
@@ -58,6 +60,8 @@ class OperationEditViewModel(
     var categoryId by mutableStateOf<Long?>(null)
     var date: LocalDate by mutableStateOf(presetDate ?: LocalDate.now())
     var note by mutableStateOf("")
+    /** Dépense par carte à débit différé (si le compte en a une). */
+    var deferred by mutableStateOf(true)
     var loaded by mutableStateOf(id == null)
         private set
     private var original: Operation? = null
@@ -77,6 +81,7 @@ class OperationEditViewModel(
                 categoryId = it.categoryId
                 date = it.date
                 note = it.note
+                deferred = it.deferred
             }
             loaded = true
         }
@@ -105,6 +110,7 @@ class OperationEditViewModel(
                 date = date,
                 note = note.trim(),
                 scheduledId = original?.scheduledId,
+                deferred = deferred,
             )
         )
         onDone()
@@ -179,6 +185,9 @@ fun OperationEditScreen(
                 onSelect = { vm.accountId = it.id },
             )
             CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
+            accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
+                DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
+            }
             DateField("Date", vm.date, { vm.date = it })
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")

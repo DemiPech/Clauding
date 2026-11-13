@@ -72,6 +72,21 @@ Quatre onglets :
     Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
     novembre, 25 décembre), calculés pour chaque année.
   - Le formulaire montre en direct les prochaines dates de la série.
+- **Carte à débit différé** (réglage du compte, crayon sur la page du compte) : jour d'arrêté
+  des dépenses (ex. le 20, 31 = fin de mois) et jour de débit (dernier jour du mois, dernier
+  jour ouvré, ou un jour fixe). Arrêté le 20, débit le dernier jour : une dépense du 13/11 est
+  débitée le 30/11, une du 21/11 le 31/12.
+  - Les dépenses gardent leur date dans l'historique, les listes et les statistiques ; chacune
+    affiche en plus sa date de débit (« débit le 30/11 »).
+  - Le solde du compte ne les retire qu'à la date de débit. D'ici là elles forment l'**encours**,
+    affiché sur la tuile du compte et en haut de sa page.
+  - L'onglet Opérations montre, pour le mois affiché, le total de chaque débit différé (déjà
+    débité ou à venir) ; l'accueil liste les prochains débits et en tient compte dans le solde
+    prévu en fin de mois.
+  - Dans les formulaires (opération, planification, paiement en plusieurs fois), l'interrupteur
+    « Débit différé (carte) » est activé par défaut pour une dépense de ce compte ; on le coupe
+    pour une dépense débitée tout de suite (ex. un prélèvement).
+  - Changer le réglage du compte recalcule la date de débit de toutes ses dépenses.
 - **Paiement en plusieurs fois** (Plus › Opérations planifiées › Planifier, ou « Payer en
   plusieurs fois… » sous le formulaire d'une nouvelle opération, qui reprend montant, compte,
   catégorie et libellé) :
@@ -97,6 +112,7 @@ app/src/main/java/net/demipech/budget/
   domain/Recurrence.kt            calcul des échéances (pur Kotlin, testé)
   domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
   domain/Installments.kt          répartition d'un paiement en plusieurs fois (testé)
+  domain/DeferredDebit.kt         date de débit d'une carte à débit différé (testé)
   domain/Forecast.kt              échéances à venir, répartition par catégorie (testé)
   domain/Money.kt                 saisie et affichage des montants (testé)
   ui/                             navigation, thème, composants, un dossier par écran
@@ -119,9 +135,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 4. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 5. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé.
 
 ## Pistes
 

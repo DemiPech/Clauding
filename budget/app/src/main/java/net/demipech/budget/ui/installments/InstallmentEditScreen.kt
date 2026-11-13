@@ -59,6 +59,8 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.components.unit
 import net.demipech.budget.ui.repository
+import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.ui.components.DeferredSwitch
 import net.demipech.budget.ui.theme.expenseColor
 import java.time.LocalDate
 
@@ -85,6 +87,7 @@ class InstallmentEditViewModel(
     var kind by mutableStateOf(Kind.EXPENSE)
         private set
     var note by mutableStateOf(preset.note.orEmpty())
+    var deferred by mutableStateOf(true)
     var accountId by mutableStateOf(preset.accountId)
     var categoryId by mutableStateOf(preset.categoryId)
     var total by mutableStateOf(preset.amountCents?.let(Money::toInput).orEmpty())
@@ -125,6 +128,7 @@ class InstallmentEditViewModel(
             plan.firstOrNull()?.let { first ->
                 kind = first.kind
                 note = first.note
+                deferred = first.deferred
                 accountId = first.accountId
                 categoryId = first.categoryId
             }
@@ -216,6 +220,7 @@ class InstallmentEditViewModel(
                 startDate = row.date,
                 frequency = Frequency.NONE,
                 occurrences = 1,
+                deferred = deferred,
             )
         }
         repo.saveInstallments(planId, items)
@@ -277,6 +282,9 @@ fun InstallmentEditScreen(planId: Long?, preset: InstallmentPreset, onDone: () -
                 onSelect = { vm.accountId = it.id },
             )
             CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
+            accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
+                DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.rows.firstOrNull()?.date ?: vm.firstDate, account))
+            }
 
             Text("Calcul de l'échéancier", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

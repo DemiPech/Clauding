@@ -6,7 +6,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import java.time.LocalDate
+import java.time.YearMonth
+import net.demipech.budget.data.DebitDay
+import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.ui.components.DayFormat
+import net.demipech.budget.ui.components.IntField
+import net.demipech.budget.ui.components.Selector
+import net.demipech.budget.ui.components.label
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -40,6 +53,10 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
     var initialBalance by mutableStateOf("0")
     var color by mutableStateOf(DEFAULT_ACCOUNT_COLOR)
     var icon by mutableStateOf(DEFAULT_ACCOUNT_ICON)
+    var deferredDebit by mutableStateOf(false)
+    var cutoffDay by mutableStateOf("20")
+    var debitDay by mutableStateOf(DebitDay.LAST_DAY)
+    var debitDayOfMonth by mutableStateOf("5")
     private var original: Account? = null
 
     init {
@@ -50,17 +67,46 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
                 initialBalance = Money.toInput(it.initialBalanceCents)
                 color = it.color
                 icon = it.icon
+                deferredDebit = it.deferredDebit
+                cutoffDay = it.cutoffDay.toString()
+                debitDay = it.debitDay
+                debitDayOfMonth = it.debitDayOfMonth.toString()
             }
         }
     }
 
     val isNew get() = id == null
     val balanceValid get() = Money.parse(initialBalance) != null
-    val canSave get() = name.isNotBlank() && balanceValid
+    val cutoffValue get() = cutoffDay.toIntOrNull()?.takeIf { it in 1..31 }
+    val debitDayValue get() = debitDayOfMonth.toIntOrNull()?.takeIf { it in 1..31 }
+    val deferredValid get() = !deferredDebit ||
+        (cutoffValue != null && (debitDay != DebitDay.DAY_OF_MONTH || debitDayValue != null))
+    val canSave get() = name.isNotBlank() && balanceValid && deferredValid
+
+    /** Exemple concret pour le mois en cours : (date de dépense, date de débit). */
+    fun examples(): List<Pair<LocalDate, LocalDate>> {
+        val cutoff = cutoffValue ?: return emptyList()
+        val month = YearMonth.now()
+        val last = month.atDay(cutoff.coerceAtMost(month.lengthOfMonth()))
+        val dates = listOfNotNull(last, last.plusDays(1).takeIf { cutoff < 31 })
+        return dates.map { it to DeferredDebit.debitDate(it, cutoff, debitDay, debitDayValue ?: 1) }
+    }
 
     fun save(onDone: () -> Unit) = viewModelScope.launch {
         val cents = Money.parse(initialBalance) ?: return@launch
-        repo.save(Account(id = id ?: 0, name = name.trim(), initialBalanceCents = cents, color = color, icon = icon))
+        repo.save(
+            Account(
+                id = id ?: 0,
+                name = name.trim(),
+                initialBalanceCents = cents,
+                color = color,
+                icon = icon,
+                deferredDebit = deferredDebit,
+                cutoffDay = cutoffValue ?: 31,
+                debitDay = debitDay,
+                debitDayOfMonth = debitDayValue ?: 5,
+            )
+        )
         onDone()
     }
 
@@ -110,6 +156,45 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
             EmojiPicker(AccountIcons, vm.icon, { vm.icon = it })
             Text("Couleur", style = MaterialTheme.typography.titleSmall)
             ColorPicker(vm.color, { vm.color = it })
+            HorizontalDivider()
+            Row(
+                Modifier.fillMaxWidth().clickable { vm.deferredDebit = !vm.deferredDebit },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Carte à débit différé", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Les dépenses par carte sont débitées en une fois chaque mois. " +
+                            "Elles gardent leur date dans l'historique.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = vm.deferredDebit, onCheckedChange = { vm.deferredDebit = it })
+            }
+            if (vm.deferredDebit) {
+                IntField(vm.cutoffDay, { vm.cutoffDay = it }, "Dépenses arrêtées le (jour, 31 = fin de mois)", Modifier.fillMaxWidth())
+                Selector(
+                    label = "Débitées",
+                    options = DebitDay.entries,
+                    selected = vm.debitDay,
+                    optionLabel = { it.label() },
+                    onSelect = { vm.debitDay = it },
+                )
+                if (vm.debitDay == DebitDay.DAY_OF_MONTH) {
+                    IntField(vm.debitDayOfMonth, { vm.debitDayOfMonth = it }, "Jour du débit", Modifier.fillMaxWidth())
+                }
+                val examples = vm.examples()
+                if (examples.isNotEmpty()) {
+                    Text(
+                        examples.joinToString("\n") { (spent, debit) ->
+                            "Une dépense du ${spent.format(DayFormat)} est débitée le ${debit.format(DayFormat)}."
+                        } + "\nVous pourrez exclure une dépense précise (ex. un prélèvement) dans son formulaire.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
             }

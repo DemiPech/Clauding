@@ -70,6 +70,7 @@ import net.demipech.budget.ui.components.MonthSwitcher
 import net.demipech.budget.ui.components.ShortDayFormat
 import net.demipech.budget.ui.components.TotalsRow
 import net.demipech.budget.ui.repository
+import net.demipech.budget.data.DeferredDebitTotal
 import net.demipech.budget.ui.theme.amountColor
 import net.demipech.budget.ui.theme.expenseColor
 import net.demipech.budget.ui.theme.incomeColor
@@ -88,6 +89,10 @@ class TransactionsViewModel(repo: BudgetRepository, private val accountId: Long?
     val scheduled: StateFlow<List<ScheduledDetails>> =
         repo.scheduled()
             .map { list -> list.filter { accountId == null || it.scheduled.accountId == accountId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val debits: StateFlow<List<DeferredDebitTotal>> =
+        month.flatMapLatest { m -> repo.deferredDebits(m.atDay(1), m.atEndOfMonth(), accountId) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val account: StateFlow<AccountWithBalance?> =
@@ -123,6 +128,7 @@ fun TransactionsScreen(
     val operations by vm.operations.collectAsStateWithLifecycle()
     val scheduled by vm.scheduled.collectAsStateWithLifecycle()
     val account by vm.account.collectAsStateWithLifecycle()
+    val debits by vm.debits.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
     var selectedDay by remember(month) {
         mutableStateOf(if (YearMonth.now() == month) LocalDate.now() else month.atDay(1))
@@ -135,7 +141,8 @@ fun TransactionsScreen(
                     Column {
                         account?.let {
                             Text(
-                                "${it.account.icon} ${it.account.name} · ${Money.format(it.balanceCents)}",
+                                "${it.account.icon} ${it.account.name} · ${Money.format(it.balanceCents)}" +
+                                    if (it.pendingCents != 0L) " · encours ${Money.format(it.pendingCents)}" else "",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -199,6 +206,10 @@ fun TransactionsScreen(
                             total = recurrences.sumOf { it.signedCents },
                             onClick = onShowScheduled,
                         )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    debits.forEach { debit ->
+                        DeferredDebitBanner(debit)
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
@@ -275,6 +286,38 @@ private fun RecurrenceBanner(names: List<String>, dates: List<LocalDate>, total:
             )
         }
         Text(Money.formatSigned(total), color = amountColor(total), style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** « Débit différé  Boursorama · 12 dépenses, le 30/11  -412,30 € ». */
+@Composable
+private fun DeferredDebitBanner(debit: DeferredDebitTotal) {
+    val done = !debit.debitDate.isAfter(LocalDate.now())
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Débit différé",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(104.dp),
+        )
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                "💳 ${debit.accountName} · ${debit.count} dépense" + if (debit.count > 1) "s" else "",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                (if (done) "débité le " else "à débiter le ") + debit.debitDate.format(ShortDayFormat),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(Money.format(-debit.cents), color = expenseColor(), style = MaterialTheme.typography.bodyLarge)
     }
 }
 

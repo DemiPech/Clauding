@@ -19,11 +19,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.demipech.budget.data.OperationDetails
+import net.demipech.budget.data.isDeferred
 import net.demipech.budget.data.signedCents
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.components.AmountText
 import net.demipech.budget.ui.components.CategoryBadge
 import net.demipech.budget.ui.components.DayFormat
+import net.demipech.budget.ui.components.ShortDayFormat
 import net.demipech.budget.ui.components.describeRhythm
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.theme.expenseColor
@@ -116,8 +118,9 @@ fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier 
                 planSize > 0 -> " (paiement ${op.scheduledPlanIndex}/$planSize)"
                 else -> op.scheduledFrequency?.let { " (${describeRhythm(it, op.scheduledInterval ?: 1)})" }.orEmpty()
             }
+            val debit = if (op.isDeferred) " · débit le ${op.operation.debitDate.format(ShortDayFormat)}" else ""
             Text(
-                op.accountName + rhythm,
+                op.accountName + rhythm + debit,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import net.demipech.budget.domain.DeferredDebit
 import net.demipech.budget.domain.Recurrence
 import java.time.LocalDate
 
@@ -15,11 +16,23 @@ class BudgetRepository(private val db: BudgetDatabase) {
     private val materializeLock = Mutex()
 
     // Comptes
-    fun accountsWithBalance(): Flow<List<AccountWithBalance>> = accounts.observeWithBalance()
+    fun accountsWithBalance(today: LocalDate = LocalDate.now()): Flow<List<AccountWithBalance>> =
+        accounts.observeWithBalance(today)
     fun accounts(): Flow<List<Account>> = accounts.observeAll()
     suspend fun account(id: Long): Account? = accounts.get(id)
-    suspend fun save(account: Account): Long =
-        if (account.id == 0L) accounts.insert(account) else account.id.also { accounts.update(account) }
+    /** Enregistre le compte et recalcule la date de débit de ses opérations. */
+    suspend fun save(account: Account): Long = db.withTransaction {
+        if (account.id == 0L) {
+            accounts.insert(account)
+        } else {
+            accounts.update(account)
+            operations.getByAccount(account.id).forEach { op ->
+                val debit = DeferredDebit.effectiveDate(op, account)
+                if (debit != op.debitDate) operations.update(op.copy(debitDate = debit))
+            }
+            account.id
+        }
+    }
     /** Supprime aussi ses opérations et ses planifications. */
     suspend fun delete(account: Account) = accounts.delete(account)
 
@@ -47,8 +60,17 @@ class BudgetRepository(private val db: BudgetDatabase) {
         operations.observeBetween(from, to, accountId)
     fun recentOperations(limit: Int): Flow<List<OperationDetails>> = operations.observeRecent(limit)
     suspend fun operation(id: Long): Operation? = operations.get(id)
-    suspend fun save(operation: Operation): Long =
-        if (operation.id == 0L) operations.insert(operation) else operation.id.also { operations.update(operation) }
+    suspend fun save(operation: Operation): Long {
+        val op = withDebitDate(operation, accounts.get(operation.accountId))
+        return if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+    }
+
+    private fun withDebitDate(op: Operation, account: Account?): Operation =
+        op.copy(debitDate = account?.let { DeferredDebit.effectiveDate(op, it) } ?: op.date)
+
+    /** Totaux des débits différés entre deux dates ([accountId] null = tous les comptes). */
+    fun deferredDebits(from: LocalDate, to: LocalDate, accountId: Long? = null): Flow<List<DeferredDebitTotal>> =
+        operations.observeDeferredDebits(from, to, accountId)
     suspend fun delete(operation: Operation) = operations.delete(operation)
 
     // Planifications
@@ -102,6 +124,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
     suspend fun materializeDue(today: LocalDate = LocalDate.now()): Int = materializeLock.withLock {
         db.withTransaction {
             var created = 0
+            val accountsById = accounts.getAll().associateBy { it.id }
             for (item in scheduled.getAll()) {
                 val dates = Recurrence.dueDates(item, today)
                 if (dates.isEmpty()) continue
@@ -115,7 +138,8 @@ class BudgetRepository(private val db: BudgetDatabase) {
                             date = date,
                             note = item.note,
                             scheduledId = item.id,
-                        )
+                            deferred = item.deferred,
+                        ).let { withDebitDate(it, accountsById[item.accountId]) }
                     }
                 )
                 scheduled.update(item.copy(generatedCount = item.generatedCount + dates.size))

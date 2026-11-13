@@ -58,6 +58,7 @@ import net.demipech.budget.ui.components.SectionCard
 import net.demipech.budget.ui.components.describeSchedule
 import net.demipech.budget.ui.operations.OperationCardRow
 import net.demipech.budget.ui.repository
+import net.demipech.budget.data.DeferredDebitTotal
 import net.demipech.budget.ui.theme.amountColor
 import java.time.LocalDate
 import java.time.YearMonth
@@ -74,6 +75,11 @@ class HomeViewModel(repo: BudgetRepository) : ViewModel() {
         repo.recentOperations(5).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val scheduled: StateFlow<List<ScheduledDetails>> =
         repo.scheduled().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Débits différés pas encore passés (deux mois à venir). */
+    val debits: StateFlow<List<DeferredDebitTotal>> =
+        LocalDate.now().let { today -> repo.deferredDebits(today.plusDays(1), today.plusMonths(2)) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
 @Composable
@@ -92,6 +98,7 @@ fun HomeScreen(
     val monthOps by vm.monthOperations.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
     val scheduled by vm.scheduled.collectAsStateWithLifecycle()
+    val debits by vm.debits.collectAsStateWithLifecycle()
 
     val today = LocalDate.now()
     val upcoming = remember(scheduled, today) { Forecast.upcoming(scheduled, today, today.plusDays(30)) }
@@ -132,7 +139,11 @@ fun HomeScreen(
                     AccountTiles(accountList, onOpenAccount, onAddAccount)
                 }
             }
-            item { BalanceCard(total, total + untilMonthEnd) }
+            item {
+                val monthEnd = YearMonth.from(today).atEndOfMonth()
+                val debitsThisMonth = debits.filter { !it.debitDate.isAfter(monthEnd) }.sumOf { it.cents }
+                BalanceCard(total, total + untilMonthEnd - debitsThisMonth, debits.take(3))
+            }
             item { SpendingCard(monthOps, onShowStats) }
             item { RecentCard(recent, onEditOperation, onShowOperations) }
             item { UpcomingCard(upcoming.take(5), onShowScheduled) }
@@ -147,7 +158,7 @@ private fun AccountTiles(accounts: List<AccountWithBalance>, onOpen: (Long) -> U
         cells.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { item ->
-                    val mod = Modifier.weight(1f).height(64.dp)
+                    val mod = Modifier.weight(1f).height(72.dp)
                     if (item == null) AddAccountTile(onAdd, mod) else AccountTile(item, { onOpen(item.account.id) }, mod)
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -180,6 +191,14 @@ private fun AccountTile(item: AccountWithBalance, onClick: () -> Unit, modifier:
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
+        if (item.pendingCents != 0L) {
+            Text(
+                "encours ${Money.format(item.pendingCents)}",
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -203,7 +222,7 @@ private fun AddAccountTile(onClick: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun BalanceCard(today: Long, endOfMonth: Long) {
+private fun BalanceCard(today: Long, endOfMonth: Long, debits: List<DeferredDebitTotal>) {
     SectionCard(title = "Solde réel") {
         Row(Modifier.padding(horizontal = 16.dp)) {
             Column(Modifier.weight(1f)) {
@@ -213,6 +232,19 @@ private fun BalanceCard(today: Long, endOfMonth: Long) {
             Column(horizontalAlignment = Alignment.End) {
                 Overline("Fin du mois prévue")
                 Text(Money.format(endOfMonth), style = MaterialTheme.typography.titleLarge, color = amountColor(endOfMonth))
+            }
+        }
+        if (debits.isNotEmpty()) {
+            Overline("Débits différés à venir", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+            debits.forEach { debit ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    Text(
+                        "💳 ${debit.accountName} · le ${debit.debitDate.format(DayFormat)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    AmountText(-debit.cents)
+                }
             }
         }
     }

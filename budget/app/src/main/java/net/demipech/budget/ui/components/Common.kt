@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.demipech.budget.data.DateAdjust
 import net.demipech.budget.data.DayRule
+import net.demipech.budget.data.DebitDay
 import net.demipech.budget.data.Frequency
 import net.demipech.budget.data.ScheduledOperation
 import net.demipech.budget.domain.Recurrence
@@ -514,4 +515,33 @@ fun describeSchedule(s: ScheduledOperation): String {
         DateAdjust.PREVIOUS_BUSINESS_DAY -> " (jour ouvré précédent si week-end ou férié)"
     }
     return rhythm + rule + adjust
+}
+
+fun DebitDay.label(): String = when (this) {
+    DebitDay.LAST_DAY -> "Le dernier jour du mois"
+    DebitDay.LAST_BUSINESS_DAY -> "Le dernier jour ouvré du mois"
+    DebitDay.DAY_OF_MONTH -> "Un jour fixe du mois"
+}
+
+/** Ligne « Débit différé (carte) » avec interrupteur et date de débit calculée. */
+@Composable
+fun DeferredSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, debitDate: LocalDate?, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Débit différé (carte)", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (checked && debitDate != null) "Débitée le ${debitDate.format(DayFormat)}"
+                else "Débitée tout de suite",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }

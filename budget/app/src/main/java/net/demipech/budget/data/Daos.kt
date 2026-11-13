@@ -10,17 +10,31 @@ import java.time.LocalDate
 
 @Dao
 interface AccountDao {
+    /**
+     * Soldes au [today] : une dépense en débit différé ne compte qu'à partir de sa
+     * date de débit ; d'ici là elle est dans pendingCents (l'encours).
+     */
     @Query(
         """
         SELECT a.*, a.initialBalanceCents + COALESCE((
             SELECT SUM(CASE WHEN o.kind = 'INCOME' THEN o.amountCents ELSE -o.amountCents END)
-            FROM operations o WHERE o.accountId = a.id
-        ), 0) AS balanceCents
+            FROM operations o
+            WHERE o.accountId = a.id
+                AND NOT (a.deferredDebit = 1 AND o.deferred = 1 AND o.kind = 'EXPENSE' AND o.debitDate > :today)
+        ), 0) AS balanceCents,
+        COALESCE((
+            SELECT -SUM(o.amountCents) FROM operations o
+            WHERE o.accountId = a.id
+                AND a.deferredDebit = 1 AND o.deferred = 1 AND o.kind = 'EXPENSE' AND o.debitDate > :today
+        ), 0) AS pendingCents
         FROM accounts a
         ORDER BY a.id
         """
     )
-    fun observeWithBalance(): Flow<List<AccountWithBalance>>
+    fun observeWithBalance(today: LocalDate): Flow<List<AccountWithBalance>>
+
+    @Query("SELECT * FROM accounts")
+    suspend fun getAll(): List<Account>
 
     @Query("SELECT * FROM accounts ORDER BY id")
     fun observeAll(): Flow<List<Account>>
@@ -71,7 +85,8 @@ private const val OPERATION_DETAILS = """
         COALESCE(p.color, c.color) AS categoryColor,
         COALESCE(p.id, c.id) AS rootCategoryId,
         s.frequency AS scheduledFrequency, s.interval AS scheduledInterval,
-        s.planIndex AS scheduledPlanIndex, s.planSize AS scheduledPlanSize
+        s.planIndex AS scheduledPlanIndex, s.planSize AS scheduledPlanSize,
+        a.deferredDebit AS accountDeferred
     FROM operations o
     JOIN accounts a ON a.id = o.accountId
     LEFT JOIN categories c ON c.id = o.categoryId
@@ -95,6 +110,25 @@ interface OperationDao {
 
     @Query("SELECT * FROM operations WHERE id = :id")
     suspend fun get(id: Long): Operation?
+
+    @Query("SELECT * FROM operations WHERE accountId = :accountId")
+    suspend fun getByAccount(accountId: Long): List<Operation>
+
+    /** Débits différés (par compte et date de débit) entre deux dates incluses. */
+    @Query(
+        """
+        SELECT o.accountId AS accountId, a.name AS accountName, o.debitDate AS debitDate,
+            SUM(o.amountCents) AS cents, COUNT(*) AS count
+        FROM operations o
+        JOIN accounts a ON a.id = o.accountId
+        WHERE a.deferredDebit = 1 AND o.deferred = 1 AND o.kind = 'EXPENSE'
+            AND o.debitDate BETWEEN :from AND :to
+            AND (:accountId IS NULL OR o.accountId = :accountId)
+        GROUP BY o.accountId, o.debitDate
+        ORDER BY o.debitDate
+        """
+    )
+    fun observeDeferredDebits(from: LocalDate, to: LocalDate, accountId: Long?): Flow<List<DeferredDebitTotal>>
 
     @Insert
     suspend fun insert(operation: Operation): Long
