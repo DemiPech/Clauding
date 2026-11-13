@@ -40,7 +40,7 @@ val OperationDetails.title: String
 private val WeekdayFormat = DateTimeFormatter.ofPattern("EEE", Locale.FRENCH)
 private val MonthYearFormat = DateTimeFormatter.ofPattern("MM.yyyy", Locale.FRENCH)
 
-/** En-tête de jour : « 13 [ven.] 11.2026     0,00 €   11,99 € ». */
+/** En-tête de jour : « 13 ven. 11.2026  0,00 €  11,99 € ». */
 @Composable
 fun DayHeader(date: LocalDate, income: Long, expense: Long, modifier: Modifier = Modifier) {
     Row(
