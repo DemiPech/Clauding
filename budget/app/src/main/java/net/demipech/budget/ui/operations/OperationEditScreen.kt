@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import net.demipech.budget.ui.components.EmptyState
 import net.demipech.budget.ui.components.FormTopBar
 import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
+import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.repository
 import java.time.LocalDate
 
@@ -115,7 +117,13 @@ class OperationEditViewModel(
 }
 
 @Composable
-fun OperationEditScreen(id: Long?, presetAccountId: Long?, presetDate: LocalDate?, onDone: () -> Unit) {
+fun OperationEditScreen(
+    id: Long?,
+    presetAccountId: Long?,
+    presetDate: LocalDate?,
+    onDone: () -> Unit,
+    onSplit: (InstallmentPreset) -> Unit,
+) {
     val repo = repository()
     val vm = viewModel(key = "operation-$id-$presetAccountId-$presetDate") {
         OperationEditViewModel(repo, id, presetAccountId, presetDate)
@@ -174,6 +182,15 @@ fun OperationEditScreen(id: Long?, presetAccountId: Long?, presetDate: LocalDate
             DateField("Date", vm.date, { vm.date = it })
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
+            }
+            if (vm.isNew) {
+                // Le 1er paiement tout de suite, les suivants en échéancier.
+                TextButton(
+                    onClick = {
+                        onSplit(InstallmentPreset(vm.amountCents, vm.accountId, vm.categoryId, vm.note.trim()))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Payer en plusieurs fois…") }
             }
         }
     }

@@ -59,6 +59,38 @@ class BudgetRepository(private val db: BudgetDatabase) {
         materializeDue()
         return id
     }
+    // Paiements en plusieurs fois
+    suspend fun plan(planId: Long): List<ScheduledOperation> = scheduled.getPlan(planId)
+
+    /**
+     * Enregistre l'échéancier d'un paiement en plusieurs fois. [rows] sont les
+     * échéances pas encore payées (ponctuelles, dans l'ordre) ; pour un plan existant
+     * elles remplacent les échéances non payées, les payées restent. Les échéances
+     * datées d'aujourd'hui ou avant deviennent tout de suite des opérations.
+     */
+    suspend fun saveInstallments(planId: Long?, rows: List<ScheduledOperation>): Long? {
+        val id = db.withTransaction {
+            val paidCount = planId?.let { pid -> scheduled.getPlan(pid).count { it.generatedCount > 0 } } ?: 0
+            if (planId != null) scheduled.deleteUnpaid(planId)
+            val size = paidCount + rows.size
+            var id = planId
+            rows.forEachIndexed { i, row ->
+                val item = row.copy(id = 0, planId = id, planIndex = paidCount + i + 1, planSize = size)
+                val inserted = scheduled.insert(item)
+                if (id == null) {
+                    id = inserted
+                    scheduled.update(item.copy(id = inserted, planId = inserted))
+                }
+            }
+            id?.also { scheduled.updatePlan(it, size, rows.firstOrNull()?.note.orEmpty()) }
+        }
+        materializeDue()
+        return id
+    }
+
+    /** Supprime l'échéancier ; les paiements déjà passés restent dans les opérations. */
+    suspend fun deletePlan(planId: Long) = scheduled.deletePlan(planId)
+
     /** Les opérations déjà créées par cette planification sont conservées. */
     suspend fun delete(item: ScheduledOperation) = scheduled.delete(item)
 

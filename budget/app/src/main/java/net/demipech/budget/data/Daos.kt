@@ -70,7 +70,8 @@ private const val OPERATION_DETAILS = """
         COALESCE(p.emoji, c.emoji) AS categoryEmoji,
         COALESCE(p.color, c.color) AS categoryColor,
         COALESCE(p.id, c.id) AS rootCategoryId,
-        s.frequency AS scheduledFrequency, s.interval AS scheduledInterval
+        s.frequency AS scheduledFrequency, s.interval AS scheduledInterval,
+        s.planIndex AS scheduledPlanIndex, s.planSize AS scheduledPlanSize
     FROM operations o
     JOIN accounts a ON a.id = o.accountId
     LEFT JOIN categories c ON c.id = o.categoryId
@@ -131,6 +132,18 @@ interface ScheduledDao {
 
     @Query("SELECT * FROM scheduled WHERE id = :id")
     suspend fun get(id: Long): ScheduledOperation?
+
+    @Query("SELECT * FROM scheduled WHERE planId = :planId ORDER BY planIndex")
+    suspend fun getPlan(planId: Long): List<ScheduledOperation>
+
+    @Query("DELETE FROM scheduled WHERE planId = :planId AND generatedCount = 0")
+    suspend fun deleteUnpaid(planId: Long)
+
+    @Query("DELETE FROM scheduled WHERE planId = :planId")
+    suspend fun deletePlan(planId: Long)
+
+    @Query("UPDATE scheduled SET planSize = :size, note = :note WHERE planId = :planId")
+    suspend fun updatePlan(planId: Long, size: Int, note: String)
 
     @Insert
     suspend fun insert(scheduled: ScheduledOperation): Long

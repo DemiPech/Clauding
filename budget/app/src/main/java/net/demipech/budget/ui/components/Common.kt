@@ -495,6 +495,7 @@ fun DateAdjust.label(): String = when (this) {
 
 /** « Tous les mois, le dernier jour ouvré », « Tous les mois, le 5 (jour ouvré suivant si férié) »… */
 fun describeSchedule(s: ScheduledOperation): String {
+    if (s.planId != null) return "Paiement ${s.planIndex}/${s.planSize}"
     val rhythm = describeRhythm(s.frequency, s.interval)
     val yearly = s.frequency == Frequency.YEARLY
     val ofMonth = if (yearly) " de " + s.startDate.format(DateTimeFormatter.ofPattern("MMMM", Locale.FRENCH)) else ""

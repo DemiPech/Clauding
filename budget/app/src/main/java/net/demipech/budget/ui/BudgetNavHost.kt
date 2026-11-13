@@ -33,6 +33,8 @@ import androidx.navigation.navArgument
 import net.demipech.budget.ui.accounts.AccountEditScreen
 import net.demipech.budget.ui.categories.CategoriesScreen
 import net.demipech.budget.ui.home.HomeScreen
+import net.demipech.budget.ui.installments.InstallmentEditScreen
+import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.more.MoreScreen
 import net.demipech.budget.ui.operations.OperationEditScreen
 import net.demipech.budget.ui.operations.TransactionsScreen
@@ -144,6 +146,8 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                 ScheduledScreen(
                     onEdit = { nav.navigate(Routes.scheduledEdit(it)) },
                     onAdd = { nav.navigate(Routes.scheduledEdit()) },
+                    onEditPlan = { nav.navigate(Routes.installmentsEdit(planId = it)) },
+                    onAddPlan = { nav.navigate(Routes.installmentsEdit()) },
                     onBack = back,
                 )
             }
@@ -180,6 +184,38 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     id = args.getLong("id").orNull(),
                     presetAccountId = args.getLong("accountId").orNull(),
                     presetDate = args.getLong("date").takeIf { it != Long.MIN_VALUE }?.let(LocalDate::ofEpochDay),
+                    onDone = back,
+                    onSplit = { preset ->
+                        nav.navigate(
+                            Routes.installmentsEdit(
+                                amountCents = preset.amountCents,
+                                accountId = preset.accountId,
+                                categoryId = preset.categoryId,
+                                note = preset.note,
+                            )
+                        ) { popUpTo(Routes.OPERATION_EDIT) { inclusive = true } }
+                    },
+                )
+            }
+            composable(
+                Routes.INSTALLMENTS_EDIT,
+                arguments = listOf(
+                    navArgument("planId") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("amount") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("accountId") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("categoryId") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("note") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { entry ->
+                val args = entry.arguments!!
+                InstallmentEditScreen(
+                    planId = args.getLong("planId").orNull(),
+                    preset = InstallmentPreset(
+                        amountCents = args.getLong("amount").orNull(),
+                        accountId = args.getLong("accountId").orNull(),
+                        categoryId = args.getLong("categoryId").orNull(),
+                        note = args.getString("note"),
+                    ),
                     onDone = back,
                 )
             }

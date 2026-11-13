@@ -72,6 +72,19 @@ Quatre onglets :
     Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
     novembre, 25 décembre), calculés pour chaque année.
   - Le formulaire montre en direct les prochaines dates de la série.
+- **Paiement en plusieurs fois** (Plus › Opérations planifiées › Planifier, ou « Payer en
+  plusieurs fois… » sous le formulaire d'une nouvelle opération, qui reprend montant, compte,
+  catégorie et libellé) :
+  - montant total, nombre de paiements, date du 1er paiement (aujourd'hui par défaut) puis
+    date du paiement suivant et rythme (tous les N jours, semaines ou mois) ;
+  - l'échéancier est calculé (les centimes en trop vont sur le 1er paiement) puis **chaque
+    paiement se modifie séparément** : date, montant, retrait, ajout d'un paiement. Une fois une
+    ligne modifiée, plus rien n'est recalculé automatiquement (bouton « Recalculer ») ;
+  - un paiement daté d'aujourd'hui ou avant est enregistré tout de suite dans les opérations,
+    les autres arrivent à leur date, marqués « paiement 2/4 » ;
+  - la liste des planifications montre chaque paiement en plusieurs fois avec ses échéances,
+    le nombre payé et le reste à payer. Les paiements déjà passés sont des opérations
+    ordinaires, modifiables depuis l'onglet Opérations.
 
 Les montants se saisissent en euros (`12,50` ou `12.50`) et sont stockés en centimes.
 
@@ -83,6 +96,7 @@ app/src/main/java/net/demipech/budget/
   data/                           Room : entités, DAO, base, BudgetRepository
   domain/Recurrence.kt            calcul des échéances (pur Kotlin, testé)
   domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
+  domain/Installments.kt          répartition d'un paiement en plusieurs fois (testé)
   domain/Forecast.kt              échéances à venir, répartition par catégorie (testé)
   domain/Money.kt                 saisie et affichage des montants (testé)
   ui/                             navigation, thème, composants, un dossier par écran
@@ -105,9 +119,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 3. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 4. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois.
 
 ## Pistes
 

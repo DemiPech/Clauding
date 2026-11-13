@@ -110,6 +110,13 @@ data class ScheduledOperation(
     val ruleWeekday: Int = 1,
     /** Décalage si l'échéance tombe un jour non ouvré. */
     val adjust: DateAdjust = DateAdjust.NONE,
+    /**
+     * Paiement en plusieurs fois : chaque échéance est une planification ponctuelle
+     * ; elles partagent [planId] (l'id de la première), [planIndex] va de 1 à [planSize].
+     */
+    val planId: Long? = null,
+    val planIndex: Int = 0,
+    val planSize: Int = 0,
 )
 
 @Entity(
@@ -171,6 +178,8 @@ data class OperationDetails(
     val rootCategoryId: Long?,
     val scheduledFrequency: Frequency?,
     val scheduledInterval: Int?,
+    val scheduledPlanIndex: Int? = null,
+    val scheduledPlanSize: Int? = null,
 )
 
 data class ScheduledDetails(

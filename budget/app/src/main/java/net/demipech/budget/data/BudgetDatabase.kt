@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class],
-    version = 3,
+    version = 4,
 )
 @TypeConverters(Converters::class)
 abstract class BudgetDatabase : RoomDatabase() {
@@ -23,7 +23,7 @@ abstract class BudgetDatabase : RoomDatabase() {
         fun create(context: Context): BudgetDatabase =
             Room.databaseBuilder(context, BudgetDatabase::class.java, "budget.db")
                 .addCallback(SeedCategories)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }
@@ -60,6 +60,15 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("ALTER TABLE scheduled ADD COLUMN ruleN INTEGER NOT NULL DEFAULT 1")
         db.execSQL("ALTER TABLE scheduled ADD COLUMN ruleWeekday INTEGER NOT NULL DEFAULT 1")
         db.execSQL("ALTER TABLE scheduled ADD COLUMN adjust TEXT NOT NULL DEFAULT 'NONE'")
+    }
+}
+
+/** v4 : paiements en plusieurs fois (échéances regroupées). */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN planId INTEGER")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN planIndex INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN planSize INTEGER NOT NULL DEFAULT 0")
     }
 }
 

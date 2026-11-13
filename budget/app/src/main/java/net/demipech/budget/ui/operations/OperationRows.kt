@@ -111,7 +111,11 @@ fun OperationLine(op: OperationDetails, onClick: () -> Unit, modifier: Modifier 
         }
         Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
             Text(op.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val rhythm = op.scheduledFrequency?.let { " (${describeRhythm(it, op.scheduledInterval ?: 1)})" }.orEmpty()
+            val planSize = op.scheduledPlanSize ?: 0
+            val rhythm = when {
+                planSize > 0 -> " (paiement ${op.scheduledPlanIndex}/$planSize)"
+                else -> op.scheduledFrequency?.let { " (${describeRhythm(it, op.scheduledInterval ?: 1)})" }.orEmpty()
+            }
             Text(
                 op.accountName + rhythm,
                 style = MaterialTheme.typography.bodySmall,
