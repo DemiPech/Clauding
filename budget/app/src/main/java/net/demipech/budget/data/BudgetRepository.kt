@@ -26,13 +26,26 @@ class BudgetRepository(private val db: BudgetDatabase) {
     // Catégories
     fun categories(): Flow<List<Category>> = categories.observeAll()
     suspend fun category(id: Long): Category? = categories.get(id)
-    suspend fun save(category: Category): Long =
-        if (category.id == 0L) categories.insert(category) else category.id.also { categories.update(category) }
-    /** Les opérations de la catégorie restent, sans catégorie. */
-    suspend fun delete(category: Category) = categories.delete(category)
+    suspend fun save(category: Category): Long = db.withTransaction {
+        if (category.id == 0L) {
+            categories.insert(category)
+        } else {
+            categories.update(category)
+            if (category.parentId == null) categories.updateChildrenKind(category.id, category.kind.name)
+            category.id
+        }
+    }
+
+    /** Supprime aussi ses sous-catégories ; les opérations restent, sans catégorie. */
+    suspend fun delete(category: Category) = db.withTransaction {
+        categories.deleteChildren(category.id)
+        categories.delete(category)
+    }
 
     // Opérations
-    fun operations(accountId: Long? = null): Flow<List<OperationDetails>> = operations.observeDetails(accountId)
+    fun operationsBetween(from: LocalDate, to: LocalDate, accountId: Long? = null): Flow<List<OperationDetails>> =
+        operations.observeBetween(from, to, accountId)
+    fun recentOperations(limit: Int): Flow<List<OperationDetails>> = operations.observeRecent(limit)
     suspend fun operation(id: Long): Operation? = operations.get(id)
     suspend fun save(operation: Operation): Long =
         if (operation.id == 0L) operations.insert(operation) else operation.id.also { operations.update(operation) }

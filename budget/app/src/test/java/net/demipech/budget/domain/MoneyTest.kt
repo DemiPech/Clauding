@@ -38,4 +38,11 @@ class MoneyTest {
         assertTrue(Money.formatSigned(500).startsWith("+"))
         assertTrue(Money.formatSigned(-500).startsWith("-"))
     }
+
+    @Test
+    fun plainHasNoCurrency() {
+        val text = Money.plain(7416)
+        assertTrue(text, text == "74,16")
+        assertTrue(Money.plain(123456).endsWith("234,56"))
+    }
 }

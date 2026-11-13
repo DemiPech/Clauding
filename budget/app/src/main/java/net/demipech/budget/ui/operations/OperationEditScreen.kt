@@ -33,7 +33,7 @@ import net.demipech.budget.data.Kind
 import net.demipech.budget.data.Operation
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.components.AmountField
-import net.demipech.budget.ui.components.ColorDot
+import net.demipech.budget.ui.components.CategorySelector
 import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.DateField
 import net.demipech.budget.ui.components.EmptyState
@@ -47,13 +47,14 @@ class OperationEditViewModel(
     private val repo: BudgetRepository,
     private val id: Long?,
     presetAccountId: Long?,
+    presetDate: LocalDate?,
 ) : ViewModel() {
     var kind by mutableStateOf(Kind.EXPENSE)
         private set
     var amount by mutableStateOf("")
     var accountId by mutableStateOf(presetAccountId)
     var categoryId by mutableStateOf<Long?>(null)
-    var date: LocalDate by mutableStateOf(LocalDate.now())
+    var date: LocalDate by mutableStateOf(presetDate ?: LocalDate.now())
     var note by mutableStateOf("")
     var loaded by mutableStateOf(id == null)
         private set
@@ -114,9 +115,11 @@ class OperationEditViewModel(
 }
 
 @Composable
-fun OperationEditScreen(id: Long?, presetAccountId: Long?, onDone: () -> Unit) {
+fun OperationEditScreen(id: Long?, presetAccountId: Long?, presetDate: LocalDate?, onDone: () -> Unit) {
     val repo = repository()
-    val vm = viewModel(key = "operation-$id-$presetAccountId") { OperationEditViewModel(repo, id, presetAccountId) }
+    val vm = viewModel(key = "operation-$id-$presetAccountId-$presetDate") {
+        OperationEditViewModel(repo, id, presetAccountId, presetDate)
+    }
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
@@ -139,7 +142,6 @@ fun OperationEditScreen(id: Long?, presetAccountId: Long?, onDone: () -> Unit) {
             EmptyState("Créez d'abord un compte dans l'onglet Comptes.", Modifier.padding(padding))
             return@Scaffold
         }
-        val kindCategories = categories.filter { it.kind == vm.kind }
         Column(
             Modifier
                 .padding(padding)
@@ -154,6 +156,13 @@ fun OperationEditScreen(id: Long?, presetAccountId: Long?, onDone: () -> Unit) {
                 label = "Montant",
                 isError = vm.amount.isNotEmpty() && vm.amountCents == null,
             )
+            OutlinedTextField(
+                value = vm.note,
+                onValueChange = { vm.note = it },
+                label = { Text("Libellé (facultatif)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Selector(
                 label = "Compte",
                 options = accountList,
@@ -161,22 +170,8 @@ fun OperationEditScreen(id: Long?, presetAccountId: Long?, onDone: () -> Unit) {
                 optionLabel = { it.name },
                 onSelect = { vm.accountId = it.id },
             )
-            Selector(
-                label = "Catégorie",
-                options = listOf<Category?>(null) + kindCategories,
-                selected = kindCategories.find { it.id == vm.categoryId },
-                optionLabel = { it?.name ?: "Sans catégorie" },
-                onSelect = { vm.categoryId = it?.id },
-                leading = { ColorDot(it?.color) },
-                emptyLabel = "Sans catégorie",
-            )
+            CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
             DateField("Date", vm.date, { vm.date = it })
-            OutlinedTextField(
-                value = vm.note,
-                onValueChange = { vm.note = it },
-                label = { Text("Note") },
-                modifier = Modifier.fillMaxWidth(),
-            )
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
             }

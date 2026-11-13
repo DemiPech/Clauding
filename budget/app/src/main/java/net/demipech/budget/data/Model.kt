@@ -19,7 +19,14 @@ data class Account(
     val name: String,
     /** Solde du compte au moment où on commence à le suivre, en centimes. */
     val initialBalanceCents: Long = 0,
+    /** Couleur ARGB de la tuile du compte. */
+    val color: Long = DEFAULT_ACCOUNT_COLOR,
+    /** Emoji affiché sur la tuile. */
+    val icon: String = DEFAULT_ACCOUNT_ICON,
 )
+
+const val DEFAULT_ACCOUNT_COLOR = 0xFF1E88E5
+const val DEFAULT_ACCOUNT_ICON = "🏦"
 
 @Entity(tableName = "categories")
 data class Category(
@@ -28,6 +35,13 @@ data class Category(
     val kind: Kind,
     /** Couleur ARGB (0xFFRRGGBB). */
     val color: Long,
+    val emoji: String = "",
+    /**
+     * Catégorie parente pour une sous-catégorie (un seul niveau), null pour une
+     * catégorie principale. Sans clé étrangère : la suppression en cascade est
+     * faite par le dépôt, ce qui garde la migration simple.
+     */
+    val parentId: Long? = null,
 )
 
 /**
@@ -115,16 +129,35 @@ data class AccountWithBalance(
     val balanceCents: Long,
 )
 
+/**
+ * Opération avec ce qu'il faut pour l'afficher. Pour une sous-catégorie,
+ * [categoryName], [categoryEmoji] et [categoryColor] sont ceux de la catégorie
+ * principale et [subcategoryName] le nom de la sous-catégorie.
+ */
 data class OperationDetails(
     @Embedded val operation: Operation,
     val accountName: String,
+    val accountColor: Long,
     val categoryName: String?,
+    val subcategoryName: String?,
+    val categoryEmoji: String?,
     val categoryColor: Long?,
+    val rootCategoryId: Long?,
+    val scheduledFrequency: Frequency?,
+    val scheduledInterval: Int?,
 )
 
 data class ScheduledDetails(
     @Embedded val scheduled: ScheduledOperation,
     val accountName: String,
     val categoryName: String?,
+    val subcategoryName: String?,
+    val categoryEmoji: String?,
     val categoryColor: Long?,
 )
+
+val ScheduledOperation.signedCents: Long get() = if (kind == Kind.INCOME) amountCents else -amountCents
+
+/** Libellé d'une planification : sa note, à défaut sa (sous-)catégorie. */
+val ScheduledDetails.title: String
+    get() = scheduled.note.ifBlank { subcategoryName ?: categoryName ?: "" }

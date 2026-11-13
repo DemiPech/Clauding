@@ -1,6 +1,24 @@
 package net.demipech.budget.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import java.time.YearMonth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,20 +65,35 @@ import net.demipech.budget.data.Frequency
 import net.demipech.budget.data.Kind
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.theme.amountColor
+import net.demipech.budget.ui.theme.expenseColor
+import net.demipech.budget.ui.theme.incomeColor
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private const val MILLIS_PER_DAY = 86_400_000L
 
+val MonthFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.FRENCH)
+val ShortDayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM", Locale.FRENCH)
 val DayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.FRENCH)
 val LongDayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.FRENCH)
 
-/** Palette proposée pour les catégories. */
+/** Palette proposée pour les catégories et les comptes. */
 val CategoryPalette = listOf(
-    0xFFE53935, 0xFFD81B60, 0xFF8E24AA, 0xFF3949AB, 0xFF1E88E5, 0xFF00897B,
-    0xFF43A047, 0xFF7CB342, 0xFFFDD835, 0xFFFB8C00, 0xFF8D6E63, 0xFF757575,
+    0xFFE53935, 0xFFD81B60, 0xFFC2185B, 0xFF8E24AA, 0xFF5E35B1, 0xFF3949AB,
+    0xFF1E88E5, 0xFF039BE5, 0xFF00897B, 0xFF43A047, 0xFF7CB342, 0xFFFBC02D,
+    0xFFFB8C00, 0xFFF4511E, 0xFF8D6E63, 0xFF757575,
 )
+
+val CategoryEmojis = listOf(
+    "🛒", "🧺", "🍽️", "☕", "🏠", "🔑", "💡", "🛡️", "🚗", "⛽", "🚆", "✈️",
+    "🎮", "📺", "🎬", "🎵", "📚", "🃏", "💊", "🏥", "👕", "🛍️", "🎁", "❤️",
+    "🐶", "👶", "📱", "💻", "🧾", "🏦", "📦", "💼", "💰", "↩️", "📈", "🎓",
+)
+
+val AccountIcons = listOf("🏦", "💳", "💶", "👛", "🐷", "💰", "📈", "🏠", "💼", "🪙")
+
+fun YearMonth.label(): String = atDay(1).format(MonthFormat).replaceFirstChar { it.uppercase() }
 
 fun Kind.label(): String = when (this) {
     Kind.EXPENSE -> "Dépense"
@@ -282,3 +315,156 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** Carte blanche à coins arrondis (style Wallet), avec titre optionnel et lien « Afficher plus ». */
+@Composable
+fun SectionCard(
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    onShowMore: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(Modifier.padding(vertical = 16.dp)) {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                )
+            }
+            content()
+            if (onShowMore != null) {
+                HorizontalLine(Modifier.padding(top = 8.dp))
+                Text(
+                    "Afficher plus",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onShowMore)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HorizontalLine(modifier: Modifier = Modifier) {
+    androidx.compose.material3.HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+/** Petit libellé gris en capitales (« AUJOURD'HUI », « CE MOIS-CI »). */
+@Composable
+fun Overline(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
+}
+
+/** Pastille ronde colorée avec l'emoji de la catégorie. */
+@Composable
+fun CategoryBadge(emoji: String?, color: Long?, modifier: Modifier = Modifier, size: Int = 40) {
+    val base = color?.let { Color(it) } ?: MaterialTheme.colorScheme.outline
+    Box(
+        modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(base.copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!emoji.isNullOrBlank()) {
+            Text(emoji, fontSize = (size * 0.45f).sp)
+        } else {
+            Box(Modifier.size((size / 3).dp).background(base, CircleShape))
+        }
+    }
+}
+
+/** « ‹ Novembre 2026 › » ; toucher le mois revient au mois courant. */
+@Composable
+fun MonthSwitcher(month: YearMonth, onMonthChange: (YearMonth) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onMonthChange(month.minusMonths(1)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Mois précédent")
+        }
+        Text(
+            month.label(),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.clickable { onMonthChange(YearMonth.now()) },
+        )
+        IconButton(onClick = { onMonthChange(month.plusMonths(1)) }) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Mois suivant")
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ColorPicker(selected: Long, onSelect: (Long) -> Unit, modifier: Modifier = Modifier) {
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CategoryPalette.forEach { option ->
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(option))
+                    .then(
+                        if (option == selected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                        else Modifier
+                    )
+                    .clickable { onSelect(option) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun EmojiPicker(options: List<String>, selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        options.forEach { emoji ->
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (emoji == selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                    .clickable { onSelect(emoji) },
+                contentAlignment = Alignment.Center,
+            ) { Text(emoji, fontSize = 20.sp) }
+        }
+    }
+}
+
+/** Trois montants côte à côte : Revenus, Dépenses, Total (bandeau Money Manager). */
+@Composable
+fun TotalsRow(income: Long, expense: Long, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        TotalCell("Revenus", Money.format(income), incomeColor(), Modifier.weight(1f))
+        TotalCell("Dépenses", Money.format(expense), expenseColor(), Modifier.weight(1f))
+        TotalCell("Total", Money.format(income - expense), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun TotalCell(label: String, value: String, color: Color, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(value, color = color, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+    }
+}
+
+@Composable
+fun Gap(height: Int) = Spacer(Modifier.height(height.dp))

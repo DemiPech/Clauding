@@ -41,4 +41,12 @@ object Money {
 
     /** Centimes -> texte à éditer (« 12,5 » s'affiche « 12,50 »). */
     fun toInput(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainString().replace('.', ',')
+
+    /** Montant sans symbole, pour les cases étroites du calendrier : 7416 -> « 74,16 ». */
+    fun plain(cents: Long): String {
+        val format = NumberFormat.getNumberInstance(locale)
+        format.minimumFractionDigits = 2
+        format.maximumFractionDigits = 2
+        return format.format(BigDecimal.valueOf(cents, 2))
+    }
 }

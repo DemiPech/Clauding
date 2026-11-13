@@ -39,7 +39,7 @@ import net.demipech.budget.data.ScheduledOperation
 import net.demipech.budget.domain.Money
 import net.demipech.budget.domain.Recurrence
 import net.demipech.budget.ui.components.AmountField
-import net.demipech.budget.ui.components.ColorDot
+import net.demipech.budget.ui.components.CategorySelector
 import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.DateField
 import net.demipech.budget.ui.components.EmptyState
@@ -171,7 +171,6 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
             EmptyState("Créez d'abord un compte dans l'onglet Comptes.", Modifier.padding(padding))
             return@Scaffold
         }
-        val kindCategories = categories.filter { it.kind == vm.kind }
         val repeats = vm.frequency != Frequency.NONE
 
         Column(
@@ -195,15 +194,7 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
                 optionLabel = { it.name },
                 onSelect = { vm.accountId = it.id },
             )
-            Selector(
-                label = "Catégorie",
-                options = listOf<Category?>(null) + kindCategories,
-                selected = kindCategories.find { it.id == vm.categoryId },
-                optionLabel = { it?.name ?: "Sans catégorie" },
-                onSelect = { vm.categoryId = it?.id },
-                leading = { ColorDot(it?.color) },
-                emptyLabel = "Sans catégorie",
-            )
+            CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
             OutlinedTextField(
                 value = vm.note,
                 onValueChange = { vm.note = it },

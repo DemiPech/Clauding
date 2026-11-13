@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -20,9 +23,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import net.demipech.budget.data.Account
+import net.demipech.budget.data.DEFAULT_ACCOUNT_COLOR
+import net.demipech.budget.data.DEFAULT_ACCOUNT_ICON
 import net.demipech.budget.data.BudgetRepository
 import net.demipech.budget.domain.Money
+import net.demipech.budget.ui.components.AccountIcons
 import net.demipech.budget.ui.components.AmountField
+import net.demipech.budget.ui.components.ColorPicker
+import net.demipech.budget.ui.components.EmojiPicker
 import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.FormTopBar
 import net.demipech.budget.ui.repository
@@ -30,6 +38,8 @@ import net.demipech.budget.ui.repository
 class AccountEditViewModel(private val repo: BudgetRepository, private val id: Long?) : ViewModel() {
     var name by mutableStateOf("")
     var initialBalance by mutableStateOf("0")
+    var color by mutableStateOf(DEFAULT_ACCOUNT_COLOR)
+    var icon by mutableStateOf(DEFAULT_ACCOUNT_ICON)
     private var original: Account? = null
 
     init {
@@ -38,6 +48,8 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
                 original = it
                 name = it.name
                 initialBalance = Money.toInput(it.initialBalanceCents)
+                color = it.color
+                icon = it.icon
             }
         }
     }
@@ -48,7 +60,7 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
 
     fun save(onDone: () -> Unit) = viewModelScope.launch {
         val cents = Money.parse(initialBalance) ?: return@launch
-        repo.save(Account(id = id ?: 0, name = name.trim(), initialBalanceCents = cents))
+        repo.save(Account(id = id ?: 0, name = name.trim(), initialBalanceCents = cents, color = color, icon = icon))
         onDone()
     }
 
@@ -74,7 +86,7 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
         },
     ) { padding ->
         Column(
-            Modifier.padding(padding).padding(16.dp),
+            Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
@@ -94,6 +106,10 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
                 "Le solde du compte au moment où vous commencez à le suivre ici. " +
                     "Il peut être négatif (ex. -150).",
             )
+            Text("Icône", style = MaterialTheme.typography.titleSmall)
+            EmojiPicker(AccountIcons, vm.icon, { vm.icon = it })
+            Text("Couleur", style = MaterialTheme.typography.titleSmall)
+            ColorPicker(vm.color, { vm.color = it })
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
             }

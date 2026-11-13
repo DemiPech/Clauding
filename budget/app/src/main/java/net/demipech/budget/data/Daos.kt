@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 
 @Dao
 interface AccountDao {
@@ -16,12 +17,12 @@ interface AccountDao {
             FROM operations o WHERE o.accountId = a.id
         ), 0) AS balanceCents
         FROM accounts a
-        ORDER BY a.name COLLATE NOCASE
+        ORDER BY a.id
         """
     )
     fun observeWithBalance(): Flow<List<AccountWithBalance>>
 
-    @Query("SELECT * FROM accounts ORDER BY name COLLATE NOCASE")
+    @Query("SELECT * FROM accounts ORDER BY id")
     fun observeAll(): Flow<List<Account>>
 
     @Query("SELECT * FROM accounts WHERE id = :id")
@@ -53,22 +54,43 @@ interface CategoryDao {
 
     @Delete
     suspend fun delete(category: Category)
+
+    /** Une sous-catégorie a toujours le sens de sa catégorie principale. */
+    @Query("UPDATE categories SET kind = :kind WHERE parentId = :parentId")
+    suspend fun updateChildrenKind(parentId: Long, kind: String)
+
+    @Query("DELETE FROM categories WHERE parentId = :parentId")
+    suspend fun deleteChildren(parentId: Long)
 }
+
+private const val OPERATION_DETAILS = """
+    SELECT o.*, a.name AS accountName, a.color AS accountColor,
+        COALESCE(p.name, c.name) AS categoryName,
+        CASE WHEN p.id IS NULL THEN NULL ELSE c.name END AS subcategoryName,
+        COALESCE(p.emoji, c.emoji) AS categoryEmoji,
+        COALESCE(p.color, c.color) AS categoryColor,
+        COALESCE(p.id, c.id) AS rootCategoryId,
+        s.frequency AS scheduledFrequency, s.interval AS scheduledInterval
+    FROM operations o
+    JOIN accounts a ON a.id = o.accountId
+    LEFT JOIN categories c ON c.id = o.categoryId
+    LEFT JOIN categories p ON p.id = c.parentId
+    LEFT JOIN scheduled s ON s.id = o.scheduledId
+"""
 
 @Dao
 interface OperationDao {
-    /** Opérations, les plus récentes d'abord ; [accountId] null = tous les comptes. */
+    /** Opérations entre deux dates incluses ; [accountId] null = tous les comptes. */
     @Query(
-        """
-        SELECT o.*, a.name AS accountName, c.name AS categoryName, c.color AS categoryColor
-        FROM operations o
-        JOIN accounts a ON a.id = o.accountId
-        LEFT JOIN categories c ON c.id = o.categoryId
-        WHERE (:accountId IS NULL OR o.accountId = :accountId)
+        OPERATION_DETAILS + """
+        WHERE o.date BETWEEN :from AND :to AND (:accountId IS NULL OR o.accountId = :accountId)
         ORDER BY o.date DESC, o.id DESC
         """
     )
-    fun observeDetails(accountId: Long?): Flow<List<OperationDetails>>
+    fun observeBetween(from: LocalDate, to: LocalDate, accountId: Long?): Flow<List<OperationDetails>>
+
+    @Query(OPERATION_DETAILS + " ORDER BY o.date DESC, o.id DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<OperationDetails>>
 
     @Query("SELECT * FROM operations WHERE id = :id")
     suspend fun get(id: Long): Operation?
@@ -90,10 +112,15 @@ interface OperationDao {
 interface ScheduledDao {
     @Query(
         """
-        SELECT s.*, a.name AS accountName, c.name AS categoryName, c.color AS categoryColor
+        SELECT s.*, a.name AS accountName,
+            COALESCE(p.name, c.name) AS categoryName,
+            CASE WHEN p.id IS NULL THEN NULL ELSE c.name END AS subcategoryName,
+            COALESCE(p.emoji, c.emoji) AS categoryEmoji,
+            COALESCE(p.color, c.color) AS categoryColor
         FROM scheduled s
         JOIN accounts a ON a.id = s.accountId
         LEFT JOIN categories c ON c.id = s.categoryId
+        LEFT JOIN categories p ON p.id = c.parentId
         ORDER BY s.startDate
         """
     )

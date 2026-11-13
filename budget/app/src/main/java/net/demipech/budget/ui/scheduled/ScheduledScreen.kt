@@ -6,16 +6,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -31,9 +35,10 @@ import kotlinx.coroutines.flow.stateIn
 import net.demipech.budget.data.BudgetRepository
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.ScheduledDetails
+import net.demipech.budget.data.title
 import net.demipech.budget.domain.Recurrence
 import net.demipech.budget.ui.components.AmountText
-import net.demipech.budget.ui.components.ColorDot
+import net.demipech.budget.ui.components.CategoryBadge
 import net.demipech.budget.ui.components.DayFormat
 import net.demipech.budget.ui.components.EmptyState
 import net.demipech.budget.ui.components.describeRhythm
@@ -47,13 +52,21 @@ class ScheduledViewModel(repo: BudgetRepository) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduledScreen(onEdit: (Long) -> Unit, onAdd: () -> Unit) {
+fun ScheduledScreen(onEdit: (Long) -> Unit, onAdd: () -> Unit, onBack: () -> Unit) {
     val repo = repository()
     val vm = viewModel { ScheduledViewModel(repo) }
     val items by vm.items.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Planifié") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Opérations planifiées") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour") }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+            )
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onAdd,
@@ -102,7 +115,7 @@ private fun ScheduledRow(item: ScheduledDetails, onClick: () -> Unit) {
     val s = item.scheduled
     val next = Recurrence.nextDate(s)
     val remaining = Recurrence.remaining(s)
-    val title = s.note.ifBlank { item.categoryName ?: s.kind.label() }
+    val title = item.title.ifBlank { s.kind.label() }
     val progress = when {
         next == null -> "Terminée"
         remaining == null -> "Prochaine : ${next.format(DayFormat)} · sans fin"
@@ -110,13 +123,14 @@ private fun ScheduledRow(item: ScheduledDetails, onClick: () -> Unit) {
         else -> "Prochaine : ${next.format(DayFormat)} · $remaining restantes"
     }
     ListItem(
-        leadingContent = { ColorDot(item.categoryColor) },
+        leadingContent = { CategoryBadge(item.categoryEmoji, item.categoryColor) },
         headlineContent = { Text(title) },
         supportingContent = {
             Text("${describeRhythm(s.frequency, s.interval)} · ${item.accountName}\n$progress")
         },
         trailingContent = { AmountText(if (s.kind == Kind.INCOME) s.amountCents else -s.amountCents) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.clickable(onClick = onClick),
     )
-    HorizontalDivider()
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }

@@ -90,4 +90,23 @@ class RecurrenceTest {
         assertEquals(emptyList<LocalDate>(), Recurrence.dueDates(s, LocalDate.of(2026, 12, 31)))
         assertEquals(LocalDate.of(2027, 1, 1), Recurrence.nextDate(s))
     }
+
+    @Test
+    fun pendingBetweenListsOnlyNotYetCreatedOccurrencesInRange() {
+        val s = scheduled(LocalDate.of(2026, 1, 9), Frequency.WEEKLY, occurrences = null, generated = 44)
+        // L'échéance n° 44 tombe le 13 novembre 2026.
+        assertEquals(LocalDate.of(2026, 11, 13), Recurrence.nextDate(s))
+        assertEquals(
+            listOf(LocalDate.of(2026, 11, 13), LocalDate.of(2026, 11, 20), LocalDate.of(2026, 11, 27)),
+            Recurrence.pendingBetween(s, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)),
+        )
+        // Un mois passé n'a plus rien d'« à venir ».
+        assertEquals(emptyList<LocalDate>(), Recurrence.pendingBetween(s, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)))
+    }
+
+    @Test
+    fun pendingBetweenRespectsTheCount() {
+        val s = scheduled(LocalDate.of(2026, 11, 1), Frequency.DAILY, occurrences = 3)
+        assertEquals(3, Recurrence.pendingBetween(s, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)).size)
+    }
 }

@@ -1,44 +1,75 @@
 package net.demipech.budget.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import net.demipech.budget.data.Kind
 
-val IncomeColor = Color(0xFF2E7D32)
-val IncomeColorDark = Color(0xFF81C784)
-val ExpenseColor = Color(0xFFC62828)
-val ExpenseColorDark = Color(0xFFEF9A9A)
+// Accent corail et code couleur revenus bleu / dépenses rouge (Money Manager),
+// cartes blanches sur fond gris clair en thème clair (Wallet).
+private val LightColors = lightColorScheme(
+    primary = Color(0xFFE8473C),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFDAD5),
+    onPrimaryContainer = Color(0xFF410001),
+    secondary = Color(0xFF1A6BD6),
+    onSecondary = Color.White,
+    background = Color(0xFFF1F2F5),
+    onBackground = Color(0xFF1B1C1F),
+    surface = Color.White,
+    onSurface = Color(0xFF1B1C1F),
+    surfaceVariant = Color(0xFFE6E8EC),
+    onSurfaceVariant = Color(0xFF5F6368),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color.White,
+    surfaceContainer = Color.White,
+    surfaceContainerHigh = Color(0xFFF6F7F9),
+    surfaceContainerHighest = Color(0xFFECEEF1),
+    outlineVariant = Color(0xFFDADCE0),
+)
 
-private val LightColors = lightColorScheme(primary = Color(0xFF00696E), secondary = Color(0xFF4A6365))
-private val DarkColors = darkColorScheme(primary = Color(0xFF4FD8DF), secondary = Color(0xFFB1CBCD))
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFFFF6B5E),
+    onPrimary = Color(0xFF3B0904),
+    primaryContainer = Color(0xFF6E1E16),
+    onPrimaryContainer = Color(0xFFFFDAD5),
+    secondary = Color(0xFF6AA9FF),
+    onSecondary = Color(0xFF00315F),
+    background = Color(0xFF18191D),
+    onBackground = Color(0xFFE6E6EA),
+    surface = Color(0xFF232529),
+    onSurface = Color(0xFFE6E6EA),
+    surfaceVariant = Color(0xFF34363C),
+    onSurfaceVariant = Color(0xFF9EA2A9),
+    surfaceContainerLowest = Color(0xFF18191D),
+    surfaceContainerLow = Color(0xFF1E2024),
+    surfaceContainer = Color(0xFF232529),
+    surfaceContainerHigh = Color(0xFF2B2D32),
+    surfaceContainerHighest = Color(0xFF34363C),
+    outlineVariant = Color(0xFF3A3D43),
+)
 
 @Composable
 fun BudgetTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val colors = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        dark -> DarkColors
-        else -> LightColors
-    }
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, content = content)
 }
 
 @Composable
-fun amountColor(cents: Long): Color {
-    val dark = isSystemInDarkTheme()
-    return when {
-        cents > 0 -> if (dark) IncomeColorDark else IncomeColor
-        cents < 0 -> if (dark) ExpenseColorDark else ExpenseColor
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+fun incomeColor(): Color = if (isSystemInDarkTheme()) Color(0xFF6AA9FF) else Color(0xFF1A6BD6)
+
+@Composable
+fun expenseColor(): Color = if (isSystemInDarkTheme()) Color(0xFFFF6B6B) else Color(0xFFE5484D)
+
+@Composable
+fun kindColor(kind: Kind): Color = if (kind == Kind.INCOME) incomeColor() else expenseColor()
+
+/** Couleur d'un montant signé : bleu au-dessus de zéro, rouge en dessous. */
+@Composable
+fun amountColor(cents: Long): Color = when {
+    cents > 0 -> incomeColor()
+    cents < 0 -> expenseColor()
+    else -> MaterialTheme.colorScheme.onSurface
 }

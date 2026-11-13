@@ -52,4 +52,22 @@ object Recurrence {
         }
         return dates
     }
+
+    /**
+     * Échéances pas encore créées dont la date tombe entre [from] et [to] inclus :
+     * ce qui est encore à venir sur une période (bandeau « Récurrences », prévisions).
+     */
+    fun pendingBetween(item: ScheduledOperation, from: LocalDate, to: LocalDate): List<LocalDate> {
+        val total = total(item)
+        val dates = mutableListOf<LocalDate>()
+        var index = item.generatedCount
+        var steps = 0
+        while ((total == null || index < total) && steps++ < MAX_PER_RUN) {
+            val date = occurrenceDate(item.startDate, item.frequency, item.interval, index)
+            if (date.isAfter(to)) break
+            if (!date.isBefore(from)) dates += date
+            index++
+        }
+        return dates
+    }
 }

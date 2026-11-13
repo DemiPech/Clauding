@@ -5,10 +5,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import net.demipech.budget.BudgetApp
 import net.demipech.budget.data.BudgetRepository
+import java.time.LocalDate
 
 object Routes {
-    const val ACCOUNTS = "accounts"
+    // Onglets
+    const val HOME = "home"
     const val OPERATIONS = "operations"
+    const val STATS = "stats"
+    const val MORE = "more"
+
     const val SCHEDULED = "scheduled"
     const val CATEGORIES = "categories"
 
@@ -18,9 +23,9 @@ object Routes {
     const val ACCOUNT_EDIT = "account-edit?id={id}"
     fun accountEdit(id: Long? = null) = "account-edit?id=${id ?: -1}"
 
-    const val OPERATION_EDIT = "operation-edit?id={id}&accountId={accountId}"
-    fun operationEdit(id: Long? = null, accountId: Long? = null) =
-        "operation-edit?id=${id ?: -1}&accountId=${accountId ?: -1}"
+    const val OPERATION_EDIT = "operation-edit?id={id}&accountId={accountId}&date={date}"
+    fun operationEdit(id: Long? = null, accountId: Long? = null, date: LocalDate? = null) =
+        "operation-edit?id=${id ?: -1}&accountId=${accountId ?: -1}" + (date?.let { "&date=${it.toEpochDay()}" } ?: "")
 
     const val SCHEDULED_EDIT = "scheduled-edit?id={id}"
     fun scheduledEdit(id: Long? = null) = "scheduled-edit?id=${id ?: -1}"
