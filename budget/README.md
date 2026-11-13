@@ -61,6 +61,17 @@ Quatre onglets :
   - Modifier une série agit sur la suite : la date affichée est la prochaine échéance et le
     nombre celui des échéances restantes. Supprimer une série garde les opérations déjà créées.
   - Une série mensuelle commencée un 31 tombe le dernier jour des mois courts.
+  - **Dates non fixes** (séries mensuelles et annuelles), champ « Jour » : le jour de la date
+    choisie, le dernier jour du mois, le premier / dernier / Nᵉ jour ouvré, ou un jour de la
+    semaine (« 2ᵉ mardi », « dernier vendredi »). La date choisie sert alors de point de
+    départ (« À partir du ») : si la règle tombe avant elle dans le mois, la série commence au
+    mois suivant.
+  - **Week-ends et jours fériés** : pour une date fixe (et pour les séries hebdomadaires ou
+    ponctuelles), on peut décaler l'échéance au jour ouvré suivant ou précédent.
+  - Jours ouvrés = du lundi au vendredi hors jours fériés français (1er janvier, lundi de
+    Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
+    novembre, 25 décembre), calculés pour chaque année.
+  - Le formulaire montre en direct les prochaines dates de la série.
 
 Les montants se saisissent en euros (`12,50` ou `12.50`) et sont stockés en centimes.
 
@@ -71,6 +82,7 @@ app/src/main/java/net/demipech/budget/
   BudgetApp.kt, MainActivity.kt   Application (dépôt partagé), activité Compose
   data/                           Room : entités, DAO, base, BudgetRepository
   domain/Recurrence.kt            calcul des échéances (pur Kotlin, testé)
+  domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
   domain/Forecast.kt              échéances à venir, répartition par catégorie (testé)
   domain/Money.kt                 saisie et affichage des montants (testé)
   ui/                             navigation, thème, composants, un dossier par écran
@@ -93,9 +105,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 2 : la migration 1 → 2 (`MIGRATION_1_2` dans `BudgetDatabase`) ajoute
-la couleur et l'icône des comptes, l'emoji et la catégorie parente des catégories, sans perdre
-les données d'une installation existante.
+La base est en version 3. Les migrations de `BudgetDatabase` gardent les données d'une
+installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications.
 
 ## Pistes
 

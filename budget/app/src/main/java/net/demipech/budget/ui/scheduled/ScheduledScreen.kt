@@ -41,7 +41,7 @@ import net.demipech.budget.ui.components.AmountText
 import net.demipech.budget.ui.components.CategoryBadge
 import net.demipech.budget.ui.components.DayFormat
 import net.demipech.budget.ui.components.EmptyState
-import net.demipech.budget.ui.components.describeRhythm
+import net.demipech.budget.ui.components.describeSchedule
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.repository
 
@@ -126,7 +126,7 @@ private fun ScheduledRow(item: ScheduledDetails, onClick: () -> Unit) {
         leadingContent = { CategoryBadge(item.categoryEmoji, item.categoryColor) },
         headlineContent = { Text(title) },
         supportingContent = {
-            Text("${describeRhythm(s.frequency, s.interval)} · ${item.accountName}\n$progress")
+            Text("${describeSchedule(s)} · ${item.accountName}\n$progress")
         },
         trailingContent = { AmountText(if (s.kind == Kind.INCOME) s.amountCents else -s.amountCents) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),

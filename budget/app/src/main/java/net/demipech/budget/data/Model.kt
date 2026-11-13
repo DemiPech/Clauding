@@ -13,6 +13,24 @@ enum class Kind { EXPENSE, INCOME }
 /** Rythme d'une opération planifiée. NONE = une seule échéance (opération future ponctuelle). */
 enum class Frequency { NONE, DAILY, WEEKLY, MONTHLY, YEARLY }
 
+/**
+ * Jour retenu dans le mois d'une échéance mensuelle ou annuelle.
+ * SAME_DAY = le jour de la date de départ (comportement de base).
+ */
+enum class DayRule {
+    SAME_DAY,
+    LAST_DAY,
+    FIRST_BUSINESS_DAY,
+    LAST_BUSINESS_DAY,
+    /** Nᵉ jour ouvré du mois (N = ruleN). */
+    NTH_BUSINESS_DAY,
+    /** Nᵉ jour de la semaine ruleWeekday du mois (N = 1 à 4, 5 = le dernier). */
+    NTH_WEEKDAY,
+}
+
+/** Que faire quand l'échéance tombe un week-end ou un jour férié. */
+enum class DateAdjust { NONE, NEXT_BUSINESS_DAY, PREVIOUS_BUSINESS_DAY }
+
 @Entity(tableName = "accounts")
 data class Account(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -84,6 +102,14 @@ data class ScheduledOperation(
     /** Nombre total d'échéances, null = sans fin. */
     val occurrences: Int?,
     val generatedCount: Int = 0,
+    /** Règle de jour pour une série mensuelle ou annuelle. */
+    val dayRule: DayRule = DayRule.SAME_DAY,
+    /** N de NTH_BUSINESS_DAY et NTH_WEEKDAY. */
+    val ruleN: Int = 1,
+    /** Jour de la semaine de NTH_WEEKDAY, 1 = lundi … 7 = dimanche. */
+    val ruleWeekday: Int = 1,
+    /** Décalage si l'échéance tombe un jour non ouvré. */
+    val adjust: DateAdjust = DateAdjust.NONE,
 )
 
 @Entity(

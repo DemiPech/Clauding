@@ -55,7 +55,7 @@ import net.demipech.budget.ui.components.DayFormat
 import net.demipech.budget.ui.components.Donut
 import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.SectionCard
-import net.demipech.budget.ui.components.describeRhythm
+import net.demipech.budget.ui.components.describeSchedule
 import net.demipech.budget.ui.operations.OperationCardRow
 import net.demipech.budget.ui.repository
 import net.demipech.budget.ui.theme.amountColor
@@ -301,7 +301,7 @@ private fun UpcomingCard(upcoming: List<Upcoming>, onShowMore: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(d.title.ifBlank { "Opération planifiée" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "${describeRhythm(d.scheduled.frequency, d.scheduled.interval)} · ${d.accountName}",
+                        "${describeSchedule(d.scheduled)} · ${d.accountName}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

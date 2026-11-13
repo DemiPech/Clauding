@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class],
-    version = 2,
+    version = 3,
 )
 @TypeConverters(Converters::class)
 abstract class BudgetDatabase : RoomDatabase() {
@@ -23,7 +23,7 @@ abstract class BudgetDatabase : RoomDatabase() {
         fun create(context: Context): BudgetDatabase =
             Room.databaseBuilder(context, BudgetDatabase::class.java, "budget.db")
                 .addCallback(SeedCategories)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
@@ -50,6 +50,16 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         v1Emojis.forEach { (name, emoji) ->
             db.execSQL("UPDATE categories SET emoji = ? WHERE name = ?", arrayOf<Any>(emoji, name))
         }
+    }
+}
+
+/** v3 : règles de date des planifications (dernier jour ouvré, 2ᵉ mardi…, décalage). */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN dayRule TEXT NOT NULL DEFAULT 'SAME_DAY'")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN ruleN INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN ruleWeekday INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE scheduled ADD COLUMN adjust TEXT NOT NULL DEFAULT 'NONE'")
     }
 }
 

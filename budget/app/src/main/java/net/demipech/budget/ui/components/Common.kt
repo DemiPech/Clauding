@@ -61,7 +61,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import net.demipech.budget.data.DateAdjust
+import net.demipech.budget.data.DayRule
 import net.demipech.budget.data.Frequency
+import net.demipech.budget.data.ScheduledOperation
+import net.demipech.budget.domain.Recurrence
 import net.demipech.budget.data.Kind
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.theme.amountColor
@@ -468,3 +472,45 @@ private fun TotalCell(label: String, value: String, color: Color, modifier: Modi
 
 @Composable
 fun Gap(height: Int) = Spacer(Modifier.height(height.dp))
+
+fun ordinal(n: Int): String = if (n == 1) "1er" else "${n}e"
+
+fun weekdayName(isoDay: Int): String =
+    java.time.DayOfWeek.of(isoDay.coerceIn(1, 7)).getDisplayName(java.time.format.TextStyle.FULL, Locale.FRENCH)
+
+fun DayRule.label(): String = when (this) {
+    DayRule.SAME_DAY -> "Le jour de la date choisie"
+    DayRule.LAST_DAY -> "Le dernier jour du mois"
+    DayRule.FIRST_BUSINESS_DAY -> "Le premier jour ouvré"
+    DayRule.LAST_BUSINESS_DAY -> "Le dernier jour ouvré"
+    DayRule.NTH_BUSINESS_DAY -> "Le Nᵉ jour ouvré"
+    DayRule.NTH_WEEKDAY -> "Un jour de la semaine (ex. 2ᵉ mardi)"
+}
+
+fun DateAdjust.label(): String = when (this) {
+    DateAdjust.NONE -> "Garder la date"
+    DateAdjust.NEXT_BUSINESS_DAY -> "Jour ouvré suivant"
+    DateAdjust.PREVIOUS_BUSINESS_DAY -> "Jour ouvré précédent"
+}
+
+/** « Tous les mois, le dernier jour ouvré », « Tous les mois, le 5 (jour ouvré suivant si férié) »… */
+fun describeSchedule(s: ScheduledOperation): String {
+    val rhythm = describeRhythm(s.frequency, s.interval)
+    val yearly = s.frequency == Frequency.YEARLY
+    val ofMonth = if (yearly) " de " + s.startDate.format(DateTimeFormatter.ofPattern("MMMM", Locale.FRENCH)) else ""
+    val rule = if (!Recurrence.usesDayRule(s.frequency)) "" else when (s.dayRule) {
+        DayRule.SAME_DAY -> ", le " + (if (s.startDate.dayOfMonth == 1) "1er" else s.startDate.dayOfMonth.toString()) + ofMonth
+        DayRule.LAST_DAY -> ", le dernier jour" + if (yearly) ofMonth else " du mois"
+        DayRule.FIRST_BUSINESS_DAY -> ", le 1er jour ouvré$ofMonth"
+        DayRule.LAST_BUSINESS_DAY -> ", le dernier jour ouvré$ofMonth"
+        DayRule.NTH_BUSINESS_DAY -> ", le ${ordinal(s.ruleN)} jour ouvré$ofMonth"
+        DayRule.NTH_WEEKDAY ->
+            ", le " + (if (s.ruleN >= 5) "dernier" else ordinal(s.ruleN)) + " " + weekdayName(s.ruleWeekday) + ofMonth
+    }
+    val adjust = if (!Recurrence.usesAdjust(s.frequency, s.dayRule)) "" else when (s.adjust) {
+        DateAdjust.NONE -> ""
+        DateAdjust.NEXT_BUSINESS_DAY -> " (jour ouvré suivant si week-end ou férié)"
+        DateAdjust.PREVIOUS_BUSINESS_DAY -> " (jour ouvré précédent si week-end ou férié)"
+    }
+    return rhythm + rule + adjust
+}
