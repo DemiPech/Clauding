@@ -2,6 +2,8 @@ package net.demipech.budget.data
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.demipech.budget.domain.DeferredDebit
@@ -14,6 +16,67 @@ class BudgetRepository(private val db: BudgetDatabase) {
     private val operations = db.operationDao()
     private val scheduled = db.scheduledDao()
     private val materializeLock = Mutex()
+
+    // Annulation d'une suppression : on garde la base telle qu'elle était juste avant.
+    private val undoEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    private var undoSnapshot: BackupData? = null
+
+    /** Message à afficher (« Opération supprimée ») avec un bouton Annuler. */
+    val undoMessages: SharedFlow<String> = undoEvents
+
+    /** Contenu complet de la base (sauvegarde, annulation). */
+    suspend fun snapshot(): BackupData = db.withTransaction {
+        BackupData(accounts.getAll(), categories.getAll(), scheduled.getAll(), operations.getAll())
+    }
+
+    /** Remplace tout le contenu de la base par [data]. */
+    suspend fun restore(data: BackupData) {
+        db.withTransaction {
+            operations.deleteAll()
+            scheduled.deleteAll()
+            categories.deleteAll()
+            accounts.deleteAll()
+            accounts.insertAll(data.accounts)
+            categories.insertAll(data.categories)
+            scheduled.insertAll(data.scheduled)
+            operations.insertAll(data.operations)
+        }
+        undoSnapshot = null
+    }
+
+    /**
+     * Fait une suppression qu'on peut annuler : l'état d'avant est gardé jusqu'à la
+     * suppression suivante, et [message] est proposé avec un bouton Annuler.
+     */
+    private suspend fun undoable(message: String, block: suspend () -> Unit) {
+        val before = snapshot()
+        block()
+        undoSnapshot = before
+        undoEvents.tryEmit(message)
+    }
+
+    /** Annule la dernière suppression. */
+    suspend fun undo() {
+        val before = undoSnapshot ?: return
+        restore(before)
+    }
+
+    // Pointage
+    fun unreconciled(accountId: Long): Flow<List<OperationDetails>> = operations.observeUnreconciled(accountId)
+
+    suspend fun setCleared(operation: Operation, cleared: Boolean) =
+        operations.setStatus(operation.id, if (cleared) ClearStatus.CLEARED.name else ClearStatus.NONE.name)
+
+    suspend fun setDeferredDebitCleared(accountId: Long, debitDate: LocalDate, cleared: Boolean) =
+        operations.setDeferredDebitStatus(
+            accountId, debitDate, if (cleared) ClearStatus.CLEARED.name else ClearStatus.NONE.name,
+        )
+
+    /** Verrouille les opérations pointées du compte ; renvoie leur nombre. */
+    suspend fun reconcile(accountId: Long): Int = operations.reconcile(accountId)
+
+    /** Déverrouille une opération rapprochée (elle redevient simplement pointée). */
+    suspend fun unlock(operation: Operation) = operations.unlock(operation.id)
 
     // Comptes
     fun accountsWithBalance(today: LocalDate = LocalDate.now()): Flow<List<AccountWithBalance>> =
@@ -37,9 +100,11 @@ class BudgetRepository(private val db: BudgetDatabase) {
      * Supprime aussi ses opérations, ses planifications et les virements planifiés
      * vers lui. L'autre côté d'un virement passé reste, comme simple opération.
      */
-    suspend fun delete(account: Account) = db.withTransaction {
-        scheduled.deleteTransfersTo(account.id)
-        accounts.delete(account)
+    suspend fun delete(account: Account) = undoable("Compte « ${account.name} » supprimé") {
+        db.withTransaction {
+            scheduled.deleteTransfersTo(account.id)
+            accounts.delete(account)
+        }
     }
 
     // Catégories
@@ -56,9 +121,11 @@ class BudgetRepository(private val db: BudgetDatabase) {
     }
 
     /** Supprime aussi ses sous-catégories ; les opérations restent, sans catégorie. */
-    suspend fun delete(category: Category) = db.withTransaction {
-        categories.deleteChildren(category.id)
-        categories.delete(category)
+    suspend fun delete(category: Category) = undoable("Catégorie « ${category.name} » supprimée") {
+        db.withTransaction {
+            categories.deleteChildren(category.id)
+            categories.delete(category)
+        }
     }
 
     // Opérations
@@ -90,7 +157,11 @@ class BudgetRepository(private val db: BudgetDatabase) {
         writeTransfer(legs, fromAccountId, toAccountId, amountCents, date, note, scheduledId = legs.firstOrNull()?.scheduledId)
     }
 
-    suspend fun deleteTransfer(transferId: Long) = operations.deleteTransfer(transferId)
+    /** [undoable] = false quand le virement est remplacé (changement de type), pas supprimé. */
+    suspend fun deleteTransfer(transferId: Long, undoable: Boolean = true) {
+        if (undoable) undoable("Virement supprimé") { operations.deleteTransfer(transferId) }
+        else operations.deleteTransfer(transferId)
+    }
 
     /** Écrit les deux côtés d'un virement (à appeler dans une transaction). */
     private suspend fun writeTransfer(
@@ -107,7 +178,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
         val outOp = Operation(
             id = out?.id ?: 0, accountId = fromAccountId, categoryId = null, kind = Kind.EXPENSE,
             amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
-            transferId = out?.transferId,
+            transferId = out?.transferId, status = out?.status ?: ClearStatus.NONE,
         )
         val outId = if (out == null) operations.insert(outOp) else out.id.also { operations.update(outOp) }
         val transferId = out?.transferId ?: outId
@@ -115,7 +186,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
         val inOp = Operation(
             id = inn?.id ?: 0, accountId = toAccountId, categoryId = null, kind = Kind.INCOME,
             amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
-            transferId = transferId,
+            transferId = transferId, status = inn?.status ?: ClearStatus.NONE,
         )
         if (inn == null) operations.insert(inOp) else operations.update(inOp)
         return transferId
@@ -127,7 +198,10 @@ class BudgetRepository(private val db: BudgetDatabase) {
     /** Totaux des débits différés entre deux dates ([accountId] null = tous les comptes). */
     fun deferredDebits(from: LocalDate, to: LocalDate, accountId: Long? = null): Flow<List<DeferredDebitTotal>> =
         operations.observeDeferredDebits(from, to, accountId)
-    suspend fun delete(operation: Operation) = operations.delete(operation)
+    suspend fun delete(operation: Operation, undoable: Boolean = true) {
+        if (undoable) undoable("Opération supprimée") { operations.delete(operation) }
+        else operations.delete(operation)
+    }
 
     // Planifications
     fun scheduled(): Flow<List<ScheduledDetails>> = scheduled.observeDetails()
@@ -167,10 +241,12 @@ class BudgetRepository(private val db: BudgetDatabase) {
     }
 
     /** Supprime l'échéancier ; les paiements déjà passés restent dans les opérations. */
-    suspend fun deletePlan(planId: Long) = scheduled.deletePlan(planId)
+    suspend fun deletePlan(planId: Long) = undoable("Paiement en plusieurs fois supprimé") {
+        scheduled.deletePlan(planId)
+    }
 
     /** Les opérations déjà créées par cette planification sont conservées. */
-    suspend fun delete(item: ScheduledOperation) = scheduled.delete(item)
+    suspend fun delete(item: ScheduledOperation) = undoable("Planification supprimée") { scheduled.delete(item) }
 
     /**
      * Transforme en opérations toutes les échéances planifiées arrivées à terme

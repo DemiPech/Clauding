@@ -15,7 +15,16 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -38,6 +47,7 @@ import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.more.MoreScreen
 import net.demipech.budget.ui.operations.OperationEditScreen
 import net.demipech.budget.ui.operations.TransactionsScreen
+import net.demipech.budget.ui.reconcile.ReconcileScreen
 import net.demipech.budget.ui.scheduled.ScheduledEditScreen
 import net.demipech.budget.ui.scheduled.ScheduledScreen
 import net.demipech.budget.ui.stats.StatsScreen
@@ -72,6 +82,22 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
     val currentRoute = backStack?.destination?.route
     val showTabs = tabs.any { it.route == currentRoute }
 
+    // Bandeau « … supprimé · Annuler » après chaque suppression, quel que soit l'écran.
+    val repo = repository()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(repo) {
+        repo.undoMessages.collectLatest { message ->
+            val result = snackbar.showSnackbar(
+                message = message,
+                actionLabel = "Annuler",
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) scope.launch { repo.undo() }
+        }
+    }
+
     val openTab: (String) -> Unit = { route ->
         nav.navigate(route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -83,6 +109,7 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (showTabs) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
@@ -162,7 +189,11 @@ fun BudgetNavHost(nav: NavHostController = rememberNavController()) {
                     onShowScheduled = { nav.navigate(Routes.SCHEDULED) },
                     onBack = back,
                     onEditAccount = { nav.navigate(Routes.accountEdit(accountId)) },
+                    onReconcile = { nav.navigate(Routes.reconcile(accountId)) },
                 )
+            }
+            composable(Routes.RECONCILE, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
+                ReconcileScreen(accountId = entry.arguments!!.getLong("id"), onBack = back)
             }
             composable(Routes.ACCOUNT_EDIT, arguments = listOf(idArg)) { entry ->
                 AccountEditScreen(

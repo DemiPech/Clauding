@@ -26,7 +26,11 @@ interface AccountDao {
             SELECT -SUM(o.amountCents) FROM operations o
             WHERE o.accountId = a.id
                 AND a.deferredDebit = 1 AND o.deferred = 1 AND o.kind = 'EXPENSE' AND o.debitDate > :today
-        ), 0) AS pendingCents
+        ), 0) AS pendingCents,
+        a.initialBalanceCents + COALESCE((
+            SELECT SUM(CASE WHEN o.kind = 'INCOME' THEN o.amountCents ELSE -o.amountCents END)
+            FROM operations o WHERE o.accountId = a.id AND o.status != 'NONE'
+        ), 0) AS clearedCents
         FROM accounts a
         ORDER BY a.id
         """
@@ -35,6 +39,12 @@ interface AccountDao {
 
     @Query("SELECT * FROM accounts")
     suspend fun getAll(): List<Account>
+
+    @Insert
+    suspend fun insertAll(accounts: List<Account>)
+
+    @Query("DELETE FROM accounts")
+    suspend fun deleteAll()
 
     @Query("SELECT * FROM accounts ORDER BY id")
     fun observeAll(): Flow<List<Account>>
@@ -59,6 +69,15 @@ interface CategoryDao {
 
     @Query("SELECT * FROM categories WHERE id = :id")
     suspend fun get(id: Long): Category?
+
+    @Query("SELECT * FROM categories")
+    suspend fun getAll(): List<Category>
+
+    @Insert
+    suspend fun insertAll(categories: List<Category>)
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAll()
 
     @Insert
     suspend fun insert(category: Category): Long
@@ -124,6 +143,40 @@ interface OperationDao {
     @Query("SELECT * FROM operations WHERE accountId = :accountId")
     suspend fun getByAccount(accountId: Long): List<Operation>
 
+    @Query("SELECT * FROM operations")
+    suspend fun getAll(): List<Operation>
+
+    @Query("DELETE FROM operations")
+    suspend fun deleteAll()
+
+    /** Opérations d'un compte pas encore rapprochées (écran de pointage). */
+    @Query(
+        OPERATION_DETAILS + """
+        WHERE o.accountId = :accountId AND o.status != 'RECONCILED'
+        ORDER BY o.debitDate DESC, o.id DESC
+        """
+    )
+    fun observeUnreconciled(accountId: Long): Flow<List<OperationDetails>>
+
+    @Query("UPDATE operations SET status = :status WHERE id = :id AND status != 'RECONCILED'")
+    suspend fun setStatus(id: Long, status: String)
+
+    @Query("UPDATE operations SET status = 'CLEARED' WHERE id = :id")
+    suspend fun unlock(id: Long)
+
+    /** Pointe (ou dépointe) d'un coup toutes les dépenses d'un débit différé. */
+    @Query(
+        """
+        UPDATE operations SET status = :status
+        WHERE accountId = :accountId AND deferred = 1 AND kind = 'EXPENSE' AND debitDate = :debitDate
+            AND status != 'RECONCILED'
+        """
+    )
+    suspend fun setDeferredDebitStatus(accountId: Long, debitDate: LocalDate, status: String)
+
+    @Query("UPDATE operations SET status = 'RECONCILED' WHERE accountId = :accountId AND status = 'CLEARED'")
+    suspend fun reconcile(accountId: Long): Int
+
     @Query("SELECT * FROM operations WHERE transferId = :transferId")
     suspend fun getTransfer(transferId: Long): List<Operation>
 
@@ -180,6 +233,12 @@ interface ScheduledDao {
 
     @Query("SELECT * FROM scheduled")
     suspend fun getAll(): List<ScheduledOperation>
+
+    @Insert
+    suspend fun insertAll(items: List<ScheduledOperation>)
+
+    @Query("DELETE FROM scheduled")
+    suspend fun deleteAll()
 
     @Query("SELECT * FROM scheduled WHERE id = :id")
     suspend fun get(id: Long): ScheduledOperation?

@@ -21,6 +21,9 @@ object Routes {
     const val ACCOUNT = "account/{id}"
     fun account(id: Long) = "account/$id"
 
+    const val RECONCILE = "reconcile/{id}"
+    fun reconcile(accountId: Long) = "reconcile/$accountId"
+
     const val ACCOUNT_EDIT = "account-edit?id={id}"
     fun accountEdit(id: Long? = null) = "account-edit?id=${id ?: -1}"
 

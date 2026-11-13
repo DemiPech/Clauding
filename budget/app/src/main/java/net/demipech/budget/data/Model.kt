@@ -28,6 +28,12 @@ enum class DayRule {
     NTH_WEEKDAY,
 }
 
+/**
+ * Pointage : NONE = pas encore vue sur le relevé, CLEARED = pointée (vue sur le
+ * relevé), RECONCILED = rapprochée (pointage validé, verrouillée).
+ */
+enum class ClearStatus { NONE, CLEARED, RECONCILED }
+
 /** Jour de débit d'une carte à débit différé. */
 enum class DebitDay { LAST_DAY, LAST_BUSINESS_DAY, DAY_OF_MONTH }
 
@@ -193,7 +199,10 @@ data class Operation(
      * qui est l'id de la sortie. Un virement ne compte ni en revenu ni en dépense.
      */
     val transferId: Long? = null,
+    val status: ClearStatus = ClearStatus.NONE,
 )
+
+val Operation.isLocked: Boolean get() = status == ClearStatus.RECONCILED
 
 val Operation.isTransfer: Boolean get() = transferId != null
 
@@ -205,6 +214,8 @@ data class AccountWithBalance(
     val balanceCents: Long,
     /** Dépenses différées pas encore débitées (négatif). */
     val pendingCents: Long = 0,
+    /** Solde pointé : solde initial + opérations pointées ou rapprochées. */
+    val clearedCents: Long = 0,
 )
 
 /** Total des dépenses différées d'un compte débitées à une même date. */

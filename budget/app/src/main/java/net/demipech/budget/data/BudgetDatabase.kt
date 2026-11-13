@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Account::class, Category::class, Operation::class, ScheduledOperation::class],
-    version = 6,
+    version = 7,
 )
 @TypeConverters(Converters::class)
 abstract class BudgetDatabase : RoomDatabase() {
@@ -23,7 +23,7 @@ abstract class BudgetDatabase : RoomDatabase() {
         fun create(context: Context): BudgetDatabase =
             Room.databaseBuilder(context, BudgetDatabase::class.java, "budget.db")
                 .addCallback(SeedCategories)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
     }
 }
@@ -92,6 +92,13 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         db.execSQL("ALTER TABLE operations ADD COLUMN transferId INTEGER")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_operations_transferId` ON `operations` (`transferId`)")
         db.execSQL("ALTER TABLE scheduled ADD COLUMN toAccountId INTEGER")
+    }
+}
+
+/** v7 : pointage des opérations. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE operations ADD COLUMN status TEXT NOT NULL DEFAULT 'NONE'")
     }
 }
 

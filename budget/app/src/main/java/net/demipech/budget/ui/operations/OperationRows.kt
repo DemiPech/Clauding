@@ -1,5 +1,6 @@
 package net.demipech.budget.ui.operations
 
+import net.demipech.budget.data.ClearStatus
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.isTransfer
 import androidx.compose.foundation.background
@@ -146,12 +147,29 @@ fun OperationLine(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        ClearMark(op.operation.status)
         Text(
             Money.format(op.operation.amountCents),
             color = if (transfer && !accountView) MaterialTheme.colorScheme.onSurfaceVariant else kindColor(op.operation.kind),
             style = MaterialTheme.typography.bodyLarge,
         )
     }
+}
+
+/** ✓ pour une opération pointée, 🔒 pour une opération rapprochée. */
+@Composable
+fun ClearMark(status: ClearStatus) {
+    val mark = when (status) {
+        ClearStatus.NONE -> return
+        ClearStatus.CLEARED -> "✓"
+        ClearStatus.RECONCILED -> "🔒"
+    }
+    Text(
+        mark,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(end = 6.dp),
+    )
 }
 
 /** Ligne façon Wallet : pastille de catégorie, libellé, compte, montant signé et date. */

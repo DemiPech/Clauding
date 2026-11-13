@@ -71,6 +71,7 @@ import net.demipech.budget.ui.components.MonthSwitcher
 import net.demipech.budget.ui.components.ShortDayFormat
 import net.demipech.budget.ui.components.TotalsRow
 import net.demipech.budget.ui.repository
+import androidx.compose.material3.TextButton
 import net.demipech.budget.data.DeferredDebitTotal
 import net.demipech.budget.ui.theme.amountColor
 import net.demipech.budget.ui.theme.expenseColor
@@ -127,6 +128,7 @@ fun TransactionsScreen(
     onShowScheduled: () -> Unit,
     onBack: (() -> Unit)? = null,
     onEditAccount: (() -> Unit)? = null,
+    onReconcile: (() -> Unit)? = null,
 ) {
     val repo = repository()
     val vm = viewModel(key = "transactions-$accountId") { TransactionsViewModel(repo, accountId) }
@@ -164,6 +166,9 @@ fun TransactionsScreen(
                     }
                 },
                 actions = {
+                    if (onReconcile != null) {
+                        TextButton(onClick = onReconcile) { Text("Pointer") }
+                    }
                     if (onEditAccount != null) {
                         IconButton(onClick = onEditAccount) {
                             Icon(Icons.Filled.Edit, contentDescription = "Modifier le compte")

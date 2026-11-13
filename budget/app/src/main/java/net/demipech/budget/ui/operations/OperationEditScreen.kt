@@ -43,6 +43,9 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.components.SectionCard
+import net.demipech.budget.data.isLocked
+import net.demipech.budget.data.ClearStatus
 import androidx.compose.material3.MaterialTheme
 import net.demipech.budget.ui.components.kind
 import net.demipech.budget.ui.components.EntryTypeSelector
@@ -72,7 +75,7 @@ class OperationEditViewModel(
     var deferred by mutableStateOf(true)
     var loaded by mutableStateOf(id == null)
         private set
-    private var original: Operation? = null
+    private var original: Operation? by mutableStateOf(null)
 
     val accounts: StateFlow<List<Account>?> =
         repo.accounts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -125,11 +128,11 @@ class OperationEditViewModel(
         if (isTransfer) {
             val target = toAccountId ?: return@launch
             // Une opération simple devenue virement : on la remplace.
-            if (previous != null && previousTransfer == null) repo.delete(previous)
+            if (previous != null && previousTransfer == null) repo.delete(previous, undoable = false)
             repo.saveTransfer(previousTransfer, account, target, cents, date, note.trim())
         } else {
             // Un virement devenu opération simple : on retire ses deux côtés.
-            if (previousTransfer != null) repo.deleteTransfer(previousTransfer)
+            if (previousTransfer != null) repo.deleteTransfer(previousTransfer, undoable = false)
             repo.save(
                 Operation(
                     id = if (previousTransfer != null) 0 else id ?: 0,
@@ -141,10 +144,20 @@ class OperationEditViewModel(
                     note = note.trim(),
                     scheduledId = previous?.scheduledId,
                     deferred = deferred,
+                    status = if (previousTransfer != null) ClearStatus.NONE else previous?.status ?: ClearStatus.NONE,
                 )
             )
         }
         onDone()
+    }
+
+    /** Opération rapprochée : verrouillée tant qu'on ne la déverrouille pas. */
+    val isLocked get() = original?.isLocked == true
+
+    fun unlock() = viewModelScope.launch {
+        val op = original ?: return@launch
+        repo.unlock(op)
+        original = op.copy(status = ClearStatus.CLEARED)
     }
 
     fun delete(onDone: () -> Unit) = viewModelScope.launch {
@@ -185,7 +198,7 @@ fun OperationEditScreen(
                     else -> "Modifier l'opération"
                 },
                 onBack = onDone,
-                onDelete = if (vm.isNew) null else ({ confirmDelete = true }),
+                onDelete = if (vm.isNew || vm.isLocked) null else ({ confirmDelete = true }),
             )
         },
     ) { padding ->
@@ -201,6 +214,17 @@ fun OperationEditScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (vm.isLocked) {
+                SectionCard {
+                    Text(
+                        "🔒 Opération rapprochée : elle a été vérifiée sur le relevé et ne se modifie plus.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    TextButton(onClick = { vm.unlock() }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("Déverrouiller pour la modifier")
+                    }
+                }
+            }
             EntryTypeSelector(vm.type, vm::changeType)
             AmountField(
                 value = vm.amount,
@@ -244,7 +268,7 @@ fun OperationEditScreen(
                 }
             }
             DateField("Date", vm.date, { vm.date = it })
-            Button(onClick = { vm.save(onDone) }, enabled = vm.canSave, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { vm.save(onDone) }, enabled = vm.canSave && !vm.isLocked, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
             }
             if (vm.isNew && !vm.isTransfer) {

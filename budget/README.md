@@ -72,6 +72,19 @@ Quatre onglets :
     Pâques, 1er et 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er et 11
     novembre, 25 décembre), calculés pour chaque année.
   - Le formulaire montre en direct les prochaines dates de la série.
+- **Pointage / rapprochement** (bouton « Pointer » sur la page d'un compte) : on saisit le solde
+  du relevé, on coche chaque opération retrouvée sur le relevé, l'écran affiche le solde pointé
+  et l'écart. Quand l'écart est nul, « Rapprocher » verrouille les opérations pointées.
+  - Les dépenses d'une carte à débit différé se pointent ensemble, sur la ligne de leur débit.
+  - Les opérations à venir sont listées à part (pas encore sur le relevé).
+  - Dans les listes : ✓ = pointée, 🔒 = rapprochée. Une opération rapprochée ne se modifie ni
+    ne se supprime plus ; son formulaire propose de la déverrouiller.
+- **Sauvegarde / restauration** (Plus › Données) : export de toute la base dans un fichier JSON
+  (à enregistrer sur Google Drive par exemple), restauration depuis ce fichier après
+  confirmation (remplace toutes les données). La date de la dernière sauvegarde est affichée.
+- **Annuler une suppression** : après la suppression d'une opération, d'un virement, d'un
+  compte, d'une catégorie, d'une planification ou d'un paiement en plusieurs fois, un bandeau
+  propose « Annuler », qui remet la base dans l'état d'avant (liens compris).
 - **Virements entre comptes** : choix « Virement » à côté de Dépense / Rentrée, dans le
   formulaire d'opération comme dans les planifications (ex. épargne chaque mois).
   - Un virement est une sortie sur le compte débité et une entrée sur le compte crédité, liées :
@@ -117,7 +130,8 @@ Les montants se saisissent en euros (`12,50` ou `12.50`) et sont stockés en cen
 ```
 app/src/main/java/net/demipech/budget/
   BudgetApp.kt, MainActivity.kt   Application (dépôt partagé), activité Compose
-  data/                           Room : entités, DAO, base, BudgetRepository
+  data/                           Room : entités, DAO, base, BudgetRepository,
+                                  Backup.kt (sauvegarde JSON, testée)
   domain/Recurrence.kt            calcul des échéances (pur Kotlin, testé)
   domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
   domain/Installments.kt          répartition d'un paiement en plusieurs fois (testé)
@@ -144,9 +158,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 6. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 7. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage.
 
 ## Pistes
 
