@@ -247,6 +247,34 @@ Le dernier recensement de chaque palier et mode (et de chaque extension) est gar
 réouverture de l'app, il s'affiche aussitôt, daté, sans rien relire ; « Recenser » le met à jour
 (collection relue, catalogue pris dans le cache). Le calcul lui-même est dans `js/completion.js`.
 
+## Suivis de collection
+
+Outil « Suivis de collection » (onglet Outils) : vos propres listes à compléter, composées par
+critères, par exemple « les cartes Ninja qui existent en japonais ».
+
+- **Critères** : classes, talents et types (cases à cocher tirées de Card Vault ; rien de coché
+  dans une rubrique = pas de filtre ; une valeur cochée dans chaque rubrique utilisée suffit),
+  langue d'impression (la carte doit exister dans cette langue), objectif (1 à 4) et la règle
+  « 1 exemplaire suffit » pour les héros, armes, équipements et cartes au mot-clé **Legendary**
+  (le mot-clé du texte de règles, pas la rareté). Sans nom, le suivi est nommé d'après ses
+  critères (« Ninja en japonais »).
+- **Une carte = un nom + un pitch**, quelle que soit l'extension : Bittering Thorns rouge d'un
+  Archive Pack et d'un deck ne fait qu'une ligne.
+- **Exemplaires comptés** : tous ceux de la collection CardNexus (toutes impressions,
+  finitions, emplacements) ; avec une langue, on peut ne compter que les exemplaires de cette
+  langue. Un exemplaire se rattache à sa carte par identifiant, sinon par nom + pitch.
+- **Détail d'un suivi** : pourcentage (exemplaires possédés, plafonnés à l'objectif, sur les
+  exemplaires visés), cartes complètes et absentes, liste filtrable (manquantes, complètes,
+  toutes ; par nom), groupée par classe ou par type, et « Copier les manquantes ».
+- **Données** : les cartes viennent de l'index Card Vault (toutes les cartes en anglais, lu une
+  fois par semaine ; les quelques cartes à ligne de type vide sont complétées par leur fiche) ;
+  la langue d'impression, d'une recherche Card Vault par langue (et par classe quand le suivi en
+  choisit : Ninja en japonais tient en une requête). Les suivis sont gardés sur le téléphone
+  (`collection_trackers`), et le dernier calcul de chacun aussi (IndexedDB) : il s'affiche, daté,
+  sans rien relire ; « Actualiser » relit la collection. Modifier les critères recalcule.
+
+Le calcul est dans `js/trackers.js`, l'écran dans `js/ui/trackers-view.js`.
+
 ## Ranger les vracs
 
 **Ranger les vracs** propose un plan pour regrouper les cartes dans les endroits cochés.
@@ -367,6 +395,7 @@ app/src/main/assets/www/
   js/fabtcg.js                            decklists du site officiel fabtcg.com
   js/cardvault.js                         Card Vault : catalogue, fiches par nom, classes et talents
   js/decklist.js                          listes par noms : liste collée, fiches des cartes
+  js/trackers.js                          suivis de collection (critères, complétion)
   js/store.js                             stockage IndexedDB (catalogues, recensements)
   js/http.js                              requêtes sortantes via le pont natif (et fetch du SDK)
   js/vendor/cardnexus-sdk.js              SDK CardNexus assemblé (généré par android/sdk)

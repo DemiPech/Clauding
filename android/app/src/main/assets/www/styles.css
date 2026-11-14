@@ -3003,3 +3003,85 @@ body.has-importbar .toast {
 .paste-actions .move-note {
   margin: 0;
 }
+
+/* ---------- Suivis de collection ---------- */
+
+.tracker-items {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.tracker-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tracker-item b {
+  display: block;
+  font-size: 16px;
+}
+
+.tracker-item-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tracker-item-progress {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracker-item .tracker-progress {
+  margin-top: 6px;
+}
+
+.tracker-progress {
+  overflow: hidden;
+  height: 8px;
+  margin: 12px 0 4px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+}
+
+.tracker-progress i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.tracker-criteria h2 {
+  margin: 16px 0 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tracker-chips {
+  flex-wrap: wrap;
+}
+
+.danger-link {
+  color: var(--danger, #d0533a);
+}
+
+.completion-row.is-complete .completion-missing {
+  background: none;
+  color: var(--text-faint);
+}

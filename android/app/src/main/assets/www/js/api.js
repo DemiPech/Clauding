@@ -9,7 +9,8 @@
 import { fetchDeck, parseDeckId, FabraryError } from './fabrary.js';
 import { fetchFabtcgDeck, parseFabtcgUrl } from './fabtcg.js';
 import { DecklistError, fetchPastedDeck, isPastedRef } from './decklist.js';
-import { CardVaultError } from './cardvault.js';
+import { CardVaultError, vaultVocabulary } from './cardvault.js';
+import { computeTracker } from './trackers.js';
 import {
   listDeckLocations,
   listLocations,
@@ -266,6 +267,9 @@ const WRITE_ROUTES = {
       'Impossible de lire le catalogue pour le moment.',
     ),
   '/api/cardnexus/locations/create': handleCreateLocation,
+  // Calcul d'un suivi de collection (le suivi voyage dans le corps).
+  '/api/trackers/compute': (body, progress) =>
+    respond(() => computeTracker(body.tracker || {}, progress), 'Impossible de calculer ce suivi pour le moment.'),
 };
 
 async function route(url, init, progress) {
@@ -287,6 +291,9 @@ async function route(url, init, progress) {
   if (method !== 'GET') return json(405, { error: 'Methode non autorisee' });
 
   switch (url.pathname) {
+    case '/api/cardvault/vocabulary':
+      return respond(() => cached('cardvault:vocabulary', vaultVocabulary), 'Impossible de lire Card Vault pour le moment.');
+
     case '/api/cardnexus/locations':
       return respond(
         () => cached('cardnexus:locations:all', listLocations),
@@ -378,6 +385,8 @@ async function route(url, init, progress) {
 
 // Ce que l'écran affiche pendant chaque appel (barre de progression en haut).
 const STATIC_LABELS = {
+  '/api/trackers/compute': 'Calcul du suivi de collection',
+  '/api/cardvault/vocabulary': 'Lecture des classes et types',
   '/api/deck': 'Lecture de la liste',
   '/api/cardnexus/decks': 'Lecture des emplacements',
   '/api/cardnexus/locations': 'Lecture des emplacements',

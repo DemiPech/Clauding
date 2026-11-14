@@ -98,6 +98,13 @@
       if (u.pathname.endsWith('/core-classes/')) return list(['Generic', 'Brute', 'Ninja', 'Pirate', 'Necromancer', 'Warrior', 'Guardian']);
       if (u.pathname.endsWith('/core-talents/')) return list(['Shadow', 'Light', 'Lightning', 'Draconic', 'Revered', 'Reviled', 'Royal']);
       if (u.pathname.endsWith('/core-types/')) return list(['Action', 'Attack Reaction', 'Defense Reaction', 'Block', 'Instant', 'Hero', 'Weapon', 'Equipment', 'Token']);
+      // Fiche d'une carte : __mockVaultCores[identifiant] = { types, classes, talents, textbox }.
+      const detail = u.pathname.match(/\/card_id\/([^/]+)\/$/);
+      if (detail) {
+        const core = (window.__mockVaultCores || {})[decodeURIComponent(detail[1])];
+        const named = (names = []) => names.map((name) => ({ name, name_en: name }));
+        return { count: core ? 1 : 0, results: core ? [{ cores: [{ core_types: named(core.types), core_classes: named(core.classes), core_talents: named(core.talents), textbox: core.textbox || '' }] }] : [] };
+      }
       if (u.pathname.endsWith('/advanced-search/')) {
         const name = u.searchParams.get('name');
         const rarity = u.searchParams.get('rarities');
@@ -107,6 +114,14 @@
           // Comme le vrai : recherche plein texte (l'app garde les noms exacts),
           // qui ne trouve pas « Hunt’s End » écrit avec l'apostrophe courbe.
           found = (all || []).filter((c) => c.printed_name.toLowerCase().includes(name.toLowerCase()));
+        } else if (u.searchParams.get('language') && u.searchParams.get('language') !== 'en') {
+          // __mockVaultLanguages[langue] = identifiants des cartes imprimées dans cette langue.
+          window.__vaultLanguageCalls = (window.__vaultLanguageCalls || 0) + 1;
+          const ids = (window.__mockVaultLanguages || {})[u.searchParams.get('language')] || [];
+          const klass = u.searchParams.get('classes');
+          // Comme le vrai, le filtre de classe suit les classes de la carte, pas la ligne de type.
+          const classesOf = (c) => (window.__mockVaultCores || {})[c.card_id]?.classes || c.printed_typebox.split(/\s+/);
+          found = (all || []).filter((c) => ids.includes(c.card_id) && (!klass || classesOf(c).includes(klass)));
         } else if (rarity) {
           if (!vault) throw new Error('Card Vault indisponible');
           found = vault[rarity] || [];

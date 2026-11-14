@@ -1566,6 +1566,32 @@ export async function addCards({ lines, language = 'en', condition = 'NM', locat
   return { added, failed, undo };
 }
 
+// --- Exemplaires possedes, par carte (suivis de collection) ----------------------
+
+/**
+ * Exemplaires possedes de chaque carte, toutes impressions, finitions et
+ * emplacements confondus ; avec `language` (« ja »…), seulement ceux de cette
+ * langue. Deux index, pour rattacher une carte d'ou qu'elle vienne :
+ * `byId` par identifiant de carte (fabId, celui de Card Vault) et `byName` par
+ * nom + pitch (fabKey).
+ */
+export async function collectionCounts({ language = null } = {}, progress = silent) {
+  const lines = (await allCollectionLines(progress.sub(0, 0.8))).filter(
+    (line) => !language || line.language === language,
+  );
+  const products = await resolveProducts([...new Set(lines.map((line) => line.productId))], progress.sub(0.8, 1));
+  const byId = new Map();
+  const byName = new Map();
+  const add = (map, key, quantity) => map.set(key, (map.get(key) || 0) + quantity);
+  for (const line of lines) {
+    const product = products.get(line.productId);
+    if (!product || product.productType === 'sealed') continue;
+    add(byId, mergeKey(product), line.quantity);
+    add(byName, fabKey(cleanName(product.name), product.attributes?.pitch), line.quantity);
+  }
+  return { byId, byName, lines: lines.length };
+}
+
 // --- Cartes a completer (communes et rares) ------------------------------------
 
 // Une cle par palier : completion_catalog_cr, completion_catalog_ml.

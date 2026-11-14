@@ -43,7 +43,7 @@ ${list(false)}
 </body></html>`;
 
 /** Une carte telle que la rend la recherche Card Vault. */
-export const vaultItem = (name, pitch, typebox, code, talent = null) => ({
+export const vaultItem = (name, pitch, typebox, code, talent = null, extra = {}) => ({
   card_id: `${name.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}${pitch ? `-${pitch}` : ''}`,
   print_id: code,
   printed_name: name,
@@ -57,6 +57,7 @@ export const vaultItem = (name, pitch, typebox, code, talent = null) => ({
   printed_rules_text: '',
   core_talent: talent,
   faces: [{ layout_position: 10, image: { normal: `${IMG}/${code}.webp`, small: `${IMG}/${code}.webp` } }],
+  ...extra,
 });
 
 /** Fiches Card Vault des cartes de la page (Mystery Helm : inconnue de Card Vault). */

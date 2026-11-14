@@ -88,6 +88,10 @@
             <b>Cartes à compléter</b>
             <span>Communes et rares, majestics et légendaires qui vous manquent, toutes éditions ou par extension, avec leur prix</span>
           </button>
+          <button type="button" class="tool-card" id="tool-trackers">
+            <b>Suivis de collection</b>
+            <span>Vos propres listes à compléter (par classe, talent, type, langue), et leur progression</span>
+          </button>
           <button type="button" class="tool-card" id="open-tidy">
             <b>Ranger les vracs</b>
             <span>Regrouper les cartes par nom, classe, talent ou extension</span>
@@ -416,6 +420,111 @@
           </div>
           <div class="collection-kinds" id="import-rarities" role="group" aria-label="Raretés"></div>
           <div id="import-list"></div>
+        </div>
+      </section>
+
+      <section id="trackers" hidden>
+        <!-- Liste des suivis -->
+        <div id="trackers-list">
+          <header class="build-head">
+            <p class="eyebrow">Suivis de collection</p>
+            <h1>Vos suivis</h1>
+            <p class="byline">
+              Une liste de cartes choisie par critères (classe, talent, type, langue d'impression), une
+              carte par nom et pitch quelle que soit l'extension, et ce qu'il vous en manque.
+            </p>
+          </header>
+          <ul class="tracker-items" id="trackers-items"></ul>
+          <p class="move-note" id="trackers-empty" hidden>Aucun suivi pour l'instant.</p>
+          <button type="button" class="primary-btn" id="trackers-new">Nouveau suivi</button>
+        </div>
+
+        <!-- Création ou modification d'un suivi -->
+        <form id="tracker-edit" autocomplete="off" hidden>
+          <header class="build-head">
+            <p class="eyebrow">Suivis de collection</p>
+            <h1 id="tracker-edit-title">Nouveau suivi</h1>
+            <p class="byline">Rien de coché dans une rubrique = pas de filtre sur elle.</p>
+          </header>
+          <label class="field">
+            <span>Nom</span>
+            <input type="text" id="tracker-name" placeholder="Ninja en japonais" maxlength="60" />
+          </label>
+          <div class="tracker-criteria">
+            <h2>Classes</h2>
+            <div class="collection-kinds tracker-chips" id="tracker-classes" data-field="classes"></div>
+            <h2>Talents</h2>
+            <div class="collection-kinds tracker-chips" id="tracker-talents" data-field="talents"></div>
+            <h2>Types</h2>
+            <div class="collection-kinds tracker-chips" id="tracker-types" data-field="types"></div>
+          </div>
+          <div class="build-setup">
+            <label class="field">
+              <span>Imprimées en</span>
+              <select id="tracker-language">
+                <option value="">Toutes langues</option>
+              </select>
+            </label>
+            <label class="field check-field" id="tracker-owned-field">
+              <span>Exemplaires comptés</span>
+              <span class="check-line"><input type="checkbox" id="tracker-owned-language" /> seulement dans cette langue</span>
+            </label>
+            <label class="field">
+              <span>Objectif</span>
+              <select id="tracker-target">
+                <option value="1">1 exemplaire</option>
+                <option value="2">2 exemplaires</option>
+                <option value="3" selected>3 exemplaires</option>
+                <option value="4">4 exemplaires</option>
+              </select>
+            </label>
+            <label class="field check-field">
+              <span>Héros, armes, équipements, Legendary</span>
+              <span class="check-line"><input type="checkbox" id="tracker-single" checked /> 1 exemplaire suffit</span>
+            </label>
+          </div>
+          <p class="move-note" id="tracker-edit-note"></p>
+          <div class="completion-actions">
+            <button type="submit" class="primary-btn" id="tracker-save">Enregistrer</button>
+            <button type="button" class="link-btn" id="tracker-cancel">Annuler</button>
+            <button type="button" class="link-btn danger-link" id="tracker-delete" hidden>Supprimer ce suivi</button>
+          </div>
+        </form>
+
+        <!-- Un suivi : sa liste et sa complétion -->
+        <div id="tracker-detail" hidden>
+          <header class="build-head">
+            <p class="eyebrow">Suivi de collection</p>
+            <h1 id="tracker-title"></h1>
+            <p class="byline" id="tracker-criteria"></p>
+          </header>
+          <div class="completion-actions">
+            <button type="button" class="primary-btn" id="tracker-run">Actualiser</button>
+            <button type="button" class="link-btn" id="tracker-modify">Modifier</button>
+          </div>
+          <p class="move-note" id="tracker-note"></p>
+          <div id="tracker-result" hidden>
+            <div class="tracker-progress" aria-hidden="true"><i id="tracker-bar"></i></div>
+            <ul class="stat-row" id="tracker-stats"></ul>
+            <div class="import-filters">
+              <input class="collection-filter" id="tracker-filter" type="search"
+                placeholder="Filtrer par nom…" aria-label="Filtrer les cartes" autocomplete="off" />
+              <select id="tracker-group" aria-label="Grouper">
+                <option value="class">Par classe</option>
+                <option value="type">Par type</option>
+                <option value="none">Sans groupe</option>
+              </select>
+            </div>
+            <div class="collection-kinds" id="tracker-status" role="group" aria-label="Cartes affichées">
+              <button type="button" class="chip is-active" data-status="missing">Manquantes</button>
+              <button type="button" class="chip" data-status="complete">Complètes</button>
+              <button type="button" class="chip" data-status="all">Toutes</button>
+            </div>
+            <div class="pickup-actions">
+              <button type="button" class="link-btn" id="tracker-copy">Copier les manquantes</button>
+            </div>
+            <div id="tracker-list"></div>
+          </div>
         </div>
       </section>
 
