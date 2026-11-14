@@ -17,7 +17,8 @@ concurrency:
 jobs:
   # Les tests passent d'abord : si l'un echoue, l'APK n'est pas publie.
   tests:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 fixé : sur ubuntu-latest (26.04), Playwright 1.56 n'installe pas Chromium.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: android/tests
