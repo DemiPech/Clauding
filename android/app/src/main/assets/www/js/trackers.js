@@ -14,7 +14,7 @@
  *   « seulement dans cette langue », ceux imprimés dans la langue du suivi.
  */
 import { collectionCounts, fabKey } from './cardnexus.js';
-import { vaultIndex, vaultLanguageIds } from './cardvault.js';
+import { RARITY_ORDER, vaultIndex, vaultLanguageIds, vaultRarities } from './cardvault.js';
 import { silent } from './progress.js';
 
 const STORAGE = 'collection_trackers';
@@ -44,8 +44,10 @@ export function normalizeTracker(raw = {}) {
 }
 
 /** Ce qui change la liste ou les comptes : un résultat gardé d'un autre jeu de critères est périmé. */
+// La version change quand un calcul gardé ne contient plus tout ce qu'affiche l'écran (2 : raretés).
+const RESULT_VERSION = 2;
 export const trackerSignature = (tracker) =>
-  JSON.stringify([tracker.classes, tracker.talents, tracker.types, tracker.language, tracker.ownedInLanguage, tracker.target, tracker.singleRule]);
+  JSON.stringify([RESULT_VERSION, tracker.classes, tracker.talents, tracker.types, tracker.language, tracker.ownedInLanguage, tracker.target, tracker.singleRule]);
 
 export function readTrackers() {
   try {
@@ -122,6 +124,22 @@ export function trackerCards(index, tracker, languageIds = null) {
 }
 
 /**
+ * Raretés de chaque ligne d'après Card Vault (`map` : identifiant → raretés) :
+ * `rarities` toutes celles de ses impressions, `rarity` la plus courante (celle
+ * sous laquelle la carte est la plus facile à trouver), ou null.
+ */
+export function assignRarities(rows, map) {
+  for (const row of rows) {
+    const rarities = [...new Set(row.cardIds.flatMap((id) => map[id] || []))].sort(
+      (a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b),
+    );
+    row.rarities = rarities;
+    row.rarity = rarities[0] || null;
+  }
+  return rows;
+}
+
+/**
  * Possédés, manquants et totaux. `counts` = { byId, byName } (collectionCounts) :
  * une carte compte ses exemplaires par identifiant ou, s'ils sont plus
  * nombreux, par nom + pitch (CardNexus et Card Vault n'écrivent pas toujours
@@ -157,9 +175,15 @@ export async function computeTracker(raw, progress = silent) {
     ? await vaultLanguageIds(tracker.language, tracker.classes, progress.sub(0.3, 0.4))
     : null;
   const rows = trackerCards(index, tracker, languageIds);
+  try {
+    assignRarities(rows, await vaultRarities(tracker.language, tracker.classes, progress.sub(0.4, 0.55)));
+  } catch {
+    // Raretés indisponibles : le suivi s'affiche quand même, sans elles.
+    assignRarities(rows, {});
+  }
   const counts = await collectionCounts(
     { language: tracker.ownedInLanguage ? tracker.language : null },
-    progress.sub(0.4, 1),
+    progress.sub(0.55, 1),
   );
   return { ...trackerProgress(rows, counts), signature: trackerSignature(tracker), at: new Date().toISOString() };
 }

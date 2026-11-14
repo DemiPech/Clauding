@@ -103,7 +103,16 @@
       if (detail) {
         const core = (window.__mockVaultCores || {})[decodeURIComponent(detail[1])];
         const named = (names = []) => names.map((name) => ({ name, name_en: name }));
-        return { count: core ? 1 : 0, results: core ? [{ cores: [{ core_types: named(core.types), core_classes: named(core.classes), core_talents: named(core.talents), textbox: core.textbox || '' }] }] : [] };
+        // __mockVaultPrints[identifiant] = impressions (card_prints) de la carte.
+        const prints = (window.__mockVaultPrints || {})[decodeURIComponent(detail[1])] || [];
+        if (!core && !prints.length) return { count: 0, results: [] };
+        return {
+          count: 1,
+          results: [{
+            cores: core ? [{ core_types: named(core.types), core_classes: named(core.classes), core_talents: named(core.talents), textbox: core.textbox || '' }] : [],
+            card_prints: prints,
+          }],
+        };
       }
       if (u.pathname.endsWith('/advanced-search/')) {
         const name = u.searchParams.get('name');
@@ -121,7 +130,9 @@
           const klass = u.searchParams.get('classes');
           // Comme le vrai, le filtre de classe suit les classes de la carte, pas la ligne de type.
           const classesOf = (c) => (window.__mockVaultCores || {})[c.card_id]?.classes || c.printed_typebox.split(/\s+/);
-          found = (all || []).filter((c) => ids.includes(c.card_id) && (!klass || classesOf(c).includes(klass)));
+          // __mockVaultRarities[identifiant] = raretés de ses impressions dans cette langue.
+          const rarityOf = (c) => (window.__mockVaultRarities || {})[c.card_id] || [];
+          found = (all || []).filter((c) => ids.includes(c.card_id) && (!klass || classesOf(c).includes(klass)) && (!rarity || rarityOf(c).includes(rarity)));
         } else if (rarity) {
           if (!vault) throw new Error('Card Vault indisponible');
           found = vault[rarity] || [];

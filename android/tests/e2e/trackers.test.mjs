@@ -37,6 +37,25 @@ test('suivi « Ninja en japonais » créé à la main, calculé, gardé, modifi�
   await page.evaluate((ja) => {
     window.__mockVaultLanguages = { ja };
     window.__mockVaultCores = { 'breaking-scales': { types: ['Equipment'], classes: ['Ninja'], talents: [] } };
+    // Raretés en japonais : Buckwild rouge commune et Marvel, Enlightened Strike majestic.
+    window.__mockVaultRarities = {
+      'buckwild-1': ['common', 'marvel'], 'buckwild-3': ['common'], 'sink-below-1': ['rare'],
+      'dorinthea-ironsong': ['legendary'], 'enlightened-strike-1': ['majestic'], 'breaking-scales': ['rare'],
+    };
+    // Impressions de Buckwild rouge : deux en japonais (un Archive Pack et un deck), une en anglais.
+    const print = (printId, language, rarity, product, date, finish = 'regular') => ({
+      print_id: printId, print_language: language, rarity, is_published: true,
+      print_set: { set_code: printId.replace(/^[A-Z]{2}_/, '').slice(0, 3), set_name: product },
+      product: { product_name: product, release_date: date }, faces: [{ finish_type: finish }],
+    });
+    window.__mockVaultPrints = {
+      'buckwild-1': [
+        print('WTR001', 'en', 'common', 'Welcome to Rathe', '2019-10-11'),
+        print('JA_MAP092', 'ja', 'common', 'Archive Pack - Part the Mistveil [JA]', '2024-10-11'),
+        print('JA_ASR007', 'ja', 'common', 'Armory Deck - Ira, Scarlet Revenger [JA]', '2025-07-11'),
+        print('JA_ASR007-MV', 'ja', 'marvel', 'Armory Deck - Ira, Scarlet Revenger [JA]', '2025-07-11', 'rainbow-foil'),
+      ],
+    };
   }, JA);
   await page.click('[data-tab="tools"]');
   await page.click('#tool-trackers');
@@ -61,11 +80,31 @@ test('suivi « Ninja en japonais » créé à la main, calculé, gardé, modifi�
   ]);
   await page.selectOption('#tracker-group', 'none');
   assert.deepEqual(await rowsText(page), [
-    'Breaking Scales Equipment · 1 suffit 0 / 1 −1',
-    'Buckwild Action 2 / 3 −1',
-    'Buckwild Action 0 / 3 −3',
-    'Enlightened Strike Action · Legendary · 1 suffit 0 / 1 −1',
+    'Breaking Scales Equipment · Rare · 1 suffit 0 / 1 −1',
+    'Buckwild Action · Commune, Marvel 2 / 3 −1',
+    'Buckwild Action · Commune 0 / 3 −3',
+    'Enlightened Strike Action · Majestic · Legendary · 1 suffit 0 / 1 −1',
   ]);
+
+  // Où trouver Buckwild rouge en japonais : ses impressions japonaises, les plus récentes d'abord.
+  await page.click('.completion-row:has-text("Commune, Marvel")');
+  await page.waitForSelector('.tracker-prints li');
+  assert.equal(await page.textContent('.tracker-prints-head'), 'Où la trouver en japonais :');
+  assert.deepEqual(await texts(page, '.tracker-prints li'), [
+    'Armory Deck - Ira, Scarlet Revenger [JA] JA_ASR007 · Commune · Standard · 2025',
+    'Armory Deck - Ira, Scarlet Revenger [JA] JA_ASR007-MV · Marvel · Rainbow Foil · 2025',
+    'Archive Pack - Part the Mistveil [JA] JA_MAP092 · Commune · Standard · 2024',
+  ]);
+  // Toucher de nouveau referme.
+  await page.click('.completion-row:has-text("Commune, Marvel")');
+  assert.equal(await page.isVisible('.tracker-prints li'), false);
+
+  // Groupement par rareté : de la plus courante à la plus rare.
+  await page.click('#tracker-status [data-status="all"]');
+  await page.selectOption('#tracker-group', 'rarity');
+  assert.deepEqual(await texts(page, '#tracker-list h2'), ['Commune', 'Rare', 'Majestic', 'Légendaire']);
+  await page.click('#tracker-status [data-status="missing"]');
+  await page.selectOption('#tracker-group', 'none');
   await page.click('#tracker-status [data-status="complete"]');
   assert.deepEqual(await texts(page, '.completion-name'), ['Dorinthea Ironsong', 'Sink Below']);
   await page.click('#tracker-status [data-status="all"]');

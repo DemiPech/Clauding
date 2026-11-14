@@ -3085,3 +3085,40 @@ body.has-importbar .toast {
   background: none;
   color: var(--text-faint);
 }
+
+.tracker-card > .completion-row {
+  cursor: pointer;
+}
+
+.tracker-prints {
+  margin: 0 0 6px 22px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tracker-prints-head {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.tracker-prints ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tracker-prints li {
+  padding: 5px 0;
+}
+
+.tracker-prints li b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tracker-prints li span {
+  color: var(--text-muted);
+  font-size: 12px;
+}

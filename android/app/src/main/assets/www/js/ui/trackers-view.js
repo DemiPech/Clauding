@@ -260,6 +260,14 @@ function visibleRows() {
   );
 }
 
+const RARITY_LABELS = {
+  basic: 'Basique', common: 'Commune', rare: 'Rare', 'super-rare': 'Super rare', majestic: 'Majestic',
+  legendary: 'Légendaire', fabled: 'Fabled', marvel: 'Marvel', gold: 'Gold', 'gold-marvel': 'Gold Marvel',
+  promo: 'Promo', 'promo-marvel': 'Promo Marvel', token: 'Token',
+};
+const RARITY_ORDER = Object.keys(RARITY_LABELS);
+const rarityLabel = (rarity) => RARITY_LABELS[rarity] || rarity || 'Rareté inconnue';
+
 const TYPE_ORDER = ['Hero', 'Demi-Hero', 'Weapon', 'Equipment', 'Action', 'Attack Reaction', 'Defense Reaction', 'Instant', 'Block', 'Resource', 'Token'];
 const classOf = (row) => (row.classes.length ? row.classes.join(' / ') : row.talents.length ? row.talents.join(' / ') : 'Sans classe');
 const typeOf = (row) => TYPE_ORDER.find((type) => row.types.includes(type)) || row.types[0] || 'Autres';
@@ -267,14 +275,15 @@ const typeOf = (row) => TYPE_ORDER.find((type) => row.types.includes(type)) || r
 function sections(rows) {
   const by = els.group.value;
   if (by === 'none') return [{ title: null, rows }];
-  const keyOf = by === 'type' ? typeOf : classOf;
+  const keyOf = by === 'type' ? typeOf : by === 'rarity' ? (row) => rarityLabel(row.rarity) : classOf;
   const groups = new Map();
   for (const row of rows) {
     const key = keyOf(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
-  const rank = (key) => (by === 'type' && TYPE_ORDER.includes(key) ? TYPE_ORDER.indexOf(key) : TYPE_ORDER.length);
+  const order = by === 'type' ? TYPE_ORDER : by === 'rarity' ? RARITY_ORDER.map(rarityLabel) : [];
+  const rank = (key) => (order.includes(key) ? order.indexOf(key) : order.length);
   return [...groups.keys()]
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, 'fr'))
     .map((key) => ({ title: key, rows: groups.get(key) }));
@@ -315,18 +324,83 @@ function renderCards() {
 
 function rowNode(row) {
   const li = document.createElement('li');
-  li.className = `completion-row${row.missing ? '' : ' is-complete'}`;
-  const meta = [typeOf(row), row.legendary ? 'Legendary' : null, row.target === 1 ? '1 suffit' : null].filter(Boolean).join(' · ');
+  li.className = 'tracker-card';
+  li.dataset.key = row.key;
+  // La rareté la plus courante, et « + Marvel… » si la carte existe aussi en d'autres.
+  const rarity = row.rarity
+    ? [rarityLabel(row.rarity), ...(row.rarities || []).slice(1).map(rarityLabel)].join(', ')
+    : null;
+  const meta = [typeOf(row), rarity, row.legendary ? 'Legendary' : null, row.target === 1 ? '1 suffit' : null]
+    .filter(Boolean)
+    .join(' · ');
   li.innerHTML = `
-    <i class="row-pitch" style="--dot:${PITCH_COLORS[row.pitch] || 'var(--pitch-0)'}"></i>
-    <span class="completion-body">
-      <span class="completion-name">${escapeHtml(row.name)}</span>
-      <span class="completion-meta">${escapeHtml(meta)}</span>
-    </span>
-    <span class="completion-count">${row.owned} / ${row.target}</span>
-    <span class="completion-missing">${row.missing ? `−${row.missing}` : '✓'}</span>
+    <div class="completion-row${row.missing ? '' : ' is-complete'}" role="button" tabindex="0" aria-expanded="false">
+      <i class="row-pitch" style="--dot:${PITCH_COLORS[row.pitch] || 'var(--pitch-0)'}"></i>
+      <span class="completion-body">
+        <span class="completion-name">${escapeHtml(row.name)}</span>
+        <span class="completion-meta">${escapeHtml(meta)}</span>
+      </span>
+      <span class="completion-count">${row.owned} / ${row.target}</span>
+      <span class="completion-missing">${row.missing ? `−${row.missing}` : '✓'}</span>
+    </div>
+    <div class="tracker-prints" hidden></div>
   `;
   return li;
+}
+
+// --- Où trouver une carte : ses impressions, selon la langue du suivi -------------------
+
+const FLAGS = { ja: 'JA', en: 'EN', fr: 'FR', de: 'DE', it: 'IT', es: 'ES' };
+
+async function togglePrintings(li) {
+  const row = ui.result?.rows.find((r) => r.key === li.dataset.key);
+  const head = li.querySelector('.completion-row');
+  const box = li.querySelector('.tracker-prints');
+  if (!row || !box) return;
+  const open = box.hidden;
+  box.hidden = !open;
+  head.setAttribute('aria-expanded', String(open));
+  if (!open || box.dataset.loaded) return;
+  const language = ui.tracker?.language || '';
+  box.innerHTML = '<p class="move-note">Recherche des impressions…</p>';
+  try {
+    const params = new URLSearchParams({ ids: row.cardIds.join(','), ...(language ? { language } : {}) });
+    const res = await fetch(`/api/cardvault/printings?${params}`, { background: true });
+    const prints = await res.json();
+    if (!res.ok) throw new Error(prints.error || `Erreur ${res.status}`);
+    box.dataset.loaded = '1';
+    const where = language ? ` en ${LANGUAGES[language].toLowerCase()}` : '';
+    if (!prints.length) {
+      box.innerHTML = `<p class="move-note">Aucune impression${escapeHtml(where)} trouvée sur Card Vault.</p>`;
+      return;
+    }
+    box.innerHTML = `
+      <p class="tracker-prints-head">Où la trouver${escapeHtml(where)} :</p>
+      <ul>
+        ${prints
+          .map(
+            (print) => `
+          <li>
+            <b>${escapeHtml(print.product || print.setName || print.setCode || '?')}</b>
+            <span>${escapeHtml(
+              [
+                print.printId,
+                rarityLabel(print.rarity),
+                print.finishes.join(', '),
+                !language && print.language ? FLAGS[print.language] || print.language.toUpperCase() : null,
+                print.releaseDate ? new Date(print.releaseDate).getFullYear() : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            )}</span>
+          </li>`,
+          )
+          .join('')}
+      </ul>
+    `;
+  } catch (err) {
+    box.innerHTML = `<p class="move-note">${escapeHtml(err.message)}</p>`;
+  }
 }
 
 /** Les cartes manquantes en texte : « 2x Bittering Thorns (rouge) ». */
@@ -383,6 +457,17 @@ els.remove.addEventListener('click', async () => {
 });
 els.run.addEventListener('click', runTracker);
 els.modify.addEventListener('click', () => editTracker(ui.tracker));
+els.cards.addEventListener('click', (event) => {
+  const head = event.target.closest('.completion-row');
+  if (head) togglePrintings(head.closest('.tracker-card'));
+});
+els.cards.addEventListener('keydown', (event) => {
+  const head = event.target.closest('.completion-row');
+  if (head && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    togglePrintings(head.closest('.tracker-card'));
+  }
+});
 els.filter.addEventListener('input', renderCards);
 els.group.addEventListener('change', renderCards);
 els.status.addEventListener('click', (event) => {

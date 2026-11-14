@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 globalThis.window = globalThis;
 globalThis.localStorage = { store: {}, getItem(k) { return this.store[k] ?? null; }, setItem(k, v) { this.store[k] = String(v); }, removeItem(k) { delete this.store[k]; } };
-const { trackerCards, trackerProgress, normalizeTracker, describeTracker, saveTracker, readTrackers, deleteTracker } = await import(
+const { trackerCards, trackerProgress, normalizeTracker, describeTracker, saveTracker, readTrackers, deleteTracker, assignRarities } = await import(
   '../../app/src/main/assets/www/js/trackers.js'
 );
 const { indexCard, isLegendary } = await import('../../app/src/main/assets/www/js/cardvault.js');
@@ -89,4 +89,20 @@ test('suivis enregistrés, décrits et supprimés', () => {
   assert.deepEqual(readTrackers(), []);
   // « Seulement dans cette langue » n'a de sens qu'avec une langue.
   assert.equal(normalizeTracker({ ownedInLanguage: true }).ownedInLanguage, false);
+});
+
+test('rareté : toutes celles des impressions, la plus courante d’abord', () => {
+  const rows = trackerCards(INDEX, normalizeTracker({ classes: ['Ninja'], language: 'ja' }), JA);
+  assignRarities(rows, {
+    'bittering-thorns-1': ['marvel'],
+    'bittering-thorns-1--inner-chi-1': ['common', 'marvel'],
+    'kunai-of-retribution': ['majestic'],
+  });
+  assert.deepEqual(rows.map((r) => [r.name, r.pitch, r.rarity, r.rarities]), [
+    ['Bittering Thorns', 1, 'common', ['common', 'marvel']],
+    ['Bittering Thorns', 3, null, []],
+    ['Flick Knives', null, null, []],
+    ['Kunai of Retribution', null, 'majestic', ['majestic']],
+    ['Mask of Momentum', null, null, []],
+  ]);
 });

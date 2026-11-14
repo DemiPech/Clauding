@@ -361,6 +361,94 @@ export async function vaultLanguageIds(language, classes = [], progress = silent
   return ids;
 }
 
+// --- Raretés et impressions (suivis de collection) ---------------------------------
+
+/** Les raretés de Card Vault, de la plus courante à la plus rare (puis promos et à part). */
+export const RARITY_ORDER = [
+  'basic', 'common', 'rare', 'super-rare', 'majestic', 'legendary', 'fabled',
+  'marvel', 'gold', 'gold-marvel', 'promo', 'promo-marvel', 'token',
+];
+
+const RARITY_STORAGE = 'cardvault_rarity';
+
+/**
+ * Les raretés de chaque carte (identifiant → ['common', 'marvel'…]) parmi ses
+ * impressions dans cette langue (ou toutes langues si `language` est vide),
+ * une recherche par rareté (et par classe, si `classes`). Gardées une semaine.
+ */
+export async function vaultRarities(language = null, classes = [], progress = silent) {
+  const filters = classes.length ? classes.map((name) => ({ classes: name })) : [{}];
+  const map = {};
+  for (const [index, filter] of filters.entries()) {
+    const step = progress.sub(index / filters.length, (index + 1) / filters.length);
+    const storage = `${RARITY_STORAGE}:${language || '*'}:${filter.classes || '*'}`;
+    const stored = await storeGet(storage);
+    let found = stored?.v === 1 && Date.now() - stored.at < INDEX_TTL_MS ? stored.map : null;
+    if (!found) {
+      found = {};
+      let done = 0;
+      const queue = [...RARITY_ORDER];
+      const worker = async () => {
+        for (let rarity = queue.shift(); rarity; rarity = queue.shift()) {
+          for (let page = 1; ; page += 1) {
+            const query = new URLSearchParams({
+              ...filter, ...(language ? { language } : {}), rarities: rarity, page_size: String(PAGE_SIZE), page: String(page), orderby: 'relevance',
+            });
+            const data = await get(`advanced-search/?${query}`);
+            const results = data.results || [];
+            for (const item of results) (found[item.card_id] ||= []).push(rarity);
+            if (!data.next || !results.length) break;
+          }
+          done += 1;
+          step.report(done / RARITY_ORDER.length, `Card Vault : raretés ${done} / ${RARITY_ORDER.length}`);
+        }
+      };
+      await Promise.all(Array.from({ length: 4 }, worker));
+      await storeSet(storage, { v: 1, at: Date.now(), map: found });
+    }
+    for (const [id, rarities] of Object.entries(found)) map[id] = [...new Set([...(map[id] || []), ...rarities])];
+  }
+  return map;
+}
+
+const FINISH_LABELS = {
+  regular: 'Standard', 'rainbow-foil': 'Rainbow Foil', 'cold-foil': 'Cold Foil', 'gold-cold-foil': 'Gold Cold Foil',
+};
+const finishLabel = (finish) => FINISH_LABELS[finish] || String(finish || '').replace(/(^|-)([a-z])/g, (_, sep, c) => `${sep ? ' ' : ''}${c.toUpperCase()}`);
+
+/**
+ * Les impressions de ces cartes (plusieurs identifiants pour une même carte),
+ * dans cette langue si `language` : où la trouver. Rend [{ printId, language,
+ * rarity, setCode, setName, product, releaseDate, finishes }], les plus
+ * récentes d'abord.
+ */
+export async function vaultPrintings(cardIds, language = null) {
+  const prints = new Map();
+  for (const id of cardIds) {
+    const data = await get(`card_id/${encodeURIComponent(id)}/`);
+    for (const print of data.results?.[0]?.card_prints || []) {
+      if (print.is_published === false) continue;
+      if (language && print.print_language !== language) continue;
+      const key = print.print_id || print.id;
+      const previous = prints.get(key);
+      const finishes = [...new Set([...(previous?.finishes || []), ...(print.faces || []).map((face) => finishLabel(face.finish_type))])];
+      prints.set(key, {
+        printId: print.print_id || null,
+        language: print.print_language || null,
+        rarity: print.rarity || null,
+        setCode: print.print_set?.set_code || null,
+        setName: print.print_set?.set_name || null,
+        product: print.product?.product_name || print.print_set?.set_name || null,
+        releaseDate: print.product?.release_date || null,
+        finishes: finishes.filter(Boolean),
+      });
+    }
+  }
+  return [...prints.values()].sort(
+    (a, b) => String(b.releaseDate || '').localeCompare(String(a.releaseDate || '')) || String(a.printId).localeCompare(String(b.printId)),
+  );
+}
+
 /**
  * Classes et talents de ces cartes (`cards` : [{ id, name, pitch }]) :
  * { id: { classes, talents } }, ou null pour une carte inconnue. Une carte

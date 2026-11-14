@@ -265,7 +265,15 @@ critères, par exemple « les cartes Ninja qui existent en japonais ».
   langue. Un exemplaire se rattache à sa carte par identifiant, sinon par nom + pitch.
 - **Détail d'un suivi** : pourcentage (exemplaires possédés, plafonnés à l'objectif, sur les
   exemplaires visés), cartes complètes et absentes, liste filtrable (manquantes, complètes,
-  toutes ; par nom), groupée par classe ou par type, et « Copier les manquantes ».
+  toutes ; par nom), groupée par classe, par type ou par rareté, et « Copier les manquantes ».
+- **Rareté** : celles des impressions de la carte dans la langue du suivi (toutes langues sans
+  langue), lues sur Card Vault (une recherche par rareté, et par classe si le suivi en choisit ;
+  gardées une semaine). La carte est groupée sous la plus courante (« Commune, Marvel » : rangée
+  en commune).
+- **Où trouver une carte** : toucher une carte affiche ses impressions dans la langue du suivi
+  (produit, numéro, rareté, finitions, année), les plus récentes d'abord, d'après sa fiche Card
+  Vault. Bittering Thorns rouge en japonais : l'Armory Deck Ira [JA] et l'Archive Pack Part the
+  Mistveil [JA].
 - **Données** : les cartes viennent de l'index Card Vault (toutes les cartes en anglais, lu une
   fois par semaine ; les quelques cartes à ligne de type vide sont complétées par leur fiche) ;
   la langue d'impression, d'une recherche Card Vault par langue (et par classe quand le suivi en

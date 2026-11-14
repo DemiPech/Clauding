@@ -9,7 +9,7 @@
 import { fetchDeck, parseDeckId, FabraryError } from './fabrary.js';
 import { fetchFabtcgDeck, parseFabtcgUrl } from './fabtcg.js';
 import { DecklistError, fetchPastedDeck, isPastedRef } from './decklist.js';
-import { CardVaultError, vaultVocabulary } from './cardvault.js';
+import { CardVaultError, vaultPrintings, vaultVocabulary } from './cardvault.js';
 import { computeTracker } from './trackers.js';
 import {
   listDeckLocations,
@@ -291,6 +291,16 @@ async function route(url, init, progress) {
   if (method !== 'GET') return json(405, { error: 'Methode non autorisee' });
 
   switch (url.pathname) {
+    case '/api/cardvault/printings': {
+      const ids = (params.get('ids') || '').split(',').filter(Boolean).slice(0, 10);
+      const language = params.get('language') || null;
+      if (!ids.length) return json(400, { error: 'Carte manquante.' });
+      return respond(
+        () => cached(`cardvault:printings:${ids.join(',')}:${language}`, () => vaultPrintings(ids, language)),
+        'Impossible de lire les impressions sur Card Vault pour le moment.',
+      );
+    }
+
     case '/api/cardvault/vocabulary':
       return respond(() => cached('cardvault:vocabulary', vaultVocabulary), 'Impossible de lire Card Vault pour le moment.');
 
@@ -387,6 +397,7 @@ async function route(url, init, progress) {
 const STATIC_LABELS = {
   '/api/trackers/compute': 'Calcul du suivi de collection',
   '/api/cardvault/vocabulary': 'Lecture des classes et types',
+  '/api/cardvault/printings': 'Lecture des impressions',
   '/api/deck': 'Lecture de la liste',
   '/api/cardnexus/decks': 'Lecture des emplacements',
   '/api/cardnexus/locations': 'Lecture des emplacements',
