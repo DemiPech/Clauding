@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import net.demipech.budget.data.Kind
 
@@ -52,16 +54,47 @@ private val DarkColors = darkColorScheme(
     outlineVariant = Color(0xFF3A3D43),
 )
 
+/** Noir pur : économise la batterie sur les écrans OLED. */
+private val BlackColors = DarkColors.copy(
+    background = Color.Black,
+    surface = Color(0xFF0E0E10),
+    surfaceVariant = Color(0xFF26272B),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF09090A),
+    surfaceContainer = Color(0xFF0E0E10),
+    surfaceContainerHigh = Color(0xFF17181B),
+    surfaceContainerHighest = Color(0xFF202125),
+    outlineVariant = Color(0xFF2A2C31),
+)
+
+/** Vrai quand l'interface est en sombre (thème choisi, ou téléphone en sombre). */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
-fun BudgetTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, content = content)
+fun ThemeMode.isDark(): Boolean = when (this) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK, ThemeMode.BLACK -> true
 }
 
 @Composable
-fun incomeColor(): Color = if (isSystemInDarkTheme()) Color(0xFF6AA9FF) else Color(0xFF1A6BD6)
+fun BudgetTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val dark = mode.isDark()
+    val colors = when {
+        !dark -> LightColors
+        mode == ThemeMode.BLACK -> BlackColors
+        else -> DarkColors
+    }
+    CompositionLocalProvider(LocalDarkTheme provides dark) {
+        MaterialTheme(colorScheme = colors, content = content)
+    }
+}
 
 @Composable
-fun expenseColor(): Color = if (isSystemInDarkTheme()) Color(0xFFFF6B6B) else Color(0xFFE5484D)
+fun incomeColor(): Color = if (LocalDarkTheme.current) Color(0xFF6AA9FF) else Color(0xFF1A6BD6)
+
+@Composable
+fun expenseColor(): Color = if (LocalDarkTheme.current) Color(0xFFFF6B6B) else Color(0xFFE5484D)
 
 @Composable
 fun kindColor(kind: Kind): Color = if (kind == Kind.INCOME) incomeColor() else expenseColor()

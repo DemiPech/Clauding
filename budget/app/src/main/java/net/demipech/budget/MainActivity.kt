@@ -1,6 +1,12 @@
 package net.demipech.budget
 
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import net.demipech.budget.ui.theme.isDark
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,9 +18,18 @@ import net.demipech.budget.ui.theme.BudgetTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        val themeSettings = (application as BudgetApp).themeSettings
         setContent {
-            BudgetTheme {
+            val mode by themeSettings.mode.collectAsState()
+            val dark = mode.isDark()
+            // Icônes de la barre d'état et de navigation claires ou foncées selon le thème choisi.
+            DisposableEffect(dark) {
+                val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
+                else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose {}
+            }
+            BudgetTheme(mode) {
                 BudgetNavHost()
             }
         }

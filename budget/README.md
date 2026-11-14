@@ -17,8 +17,10 @@ jour s'installe par-dessus l'ancienne sans perdre les données.
 
 ## Interface
 
-Un mélange de Wallet (accueil en cartes) et de Money Manager (liste mensuelle). Thème clair ou
-sombre selon le téléphone, accent corail, revenus en bleu et dépenses en rouge.
+Un mélange de Wallet (accueil en cartes) et de Money Manager (liste mensuelle). Accent corail,
+revenus en bleu et dépenses en rouge. Thème au choix dans Plus › Apparence : Système (suit le
+téléphone), Clair, Sombre, ou Noir (noir pur, économe sur les écrans OLED) ; la barre d'état
+suit le thème choisi.
 
 Quatre onglets :
 

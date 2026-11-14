@@ -33,6 +33,10 @@ import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.DayFormat
 import net.demipech.budget.ui.components.SectionCard
 import net.demipech.budget.ui.repository
+import net.demipech.budget.BudgetApp
+import net.demipech.budget.ui.components.Segmented
+import net.demipech.budget.ui.theme.ThemeMode
+import androidx.compose.runtime.collectAsState
 import java.time.LocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +95,18 @@ fun MoreScreen(
                 Entry("🔁", "Opérations planifiées", "Récurrences, virements et paiements à venir", onScheduled)
                 Entry("🏷️", "Catégories", "Catégories, sous-catégories, emojis et couleurs", onCategories)
                 Entry("🏦", "Ajouter un compte", "Les comptes se modifient depuis leur page (crayon)", onAddAccount)
+            }
+            SectionCard(title = "Apparence") {
+                val themeSettings = (context.applicationContext as BudgetApp).themeSettings
+                val mode by themeSettings.mode.collectAsState()
+                Segmented(ThemeMode.entries, mode, { it.label }, themeSettings::set, Modifier.padding(horizontal = 16.dp))
+                Text(
+                    "« Système » suit le réglage du téléphone ; « Noir » est un sombre en noir pur, " +
+                        "plus économe sur les écrans OLED.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
             SectionCard(title = "Données") {
                 Entry(
