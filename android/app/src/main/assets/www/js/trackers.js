@@ -14,7 +14,7 @@
  *   « seulement dans cette langue », ceux imprimés dans la langue du suivi.
  */
 import { collectionCounts, fabKey } from './cardnexus.js';
-import { RARITY_ORDER, vaultIndex, vaultLanguageIds, vaultRarities } from './cardvault.js';
+import { RARITY_ORDER, vaultIndex, vaultLanguageIds, vaultPrintings, vaultProducts, vaultRarities } from './cardvault.js';
 import { silent } from './progress.js';
 
 const STORAGE = 'collection_trackers';
@@ -44,8 +44,9 @@ export function normalizeTracker(raw = {}) {
 }
 
 /** Ce qui change la liste ou les comptes : un résultat gardé d'un autre jeu de critères est périmé. */
-// La version change quand un calcul gardé ne contient plus tout ce qu'affiche l'écran (2 : raretés).
-const RESULT_VERSION = 2;
+// La version change quand un calcul gardé ne contient plus tout ce qu'affiche l'écran
+// (2 : raretés, 3 : produits).
+const RESULT_VERSION = 3;
 export const trackerSignature = (tracker) =>
   JSON.stringify([RESULT_VERSION, tracker.classes, tracker.talents, tracker.types, tracker.language, tracker.ownedInLanguage, tracker.target, tracker.singleRule]);
 
@@ -139,6 +140,18 @@ export function assignRarities(rows, map) {
   return rows;
 }
 
+// Au-delà, les cartes restent « extension inconnue » plutôt que d'enchaîner les requêtes.
+const MAX_ORPHANS = 40;
+
+/**
+ * Produits où se trouve chaque ligne (`cards` : identifiant → noms de produits,
+ * tous identifiants de la carte réunis), dans la langue du suivi.
+ */
+export function assignProducts(rows, cards) {
+  for (const row of rows) row.products = [...new Set(row.cardIds.flatMap((id) => cards[id] || []))];
+  return rows;
+}
+
 /**
  * Possédés, manquants et totaux. `counts` = { byId, byName } (collectionCounts) :
  * une carte compte ses exemplaires par identifiant ou, s'ils sont plus
@@ -181,9 +194,35 @@ export async function computeTracker(raw, progress = silent) {
     // Raretés indisponibles : le suivi s'affiche quand même, sans elles.
     assignRarities(rows, {});
   }
+  let productDates = {};
+  try {
+    const products = await vaultProducts(tracker.language, progress.sub(0.55, 0.75));
+    assignProducts(rows, products.cards);
+    productDates = { ...products.dates };
+    // Quelques impressions sont dans des produits que Card Vault ne liste pas : la
+    // fiche de la carte les donne (une requête par carte, pour ces seules cartes).
+    const orphans = rows.filter((row) => !row.products.length).slice(0, MAX_ORPHANS);
+    for (const row of orphans) {
+      try {
+        const prints = await vaultPrintings(row.cardIds, tracker.language || 'en');
+        row.products = [...new Set(prints.map((print) => print.product).filter(Boolean))];
+        for (const print of prints) if (print.product) productDates[print.product] ??= print.releaseDate;
+      } catch {
+        // Fiche illisible : la carte reste sans extension.
+      }
+    }
+  } catch {
+    // Produits indisponibles : pas de groupement par extension.
+    assignProducts(rows, {});
+  }
   const counts = await collectionCounts(
     { language: tracker.ownedInLanguage ? tracker.language : null },
-    progress.sub(0.55, 1),
+    progress.sub(0.75, 1),
   );
-  return { ...trackerProgress(rows, counts), signature: trackerSignature(tracker), at: new Date().toISOString() };
+  return {
+    ...trackerProgress(rows, counts),
+    productDates,
+    signature: trackerSignature(tracker),
+    at: new Date().toISOString(),
+  };
 }

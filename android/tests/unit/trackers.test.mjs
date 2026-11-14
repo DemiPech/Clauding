@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 globalThis.window = globalThis;
 globalThis.localStorage = { store: {}, getItem(k) { return this.store[k] ?? null; }, setItem(k, v) { this.store[k] = String(v); }, removeItem(k) { delete this.store[k]; } };
-const { trackerCards, trackerProgress, normalizeTracker, describeTracker, saveTracker, readTrackers, deleteTracker, assignRarities } = await import(
+const { trackerCards, trackerProgress, normalizeTracker, describeTracker, saveTracker, readTrackers, deleteTracker, assignRarities, assignProducts } = await import(
   '../../app/src/main/assets/www/js/trackers.js'
 );
 const { indexCard, isLegendary } = await import('../../app/src/main/assets/www/js/cardvault.js');
@@ -104,5 +104,19 @@ test('rareté : toutes celles des impressions, la plus courante d’abord', () =
     ['Flick Knives', null, null, []],
     ['Kunai of Retribution', null, 'majestic', ['majestic']],
     ['Mask of Momentum', null, null, []],
+  ]);
+});
+
+test('produits : réunis sur tous les identifiants de la carte, sans doublon', () => {
+  const rows = trackerCards(INDEX, normalizeTracker({ classes: ['Ninja'], language: 'ja' }), JA);
+  assignProducts(rows, {
+    'bittering-thorns-1': ['Archive Pack - Part the Mistveil [JA]'],
+    'bittering-thorns-1--inner-chi-1': ['Armory Deck - Ira, Scarlet Revenger [JA]', 'Archive Pack - Part the Mistveil [JA]'],
+    'bittering-thorns-3': ['Armory Deck - Ira, Scarlet Revenger [JA]'],
+  });
+  assert.deepEqual(rows.slice(0, 3).map((r) => r.products), [
+    ['Archive Pack - Part the Mistveil [JA]', 'Armory Deck - Ira, Scarlet Revenger [JA]'],
+    ['Armory Deck - Ira, Scarlet Revenger [JA]'],
+    [],
   ]);
 });

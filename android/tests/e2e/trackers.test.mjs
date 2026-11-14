@@ -48,7 +48,15 @@ test('suivi « Ninja en japonais » créé à la main, calculé, gardé, modifi�
       print_set: { set_code: printId.replace(/^[A-Z]{2}_/, '').slice(0, 3), set_name: product },
       product: { product_name: product, release_date: date }, faces: [{ finish_type: finish }],
     });
+    window.__mockVaultProducts = [
+      { name: 'Archive Pack - Part the Mistveil [JA]', slug: 'archive-pack-part-the-mistveil-ja', language: 'ja', date: '2024-10-11', cards: ['buckwild-1', 'enlightened-strike-1', 'sink-below-1'] },
+      { name: 'Armory Deck - Ira, Scarlet Revenger [JA]', slug: 'armory-deck-ira-ja', language: 'ja', date: '2025-07-11', cards: ['buckwild-1', 'buckwild-3', 'dorinthea-ironsong'] },
+      // La version anglaise ne compte pas pour un suivi en japonais.
+      { name: 'Armory Deck - Ira, Scarlet Revenger', slug: 'armory-deck-ira', language: 'en', date: '2025-07-11', cards: ['breaking-scales'] },
+    ];
     window.__mockVaultPrints = {
+      // Breaking Scales : dans aucun produit listé, sa fiche donne son deck.
+      'breaking-scales': [print('JA_IRA001', 'ja', 'rare', 'Ira Welcome Deck (2024) [JA]', '2024-03-01')],
       'buckwild-1': [
         print('WTR001', 'en', 'common', 'Welcome to Rathe', '2019-10-11'),
         print('JA_MAP092', 'ja', 'common', 'Archive Pack - Part the Mistveil [JA]', '2024-10-11'),
@@ -103,6 +111,21 @@ test('suivi « Ninja en japonais » créé à la main, calculé, gardé, modifi�
   await page.click('#tracker-status [data-status="all"]');
   await page.selectOption('#tracker-group', 'rarity');
   assert.deepEqual(await texts(page, '#tracker-list h2'), ['Commune', 'Rare', 'Majestic', 'Légendaire']);
+
+  // Groupement par extension : une carte d'une seule extension sous celle-ci (la plus récente
+  // d'abord), les autres sous « Plusieurs extensions ».
+  await page.selectOption('#tracker-group', 'expansion');
+  assert.deepEqual(await texts(page, '#tracker-list h2'), [
+    'Armory Deck - Ira, Scarlet Revenger [JA]', 'Archive Pack - Part the Mistveil [JA]', 'Ira Welcome Deck (2024) [JA]', 'Plusieurs extensions',
+  ]);
+  const groupOf = (title) => page.$$eval('#tracker-list section', (sections, t) => {
+    const section = sections.find((sec) => sec.querySelector('h2')?.textContent === t);
+    return [...section.querySelectorAll('.completion-name')].map((n) => n.textContent);
+  }, title);
+  assert.deepEqual(await groupOf('Armory Deck - Ira, Scarlet Revenger [JA]'), ['Buckwild', 'Dorinthea Ironsong']);
+  assert.deepEqual(await groupOf('Archive Pack - Part the Mistveil [JA]'), ['Enlightened Strike', 'Sink Below']);
+  assert.deepEqual(await groupOf('Plusieurs extensions'), ['Buckwild']);
+  assert.deepEqual(await groupOf('Ira Welcome Deck (2024) [JA]'), ['Breaking Scales']);
   await page.click('#tracker-status [data-status="missing"]');
   await page.selectOption('#tracker-group', 'none');
   await page.click('#tracker-status [data-status="complete"]');

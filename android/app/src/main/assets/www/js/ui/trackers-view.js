@@ -272,15 +272,33 @@ const TYPE_ORDER = ['Hero', 'Demi-Hero', 'Weapon', 'Equipment', 'Action', 'Attac
 const classOf = (row) => (row.classes.length ? row.classes.join(' / ') : row.talents.length ? row.talents.join(' / ') : 'Sans classe');
 const typeOf = (row) => TYPE_ORDER.find((type) => row.types.includes(type)) || row.types[0] || 'Autres';
 
+const SEVERAL = 'Plusieurs extensions';
+const UNKNOWN_EXPANSION = 'Extension inconnue';
+
+/** L'extension d'une carte : la seule où elle se trouve, sinon « Plusieurs extensions ». */
+const expansionOf = (row) =>
+  !row.products?.length ? UNKNOWN_EXPANSION : row.products.length === 1 ? row.products[0] : SEVERAL;
+
+/** Extensions de la plus récente à la plus ancienne, puis « Plusieurs extensions » et l'inconnue. */
+function expansionRank(a, b) {
+  const tail = [SEVERAL, UNKNOWN_EXPANSION];
+  if (tail.includes(a) || tail.includes(b)) return tail.indexOf(a) - tail.indexOf(b);
+  const dates = ui.result.productDates || {};
+  return String(dates[b] || '').localeCompare(String(dates[a] || '')) || a.localeCompare(b, 'fr');
+}
+
 function sections(rows) {
   const by = els.group.value;
   if (by === 'none') return [{ title: null, rows }];
-  const keyOf = by === 'type' ? typeOf : by === 'rarity' ? (row) => rarityLabel(row.rarity) : classOf;
+  const keyOf = by === 'type' ? typeOf : by === 'rarity' ? (row) => rarityLabel(row.rarity) : by === 'expansion' ? expansionOf : classOf;
   const groups = new Map();
   for (const row of rows) {
     const key = keyOf(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
+  }
+  if (by === 'expansion') {
+    return [...groups.keys()].sort(expansionRank).map((key) => ({ title: key, rows: groups.get(key) }));
   }
   const order = by === 'type' ? TYPE_ORDER : by === 'rarity' ? RARITY_ORDER.map(rarityLabel) : [];
   const rank = (key) => (order.includes(key) ? order.indexOf(key) : order.length);

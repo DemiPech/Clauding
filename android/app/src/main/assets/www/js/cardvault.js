@@ -411,6 +411,52 @@ export async function vaultRarities(language = null, classes = [], progress = si
   return map;
 }
 
+const PRODUCTS_STORAGE = 'cardvault_products';
+
+/**
+ * Les produits (extensions, decks, packs…) où se trouve chaque carte, parmi
+ * ceux imprimés dans cette langue (anglais sans langue) : { cards : identifiant
+ * → [nom de produit], dates : nom → date de sortie }. Une requête par produit
+ * (le contenu du produit), gardé une semaine.
+ */
+export async function vaultProducts(language = null, progress = silent) {
+  const lang = language || 'en';
+  const storage = `${PRODUCTS_STORAGE}:${lang}`;
+  const stored = await storeGet(storage);
+  if (stored?.v === 1 && Date.now() - stored.at < INDEX_TTL_MS) return stored.products;
+
+  const groups = [];
+  for (let page = 1; ; page += 1) {
+    const data = await get(`product-groups-products/?page_size=200&page=${page}`);
+    groups.push(...(data.results || []));
+    if (!data.next || !data.results?.length) break;
+  }
+  const products = groups
+    .flatMap((group) => group.products || [])
+    .filter((product) => product.slug && product.printed_language === lang);
+  const cards = {};
+  const dates = {};
+  let done = 0;
+  const queue = [...products];
+  const worker = async () => {
+    for (let product = queue.shift(); product; product = queue.shift()) {
+      const data = await get(`product-cards/${encodeURIComponent(product.slug)}/`);
+      const name = product.product_name;
+      dates[name] = product.release_date || null;
+      for (const card of data.cards || []) {
+        const list = (cards[card.card_id] ||= []);
+        if (!list.includes(name)) list.push(name);
+      }
+      done += 1;
+      progress.report(done / products.length, `Card Vault : produits ${done} / ${products.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, products.length) }, worker));
+  const result = { cards, dates };
+  await storeSet(storage, { v: 1, at: Date.now(), products: result });
+  return result;
+}
+
 const FINISH_LABELS = {
   regular: 'Standard', 'rainbow-foil': 'Rainbow Foil', 'cold-foil': 'Cold Foil', 'gold-cold-foil': 'Gold Cold Foil',
 };

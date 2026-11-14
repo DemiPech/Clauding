@@ -265,7 +265,14 @@ critères, par exemple « les cartes Ninja qui existent en japonais ».
   langue. Un exemplaire se rattache à sa carte par identifiant, sinon par nom + pitch.
 - **Détail d'un suivi** : pourcentage (exemplaires possédés, plafonnés à l'objectif, sur les
   exemplaires visés), cartes complètes et absentes, liste filtrable (manquantes, complètes,
-  toutes ; par nom), groupée par classe, par type ou par rareté, et « Copier les manquantes ».
+  toutes ; par nom), groupée par classe, par type, par rareté ou par extension, et « Copier les
+  manquantes ».
+- **Par extension** : une carte qu'on ne trouve que dans un produit (dans la langue du suivi ;
+  en anglais sans langue) est rangée sous ce produit, les produits du plus récent au plus
+  ancien ; celles qui sont dans plusieurs produits vont sous « Plusieurs extensions ». Le contenu
+  de chaque produit vient de Card Vault (une requête par produit : une minute environ pour les 66
+  produits japonais, gardé une semaine) ; les rares impressions hors des produits listés (decks
+  Welcome) sont lues sur la fiche de la carte.
 - **Rareté** : celles des impressions de la carte dans la langue du suivi (toutes langues sans
   langue), lues sur Card Vault (une recherche par rareté, et par classe si le suivi en choisit ;
   gardées une semaine). La carte est groupée sous la plus courante (« Commune, Marvel » : rangée

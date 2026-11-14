@@ -98,6 +98,19 @@
       if (u.pathname.endsWith('/core-classes/')) return list(['Generic', 'Brute', 'Ninja', 'Pirate', 'Necromancer', 'Warrior', 'Guardian']);
       if (u.pathname.endsWith('/core-talents/')) return list(['Shadow', 'Light', 'Lightning', 'Draconic', 'Revered', 'Reviled', 'Royal']);
       if (u.pathname.endsWith('/core-types/')) return list(['Action', 'Attack Reaction', 'Defense Reaction', 'Block', 'Instant', 'Hero', 'Weapon', 'Equipment', 'Token']);
+      // Produits : __mockVaultProducts = [{ name, slug, language, date, cards: [identifiants] }].
+      const products = window.__mockVaultProducts || [];
+      if (u.pathname.endsWith('/product-groups-products/')) {
+        window.__vaultProductCalls = (window.__vaultProductCalls || 0) + 1;
+        const group = { group_name: 'Tout', products: products.map((p) => ({ product_name: p.name, slug: p.slug, printed_language: p.language, release_date: p.date })) };
+        return { count: 1, next: null, results: [group] };
+      }
+      const productCards = u.pathname.match(/\/product-cards\/([^/]+)\/$/);
+      if (productCards) {
+        const product = products.find((p) => p.slug === decodeURIComponent(productCards[1]));
+        if (!product) throw new Error('404 produit');
+        return { product_name: product.name, release_date: product.date, cards: product.cards.map((id) => ({ card_id: id })) };
+      }
       // Fiche d'une carte : __mockVaultCores[identifiant] = { types, classes, talents, textbox }.
       const detail = u.pathname.match(/\/card_id\/([^/]+)\/$/);
       if (detail) {
