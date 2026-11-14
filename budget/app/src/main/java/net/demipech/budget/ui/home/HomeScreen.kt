@@ -59,6 +59,18 @@ import net.demipech.budget.ui.components.SectionCard
 import net.demipech.budget.ui.components.describeSchedule
 import net.demipech.budget.ui.operations.OperationCardRow
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.theme.kindColor
+import net.demipech.budget.ui.components.AmountField
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.launch
+import net.demipech.budget.data.Operation
 import net.demipech.budget.ui.components.BudgetProgress
 import net.demipech.budget.data.Category
 import net.demipech.budget.data.Budget
@@ -67,7 +79,13 @@ import net.demipech.budget.ui.theme.amountColor
 import java.time.LocalDate
 import java.time.YearMonth
 
-class HomeViewModel(repo: BudgetRepository) : ViewModel() {
+class HomeViewModel(private val repo: BudgetRepository) : ViewModel() {
+    /** Échéances à montant variable en attente du vrai montant. */
+    val toConfirm: StateFlow<List<OperationDetails>> =
+        repo.toConfirm().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun confirm(operation: Operation, amountCents: Long) = viewModelScope.launch { repo.confirmAmount(operation, amountCents) }
+
     private val month = YearMonth.now()
 
     val accounts: StateFlow<List<AccountWithBalance>?> =
@@ -112,6 +130,8 @@ fun HomeScreen(
     val debits by vm.debits.collectAsStateWithLifecycle()
     val budgets by vm.budgets.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
+    val toConfirm by vm.toConfirm.collectAsStateWithLifecycle()
+    var confirming by remember { mutableStateOf<OperationDetails?>(null) }
 
     val today = LocalDate.now()
     val upcoming = remember(scheduled, today) { Forecast.upcoming(scheduled, today, today.plusDays(30)) }
@@ -152,6 +172,7 @@ fun HomeScreen(
                     AccountTiles(accountList, onOpenAccount, onAddAccount)
                 }
             }
+            if (toConfirm.isNotEmpty()) item { ToConfirmCard(toConfirm) { confirming = it } }
             item {
                 val monthEnd = YearMonth.from(today).atEndOfMonth()
                 val debitsThisMonth = debits.filter { !it.debitDate.isAfter(monthEnd) }.sumOf { it.cents }
@@ -163,6 +184,84 @@ fun HomeScreen(
             item { UpcomingCard(upcoming.take(5), onShowScheduled) }
         }
     }
+
+    confirming?.let { op ->
+        ConfirmAmountDialog(
+            op = op,
+            onConfirm = { cents ->
+                vm.confirm(op.operation, cents)
+                confirming = null
+            },
+            onDismiss = { confirming = null },
+        )
+    }
+}
+
+/** Échéances au montant estimé : un appui pour saisir le vrai montant. */
+@Composable
+private fun ToConfirmCard(items: List<OperationDetails>, onConfirm: (OperationDetails) -> Unit) {
+    SectionCard(title = "À confirmer") {
+        Text(
+            "Montants estimés : touchez une ligne pour mettre le vrai montant.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
+        )
+        items.forEach { op ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onConfirm(op) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CategoryBadge(op.categoryEmoji, op.categoryColor)
+                Column(Modifier.weight(1f)) {
+                    Text(op.operation.note.ifBlank { op.categoryName ?: "Opération planifiée" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${op.operation.date.format(DayFormat)} · ${op.accountName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "≈ " + Money.format(op.operation.amountCents),
+                    fontStyle = FontStyle.Italic,
+                    color = kindColor(op.operation.kind),
+                )
+            }
+        }
+    }
+}
+
+/** Saisie du vrai montant, clavier ouvert, pré-rempli avec l'estimation. */
+@Composable
+private fun ConfirmAmountDialog(op: OperationDetails, onConfirm: (Long) -> Unit, onDismiss: () -> Unit) {
+    var text by remember(op.operation.id) { mutableStateOf(Money.toInput(op.operation.amountCents)) }
+    val focus = remember { FocusRequester() }
+    val cents = Money.parse(text)?.takeIf { it > 0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(op.operation.note.ifBlank { op.categoryName ?: "Montant" }) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Estimé : ${Money.format(op.operation.amountCents)} (moyenne des derniers montants), le ${op.operation.date.format(DayFormat)}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AmountField(text, { text = it }, "Montant reçu", Modifier.focusRequester(focus), isError = cents == null)
+            }
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        },
+        confirmButton = {
+            TextButton(onClick = { cents?.let(onConfirm) }, enabled = cents != null) {
+                Text(if (cents == op.operation.amountCents) "✓ Correct" else "Confirmer")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Plus tard") } },
+    )
 }
 
 @Composable

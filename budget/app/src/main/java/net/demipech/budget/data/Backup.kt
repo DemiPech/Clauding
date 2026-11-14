@@ -77,6 +77,7 @@ object BackupJson {
         put("dayRule", s.dayRule.name); put("ruleN", s.ruleN); put("ruleWeekday", s.ruleWeekday)
         put("adjust", s.adjust.name); put("planId", s.planId ?: JSONObject.NULL); put("planIndex", s.planIndex)
         put("planSize", s.planSize); put("deferred", s.deferred); put("toAccountId", s.toAccountId ?: JSONObject.NULL)
+        put("variableAmount", s.variableAmount)
     }
 
     private fun operationJson(o: Operation) = JSONObject().apply {
@@ -84,7 +85,7 @@ object BackupJson {
         put("kind", o.kind.name); put("amountCents", o.amountCents); put("date", o.date.toString())
         put("note", o.note); put("scheduledId", o.scheduledId ?: JSONObject.NULL); put("deferred", o.deferred)
         put("debitDate", o.debitDate.toString()); put("transferId", o.transferId ?: JSONObject.NULL)
-        put("status", o.status.name)
+        put("status", o.status.name); put("toConfirm", o.toConfirm)
     }
 
     // Lecture
@@ -144,6 +145,7 @@ object BackupJson {
         planSize = j.optInt("planSize", 0),
         deferred = j.optBoolean("deferred", false),
         toAccountId = j.longOrNull("toAccountId"),
+        variableAmount = j.optBoolean("variableAmount", false),
     )
 
     private fun operation(j: JSONObject): Operation {
@@ -161,6 +163,7 @@ object BackupJson {
             debitDate = if (j.has("debitDate")) j.date("debitDate") else date,
             transferId = j.longOrNull("transferId"),
             status = j.enum("status", ClearStatus.NONE),
+            toConfirm = j.optBoolean("toConfirm", false),
         )
     }
 }

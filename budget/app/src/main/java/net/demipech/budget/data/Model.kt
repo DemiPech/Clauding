@@ -142,6 +142,11 @@ data class ScheduledOperation(
     val deferred: Boolean = false,
     /** Virement planifié vers ce compte (accountId = compte débité, kind = EXPENSE). */
     val toAccountId: Long? = null,
+    /**
+     * Montant variable (ex. salaire) : chaque échéance est créée avec un montant estimé,
+     * à confirmer ; [amountCents] est l'estimation, moyenne des derniers montants confirmés.
+     */
+    val variableAmount: Boolean = false,
 )
 
 val ScheduledOperation.isTransfer: Boolean get() = toAccountId != null
@@ -205,6 +210,8 @@ data class Operation(
      */
     val transferId: Long? = null,
     val status: ClearStatus = ClearStatus.NONE,
+    /** Montant estimé d'une échéance à montant variable, en attente du vrai montant. */
+    val toConfirm: Boolean = false,
 )
 
 val Operation.isLocked: Boolean get() = status == ClearStatus.RECONCILED

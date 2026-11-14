@@ -503,6 +503,7 @@ fun DateAdjust.label(): String = when (this) {
 /** « Tous les mois, le dernier jour ouvré », « Tous les mois, le 5 (jour ouvré suivant si férié) »… */
 fun describeSchedule(s: ScheduledOperation): String {
     if (s.planId != null) return "Paiement ${s.planIndex}/${s.planSize}"
+    val variable = if (s.variableAmount) " · montant variable" else ""
     val rhythm = describeRhythm(s.frequency, s.interval)
     val yearly = s.frequency == Frequency.YEARLY
     val ofMonth = if (yearly) " de " + s.startDate.format(DateTimeFormatter.ofPattern("MMMM", Locale.FRENCH)) else ""
@@ -520,7 +521,7 @@ fun describeSchedule(s: ScheduledOperation): String {
         DateAdjust.NEXT_BUSINESS_DAY -> " (jour ouvré suivant si week-end ou férié)"
         DateAdjust.PREVIOUS_BUSINESS_DAY -> " (jour ouvré précédent si week-end ou férié)"
     }
-    return rhythm + rule + adjust
+    return rhythm + rule + adjust + variable
 }
 
 fun DebitDay.label(): String = when (this) {

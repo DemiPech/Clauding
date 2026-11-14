@@ -1,5 +1,6 @@
 package net.demipech.budget.ui.operations
 
+import androidx.compose.ui.text.font.FontStyle
 import net.demipech.budget.data.ClearStatus
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.isTransfer
@@ -149,7 +150,8 @@ fun OperationLine(
         }
         ClearMark(op.operation.status)
         Text(
-            Money.format(op.operation.amountCents),
+            (if (op.operation.toConfirm) "≈ " else "") + Money.format(op.operation.amountCents),
+            fontStyle = if (op.operation.toConfirm) FontStyle.Italic else FontStyle.Normal,
             color = if (transfer && !accountView) MaterialTheme.colorScheme.onSurfaceVariant else kindColor(op.operation.kind),
             style = MaterialTheme.typography.bodyLarge,
         )
@@ -201,6 +203,13 @@ fun OperationCardRow(op: OperationDetails, onClick: () -> Unit, modifier: Modifi
                 Text(
                     Money.format(op.operation.amountCents),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            } else if (op.operation.toConfirm) {
+                Text(
+                    "≈ " + Money.formatSigned(op.operation.signedCents),
+                    fontStyle = FontStyle.Italic,
+                    color = kindColor(op.operation.kind),
                     style = MaterialTheme.typography.bodyLarge,
                 )
             } else {

@@ -195,6 +195,20 @@ interface OperationDao {
     @Query("SELECT * FROM operations")
     suspend fun getAll(): List<Operation>
 
+    /** Opérations au montant estimé, en attente de confirmation. */
+    @Query(OPERATION_DETAILS + " WHERE o.toConfirm = 1 ORDER BY o.date, o.id")
+    fun observeToConfirm(): Flow<List<OperationDetails>>
+
+    /** Derniers montants confirmés créés par une planification (le plus récent d'abord). */
+    @Query(
+        """
+        SELECT amountCents FROM operations
+        WHERE scheduledId = :scheduledId AND toConfirm = 0
+        ORDER BY date DESC, id DESC LIMIT :limit
+        """
+    )
+    suspend fun lastConfirmedAmounts(scheduledId: Long, limit: Int): List<Long>
+
     @Query("DELETE FROM operations")
     suspend fun deleteAll()
 

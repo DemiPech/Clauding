@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.domain.Estimates
 import net.demipech.budget.domain.Fallback
 import net.demipech.budget.domain.Recurrence
 import java.time.LocalDate
@@ -154,7 +155,30 @@ class BudgetRepository(private val db: BudgetDatabase) {
     suspend fun operation(id: Long): Operation? = operations.get(id)
     suspend fun save(operation: Operation): Long {
         val op = withDebitDate(operation, accounts.get(operation.accountId))
-        return if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+        val id = if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+        op.scheduledId?.let { refreshEstimate(it) }
+        return id
+    }
+
+    // Montants variables
+    fun toConfirm(): Flow<List<OperationDetails>> = operations.observeToConfirm()
+
+    /** Fixe le vrai montant d'une opération estimée et met à jour l'estimation suivante. */
+    suspend fun confirmAmount(operation: Operation, amountCents: Long) {
+        db.withTransaction {
+            operations.update(operation.copy(amountCents = amountCents, toConfirm = false))
+            operation.scheduledId?.let { refreshEstimate(it) }
+        }
+    }
+
+    /**
+     * Montant variable : l'estimation de la planification devient la moyenne des
+     * 3 derniers montants confirmés (prévisions et échéances suivantes s'en servent).
+     */
+    private suspend fun refreshEstimate(scheduledId: Long) {
+        val item = scheduled.get(scheduledId)?.takeIf { it.variableAmount } ?: return
+        val estimate = Estimates.average(operations.lastConfirmedAmounts(scheduledId, Estimates.SAMPLE)) ?: return
+        if (estimate != item.amountCents) scheduled.update(item.copy(amountCents = estimate))
     }
 
     // Virements
@@ -300,6 +324,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
                         note = item.note,
                         scheduledId = item.id,
                         deferred = item.deferred,
+                        toConfirm = item.variableAmount,
                     ),
                     account,
                 )

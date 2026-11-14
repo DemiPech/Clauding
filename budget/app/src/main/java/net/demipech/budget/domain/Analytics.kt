@@ -129,3 +129,18 @@ object Fallback {
         return series
     }
 }
+
+object Estimates {
+    /** Combien de montants confirmés servent à estimer un montant variable. */
+    const val SAMPLE = 3
+
+    /**
+     * Moyenne arrondie au centime des derniers montants confirmés (les plus récents
+     * en premier), null s'il n'y en a aucun.
+     */
+    fun average(recentAmounts: List<Long>): Long? {
+        val sample = recentAmounts.take(SAMPLE)
+        if (sample.isEmpty()) return null
+        return (sample.sum() * 2 + sample.size) / (sample.size * 2)
+    }
+}

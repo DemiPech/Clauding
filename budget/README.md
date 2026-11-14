@@ -115,6 +115,13 @@ Quatre onglets :
     comptes, et en sortie ou entrée colorée dans la page d'un compte.
   - Un virement planifié vers un compte supprimé est supprimé avec lui ; un virement passé garde
     son autre côté comme simple opération.
+- **Montant variable** (salaire…) : case « Montant variable » d'une opération planifiée. Chaque
+  échéance est créée avec un montant estimé (« ≈ 2 482,61 € » en italique, compté dans les
+  soldes) et apparaît dans la carte **À confirmer** de l'accueil : un appui ouvre la saisie du
+  montant reçu, clavier ouvert, pré-rempli avec l'estimation (« ✓ Correct » s'il est juste).
+  L'estimation devient la **moyenne des 3 derniers montants confirmés**, et sert aux échéances
+  suivantes et au solde prévisionnel. Modifier l'opération depuis son formulaire la confirme
+  aussi.
 - **Compte de secours** (réglage du compte) : « Si le solde ne suffit pas pour un paiement
   planifié, compléter depuis » un autre compte. À l'échéance d'une dépense planifiée, l'app
   regarde le solde du compte à cette date : s'il ne suffit pas, la dépense est enregistrée en
@@ -188,9 +195,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 9. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 10. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage ; 7 → 8 les budgets ; 8 → 9 le compte de secours.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage ; 7 → 8 les budgets ; 8 → 9 le compte de secours ; 9 → 10 les montants variables.
 
 ## Pistes
 

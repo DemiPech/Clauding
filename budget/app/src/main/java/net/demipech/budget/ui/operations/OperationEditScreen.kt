@@ -194,6 +194,9 @@ class OperationEditViewModel(
     /** Opération rapprochée : verrouillée tant qu'on ne la déverrouille pas. */
     val isLocked get() = original?.isLocked == true
 
+    /** Échéance à montant variable pas encore confirmée : enregistrer la confirme. */
+    val isEstimated get() = original?.toConfirm == true
+
     fun unlock() = viewModelScope.launch {
         val op = original ?: return@launch
         repo.unlock(op)
@@ -270,6 +273,13 @@ fun OperationEditScreen(
                         Text("Déverrouiller pour la modifier")
                     }
                 }
+            }
+            if (vm.isEstimated) {
+                Text(
+                    "≈ Montant estimé : corrigez-le si besoin, enregistrer le confirme.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             EntryTypeSelector(vm.type, vm::changeType)
             AmountField(

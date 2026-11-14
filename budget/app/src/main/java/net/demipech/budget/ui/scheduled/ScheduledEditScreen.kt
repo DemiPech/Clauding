@@ -57,6 +57,8 @@ import net.demipech.budget.ui.components.weekdayName
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.components.unit
 import net.demipech.budget.ui.repository
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.clickable
 import net.demipech.budget.data.isTransfer
 import net.demipech.budget.ui.components.kind
 import net.demipech.budget.ui.components.EntryTypeSelector
@@ -77,6 +79,8 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
     var categoryId by mutableStateOf<Long?>(null)
     var note by mutableStateOf("")
     var deferred by mutableStateOf(true)
+    /** Montant variable (salaire…) : à confirmer à chaque échéance. */
+    var variableAmount by mutableStateOf(false)
     var date: LocalDate by mutableStateOf(LocalDate.now())
     var frequency by mutableStateOf(Frequency.MONTHLY)
     var interval by mutableStateOf("1")
@@ -110,6 +114,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
                 categoryId = s.categoryId
                 note = s.note
                 deferred = s.deferred
+                variableAmount = s.variableAmount
                 frequency = s.frequency
                 interval = s.interval.toString()
                 dayRule = s.dayRule
@@ -170,6 +175,7 @@ class ScheduledEditViewModel(private val repo: BudgetRepository, private val id:
             ruleWeekday = ruleWeekday,
             adjust = if (Recurrence.usesAdjust(frequency, rule)) adjust else DateAdjust.NONE,
             deferred = deferred && !isTransfer,
+            variableAmount = variableAmount && !isTransfer,
             toAccountId = if (isTransfer) toAccountId ?: return null else null,
         )
     }
@@ -231,9 +237,26 @@ fun ScheduledEditScreen(id: Long?, onDone: () -> Unit) {
             AmountField(
                 value = vm.amount,
                 onValueChange = { vm.amount = it },
-                label = "Montant",
+                label = if (vm.variableAmount && !vm.isTransfer) "Montant estimé" else "Montant",
                 isError = vm.amount.isNotEmpty() && vm.amountCents == null,
             )
+            if (!vm.isTransfer) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { vm.variableAmount = !vm.variableAmount },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Montant variable", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Chaque échéance est créée avec un montant estimé, à confirmer sur l'accueil. " +
+                                "L'estimation devient la moyenne des 3 derniers montants confirmés.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = vm.variableAmount, onCheckedChange = { vm.variableAmount = it })
+                }
+            }
             Selector(
                 label = if (vm.isTransfer) "Depuis le compte" else "Compte",
                 options = accountList,
