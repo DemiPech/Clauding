@@ -80,3 +80,52 @@ object Analytics {
             .map { (name, ops) -> name to ops.sumOf { it.operation.amountCents } }
             .sortedByDescending { it.second }
 }
+
+/**
+ * Un mouvement prévu sur un compte. [coverable] = dépense planifiée que le compte
+ * de secours complète si le solde ne suffit pas.
+ */
+data class PlannedMove(val date: LocalDate, val accountId: Long, val cents: Long, val coverable: Boolean = false)
+
+object Fallback {
+    /**
+     * Part d'un paiement de [amountCents] qui doit venir du compte de secours quand
+     * le compte a [balanceCents] : rien si le solde suffit, tout s'il est à zéro ou
+     * négatif, sinon le manque (20 € avec 15 € de solde : 5 €).
+     */
+    fun shortfall(balanceCents: Long, amountCents: Long): Long =
+        (amountCents - balanceCents.coerceAtLeast(0)).coerceIn(0, amountCents)
+
+    /**
+     * Solde jour par jour de chaque compte, de [from] à [from] + [days], en appliquant
+     * les mouvements prévus et les compléments automatiques ([fallbackOf] : compte →
+     * compte de secours).
+     */
+    fun simulate(
+        start: Map<Long, Long>,
+        moves: List<PlannedMove>,
+        fallbackOf: Map<Long, Long>,
+        from: LocalDate,
+        days: Int,
+    ): Map<Long, List<BalancePoint>> {
+        val balances = start.toMutableMap()
+        val series = start.keys.associateWith { mutableListOf<BalancePoint>() }
+        val byDay = moves.groupBy { if (it.date.isBefore(from)) from else it.date }
+        for (offset in 0..days) {
+            val day = from.plusDays(offset.toLong())
+            byDay[day].orEmpty().forEach { move ->
+                val balance = balances[move.accountId] ?: 0
+                val backup = fallbackOf[move.accountId]?.takeIf { it != move.accountId && it in balances }
+                if (move.coverable && move.cents < 0 && backup != null) {
+                    val missing = shortfall(balance, -move.cents)
+                    balances[move.accountId] = balance + move.cents + missing
+                    balances[backup] = (balances[backup] ?: 0) - missing
+                } else {
+                    balances[move.accountId] = balance + move.cents
+                }
+            }
+            series.forEach { (id, points) -> points += BalancePoint(day, balances[id] ?: 0) }
+        }
+        return series
+    }
+}

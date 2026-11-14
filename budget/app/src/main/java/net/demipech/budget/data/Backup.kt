@@ -61,6 +61,7 @@ object BackupJson {
         put("id", a.id); put("name", a.name); put("initialBalanceCents", a.initialBalanceCents)
         put("color", a.color); put("icon", a.icon); put("deferredDebit", a.deferredDebit)
         put("cutoffDay", a.cutoffDay); put("debitDay", a.debitDay.name); put("debitDayOfMonth", a.debitDayOfMonth)
+        put("fallbackAccountId", a.fallbackAccountId ?: JSONObject.NULL)
     }
 
     private fun categoryJson(c: Category) = JSONObject().apply {
@@ -110,6 +111,7 @@ object BackupJson {
         cutoffDay = j.optInt("cutoffDay", 31),
         debitDay = j.enum("debitDay", DebitDay.LAST_DAY),
         debitDayOfMonth = j.optInt("debitDayOfMonth", 5),
+        fallbackAccountId = j.longOrNull("fallbackAccountId"),
     )
 
     private fun category(j: JSONObject) = Category(

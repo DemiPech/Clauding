@@ -57,6 +57,11 @@ data class Account(
     val debitDay: DebitDay = DebitDay.LAST_DAY,
     /** Jour du mois pour DebitDay.DAY_OF_MONTH. */
     val debitDayOfMonth: Int = 5,
+    /**
+     * Compte de secours : quand le solde ne suffit pas pour une dépense planifiée,
+     * le manque est viré automatiquement depuis ce compte.
+     */
+    val fallbackAccountId: Long? = null,
 )
 
 const val DEFAULT_ACCOUNT_COLOR = 0xFF1E88E5

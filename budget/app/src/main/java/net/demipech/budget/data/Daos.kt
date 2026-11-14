@@ -62,6 +62,23 @@ interface AccountDao {
     @Query("SELECT * FROM accounts")
     suspend fun getAll(): List<Account>
 
+    /** Solde du compte au [day] : opérations jusqu'à ce jour, dépenses différées à leur débit. */
+    @Query(
+        """
+        SELECT a.initialBalanceCents + COALESCE((
+            SELECT SUM(CASE WHEN o.kind = 'INCOME' THEN o.amountCents ELSE -o.amountCents END)
+            FROM operations o
+            WHERE o.accountId = a.id AND o.date <= :day
+                AND NOT (a.deferredDebit = 1 AND o.deferred = 1 AND o.kind = 'EXPENSE' AND o.debitDate > :day)
+        ), 0)
+        FROM accounts a WHERE a.id = :accountId
+        """
+    )
+    suspend fun balanceAt(accountId: Long, day: LocalDate): Long
+
+    @Query("UPDATE accounts SET fallbackAccountId = NULL WHERE fallbackAccountId = :accountId")
+    suspend fun clearFallbackTo(accountId: Long)
+
     @Insert
     suspend fun insertAll(accounts: List<Account>)
 

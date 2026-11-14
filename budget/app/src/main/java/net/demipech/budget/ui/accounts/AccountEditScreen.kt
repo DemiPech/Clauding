@@ -47,6 +47,10 @@ import net.demipech.budget.ui.components.EmojiPicker
 import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.FormTopBar
 import net.demipech.budget.ui.repository
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 
 class AccountEditViewModel(private val repo: BudgetRepository, private val id: Long?) : ViewModel() {
     var name by mutableStateOf("")
@@ -57,6 +61,9 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
     var cutoffDay by mutableStateOf("20")
     var debitDay by mutableStateOf(DebitDay.LAST_DAY)
     var debitDayOfMonth by mutableStateOf("5")
+    var fallbackAccountId by mutableStateOf<Long?>(null)
+    val accounts: StateFlow<List<Account>> =
+        repo.accounts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private var original: Account? = null
 
     init {
@@ -71,6 +78,7 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
                 cutoffDay = it.cutoffDay.toString()
                 debitDay = it.debitDay
                 debitDayOfMonth = it.debitDayOfMonth.toString()
+                fallbackAccountId = it.fallbackAccountId
             }
         }
     }
@@ -105,6 +113,7 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
                 cutoffDay = cutoffValue ?: 31,
                 debitDay = debitDay,
                 debitDayOfMonth = debitDayValue ?: 5,
+                fallbackAccountId = fallbackAccountId?.takeIf { it != id },
             )
         )
         onDone()
@@ -121,6 +130,7 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
     val repo = repository()
     val vm = viewModel(key = "account-$id") { AccountEditViewModel(repo, id) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -157,6 +167,28 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
             Text("Couleur", style = MaterialTheme.typography.titleSmall)
             ColorPicker(vm.color, { vm.color = it })
             HorizontalDivider()
+            val others = accounts.filter { it.id != id }
+            if (others.isNotEmpty()) {
+                Text("Compte de secours", style = MaterialTheme.typography.titleSmall)
+                Selector(
+                    label = "Si le solde ne suffit pas pour un paiement planifié",
+                    options = listOf<Account?>(null) + others,
+                    selected = others.find { it.id == vm.fallbackAccountId },
+                    optionLabel = { it?.let { a -> "Compléter depuis ${a.icon} ${a.name}" } ?: "Ne rien faire (le solde peut devenir négatif)" },
+                    onSelect = { vm.fallbackAccountId = it?.id },
+                    emptyLabel = "Ne rien faire (le solde peut devenir négatif)",
+                )
+                others.find { it.id == vm.fallbackAccountId }?.let { backup ->
+                    Text(
+                        "À l'échéance d'une dépense planifiée, le manque est viré automatiquement depuis " +
+                            "${backup.name}. Exemple : paiement de 20 € avec 15 € sur ce compte → 15 € pris ici, " +
+                            "5 € virés depuis ${backup.name}. Avec un solde à zéro, tout vient de ${backup.name}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                HorizontalDivider()
+            }
             Row(
                 Modifier.fillMaxWidth().clickable { vm.deferredDebit = !vm.deferredDebit },
                 verticalAlignment = Alignment.CenterVertically,

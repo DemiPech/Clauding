@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.demipech.budget.domain.DeferredDebit
+import net.demipech.budget.domain.Fallback
 import net.demipech.budget.domain.Recurrence
 import java.time.LocalDate
 
@@ -120,6 +121,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
     suspend fun delete(account: Account) = undoable("Compte « ${account.name} » supprimé") {
         db.withTransaction {
             scheduled.deleteTransfersTo(account.id)
+            accounts.clearFallbackTo(account.id)
             accounts.delete(account)
         }
     }
@@ -272,41 +274,52 @@ class BudgetRepository(private val db: BudgetDatabase) {
      */
     suspend fun materializeDue(today: LocalDate = LocalDate.now()): Int = materializeLock.withLock {
         db.withTransaction {
-            var created = 0
             val accountsById = accounts.getAll().associateBy { it.id }
-            for (item in scheduled.getAll()) {
-                val dates = Recurrence.dueDates(item, today)
-                if (dates.isEmpty()) continue
+            // Toutes les échéances dues, dans l'ordre des dates : le solde vu par le compte
+            // de secours à une date tient compte des échéances précédentes.
+            val due = scheduled.getAll()
+                .flatMap { item -> Recurrence.dueDates(item, today).map { item to it } }
+                .sortedWith(compareBy({ it.second }, { it.first.id }))
+            for ((item, date) in due) {
                 val target = item.toAccountId
                 if (target != null) {
                     // Virement planifié : les deux côtés, si le compte cible existe encore.
                     if (target in accountsById) {
-                        dates.forEach { date ->
-                            writeTransfer(emptyList(), item.accountId, target, item.amountCents, date, item.note, item.id)
-                        }
+                        writeTransfer(emptyList(), item.accountId, target, item.amountCents, date, item.note, item.id)
                     }
-                    scheduled.update(item.copy(generatedCount = item.generatedCount + dates.size))
-                    created += dates.size
                     continue
                 }
-                operations.insertAll(
-                    dates.map { date ->
-                        Operation(
-                            accountId = item.accountId,
-                            categoryId = item.categoryId,
-                            kind = item.kind,
-                            amountCents = item.amountCents,
-                            date = date,
-                            note = item.note,
-                            scheduledId = item.id,
-                            deferred = item.deferred,
-                        ).let { withDebitDate(it, accountsById[item.accountId]) }
-                    }
+                val account = accountsById[item.accountId]
+                val op = withDebitDate(
+                    Operation(
+                        accountId = item.accountId,
+                        categoryId = item.categoryId,
+                        kind = item.kind,
+                        amountCents = item.amountCents,
+                        date = date,
+                        note = item.note,
+                        scheduledId = item.id,
+                        deferred = item.deferred,
+                    ),
+                    account,
                 )
-                scheduled.update(item.copy(generatedCount = item.generatedCount + dates.size))
-                created += dates.size
+                // Compte de secours : si le solde ne suffit pas, le manque arrive par virement.
+                val backup = account?.fallbackAccountId?.takeIf { it != item.accountId && it in accountsById }
+                if (backup != null && op.kind == Kind.EXPENSE && op.debitDate == op.date) {
+                    val missing = Fallback.shortfall(accounts.balanceAt(item.accountId, date), op.amountCents)
+                    if (missing > 0) {
+                        writeTransfer(
+                            emptyList(), backup, item.accountId, missing, date,
+                            "Complément automatique · " + item.note.ifBlank { "paiement planifié" }, scheduledId = null,
+                        )
+                    }
+                }
+                operations.insert(op)
             }
-            created
+            due.groupingBy { it.first }.eachCount().forEach { (item, count) ->
+                scheduled.update(item.copy(generatedCount = item.generatedCount + count))
+            }
+            due.size
         }
     }
 }

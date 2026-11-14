@@ -36,7 +36,10 @@ import net.demipech.budget.data.BudgetRepository
 import net.demipech.budget.data.DeferredDebitTotal
 import net.demipech.budget.data.ScheduledDetails
 import net.demipech.budget.data.title
-import net.demipech.budget.domain.Analytics
+import net.demipech.budget.data.Kind
+import net.demipech.budget.domain.BalancePoint
+import net.demipech.budget.domain.Fallback
+import net.demipech.budget.domain.PlannedMove
 import net.demipech.budget.domain.Forecast
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.components.AmountText
@@ -91,8 +94,37 @@ fun ForecastScreen(onBack: () -> Unit) {
                 .map { Movement(it.debitDate, "💳 Débit différé", it.accountName, -it.cents) }
             (planned + cards).sortedBy { it.date }
         }
-        val points = remember(start, movements, days) {
-            Analytics.projection(start, movements.map { it.date to it.cents }, today, days)
+        // Simulation compte par compte, pour appliquer les compléments depuis les comptes de secours.
+        val points = remember(list, scheduled, debits, accountId, days) {
+            val moves = Forecast.upcoming(scheduled, today, end).flatMap { u ->
+                val s = u.details.scheduled
+                val target = s.toAccountId
+                when {
+                    target != null -> listOf(
+                        PlannedMove(u.date, s.accountId, -s.amountCents),
+                        PlannedMove(u.date, target, s.amountCents),
+                    )
+                    s.kind == Kind.INCOME -> listOf(PlannedMove(u.date, s.accountId, s.amountCents))
+                    else -> {
+                        val card = list.find { it.account.id == s.accountId }?.account?.deferredDebit == true && s.deferred
+                        listOf(PlannedMove(u.date, s.accountId, -s.amountCents, coverable = !card))
+                    }
+                }
+            } + debits.filter { !it.debitDate.isAfter(end) }.map { PlannedMove(it.debitDate, it.accountId, -it.cents) }
+            val series = Fallback.simulate(
+                start = list.associate { it.account.id to it.balanceCents },
+                moves = moves,
+                fallbackOf = list.mapNotNull { a -> a.account.fallbackAccountId?.let { a.account.id to it } }.toMap(),
+                from = today,
+                days = days,
+            )
+            if (accountId != null) {
+                series[accountId].orEmpty()
+            } else {
+                (0..days).map { i ->
+                    BalancePoint(today.plusDays(i.toLong()), series.values.sumOf { it.getOrNull(i)?.cents ?: 0 })
+                }
+            }
         }
         val lowest = points.minByOrNull { it.cents }
         val firstNegative = points.firstOrNull { it.cents < 0 }
@@ -142,8 +174,8 @@ fun ForecastScreen(onBack: () -> Unit) {
                         )
                     }
                     Text(
-                        "Compte les opérations planifiées, virements et débits différés à venir ; pas les dépenses " +
-                            "courantes non planifiées.",
+                        "Compte les opérations planifiées, virements, débits différés et compléments " +
+                            "automatiques depuis les comptes de secours ; pas les dépenses courantes non planifiées.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
