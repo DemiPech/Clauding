@@ -92,7 +92,7 @@ class InstallmentEditViewModel(
     var categoryId by mutableStateOf(preset.categoryId)
     var total by mutableStateOf(preset.amountCents?.let(Money::toInput).orEmpty())
         private set
-    var count by mutableStateOf("3")
+    var count by mutableStateOf("4")
         private set
     var firstDate: LocalDate by mutableStateOf(LocalDate.now())
         private set

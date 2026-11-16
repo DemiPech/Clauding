@@ -43,6 +43,8 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.installments.InstallmentPreset
 import net.demipech.budget.ui.repository
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import net.demipech.budget.ui.components.CategoryGrid
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
@@ -291,6 +293,17 @@ fun OperationEditScreen(
             )
             // Nouvelle opération : le clavier s'ouvre directement sur le montant.
             LaunchedEffect(Unit) { if (vm.isNew && copyOf == null) runCatching { amountFocus.requestFocus() } }
+            if (vm.isNew && vm.type == EntryType.EXPENSE) {
+                // Juste sous le montant, pour rester visible au-dessus du clavier.
+                // Le 1er paiement tout de suite, les suivants en échéancier.
+                TextButton(
+                    onClick = {
+                        onSplit(InstallmentPreset(vm.amountCents, vm.accountId, vm.categoryId, vm.note.trim()))
+                    },
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    modifier = Modifier.height(32.dp),
+                ) { Text("Payer en plusieurs fois…") }
+            }
             OutlinedTextField(
                 value = vm.note,
                 onValueChange = vm::changeNote,
@@ -342,15 +355,6 @@ fun OperationEditScreen(
             DateField("Date", vm.date, { vm.date = it })
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave && !vm.isLocked, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")
-            }
-            if (vm.isNew && !vm.isTransfer) {
-                // Le 1er paiement tout de suite, les suivants en échéancier.
-                TextButton(
-                    onClick = {
-                        onSplit(InstallmentPreset(vm.amountCents, vm.accountId, vm.categoryId, vm.note.trim()))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Payer en plusieurs fois…") }
             }
         }
     }
