@@ -150,6 +150,8 @@ Quatre onglets :
 - **Paiement en plusieurs fois** (Plus › Opérations planifiées › Planifier, ou « Payer en
   plusieurs fois… » sous le formulaire d'une nouvelle opération, qui reprend montant, compte,
   catégorie et libellé) :
+  - compte : la case « Compte par défaut pour les paiements en plusieurs fois » le
+    pré-sélectionne pour les suivants (ex. PayPal) ;
   - montant total, nombre de paiements (4 par défaut), date du 1er paiement (aujourd'hui par défaut) puis
     date du paiement suivant et rythme (tous les N jours, semaines ou mois) ;
   - l'échéancier est calculé (les centimes en trop vont sur le 1er paiement) puis **chaque

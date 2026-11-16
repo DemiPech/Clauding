@@ -59,6 +59,9 @@ import net.demipech.budget.ui.components.KindSelector
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.components.unit
 import net.demipech.budget.ui.repository
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.platform.LocalContext
 import net.demipech.budget.domain.DeferredDebit
 import net.demipech.budget.ui.components.DeferredSwitch
 import net.demipech.budget.ui.theme.expenseColor
@@ -236,7 +239,13 @@ class InstallmentEditViewModel(
 @Composable
 fun InstallmentEditScreen(planId: Long?, preset: InstallmentPreset, onDone: () -> Unit) {
     val repo = repository()
-    val vm = viewModel(key = "installments-$planId-$preset") { InstallmentEditViewModel(repo, planId, preset) }
+    val context = LocalContext.current
+    var defaultAccountId by remember { mutableStateOf(InstallmentDefaults.accountId(context)) }
+    val vm = viewModel(key = "installments-$planId-$preset") {
+        // Nouveau paiement : le compte par défaut des paiements en plusieurs fois l'emporte.
+        val start = if (planId == null) preset.copy(accountId = defaultAccountId ?: preset.accountId) else preset
+        InstallmentEditViewModel(repo, planId, start)
+    }
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
@@ -281,6 +290,24 @@ fun InstallmentEditScreen(planId: Long?, preset: InstallmentPreset, onDone: () -
                 optionLabel = { "${it.icon} ${it.name}" },
                 onSelect = { vm.accountId = it.id },
             )
+            val isDefault = vm.accountId != null && vm.accountId == defaultAccountId
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val newDefault = if (isDefault) null else vm.accountId
+                        InstallmentDefaults.setAccountId(context, newDefault)
+                        defaultAccountId = newDefault
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = isDefault, onCheckedChange = null)
+                Text(
+                    "Compte par défaut pour les paiements en plusieurs fois",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
             CategorySelector(categories, vm.kind, vm.categoryId, { vm.categoryId = it })
             accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
                 DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.rows.firstOrNull()?.date ?: vm.firstDate, account))
