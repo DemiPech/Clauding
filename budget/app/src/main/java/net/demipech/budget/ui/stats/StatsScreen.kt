@@ -55,7 +55,7 @@ import net.demipech.budget.domain.MonthTotals
 import net.demipech.budget.ui.components.BudgetProgress
 import net.demipech.budget.ui.components.CategoryBadge
 import net.demipech.budget.ui.components.Donut
-import net.demipech.budget.ui.components.MonthSwitcher
+import net.demipech.budget.ui.components.MonthBar
 import net.demipech.budget.ui.components.MonthlyBars
 import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.Segmented
@@ -102,11 +102,14 @@ fun StatsScreen(onBudgets: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { MonthSwitcher(month, { vm.month.value = it }) },
-                actions = { TextButton(onClick = onBudgets) { Text("Budgets") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
+            Column {
+                TopAppBar(
+                    title = { Text("Statistiques") },
+                    actions = { TextButton(onClick = onBudgets) { Text("Budgets") } },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                )
+                MonthBar(month) { vm.month.value = it }
+            }
         },
     ) { padding ->
         val list = operations ?: return@Scaffold

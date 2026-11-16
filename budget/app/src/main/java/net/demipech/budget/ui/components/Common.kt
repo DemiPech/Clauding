@@ -401,6 +401,19 @@ fun CategoryBadge(emoji: String?, color: Long?, modifier: Modifier = Modifier, s
     }
 }
 
+/** Ligne pleine largeur sous la barre du haut, avec le sélecteur de mois centré. */
+@Composable
+fun MonthBar(month: YearMonth, onMonthChange: (YearMonth) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        MonthSwitcher(month, onMonthChange)
+    }
+}
+
 /** « ‹ Novembre 2026 › » ; toucher le mois revient au mois courant. */
 @Composable
 fun MonthSwitcher(month: YearMonth, onMonthChange: (YearMonth) -> Unit, modifier: Modifier = Modifier) {
@@ -411,6 +424,8 @@ fun MonthSwitcher(month: YearMonth, onMonthChange: (YearMonth) -> Unit, modifier
         Text(
             month.label(),
             style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.clickable { onMonthChange(YearMonth.now()) },
         )
         IconButton(onClick = { onMonthChange(month.plusMonths(1)) }) {

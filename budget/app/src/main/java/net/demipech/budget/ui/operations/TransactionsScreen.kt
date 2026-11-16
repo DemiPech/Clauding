@@ -80,7 +80,7 @@ import net.demipech.budget.data.title
 import net.demipech.budget.domain.Forecast
 import net.demipech.budget.domain.Money
 import net.demipech.budget.ui.components.EmptyState
-import net.demipech.budget.ui.components.MonthSwitcher
+import net.demipech.budget.ui.components.MonthBar
 import net.demipech.budget.ui.components.ShortDayFormat
 import net.demipech.budget.ui.components.TotalsRow
 import net.demipech.budget.ui.repository
@@ -188,18 +188,28 @@ fun TransactionsScreen(
 
     Scaffold(
         topBar = {
+          Column {
             TopAppBar(
                 title = {
-                    Column {
-                        account?.let {
+                    val acc = account
+                    if (acc == null) {
+                        Text("Opérations", maxLines = 1)
+                    } else {
+                        Column {
                             Text(
-                                "${it.account.icon} ${it.account.name} · ${Money.format(it.balanceCents)}" +
-                                    if (it.pendingCents != 0L) " · encours ${Money.format(it.pendingCents)}" else "",
+                                "${acc.account.icon} ${acc.account.name}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                Money.format(acc.balanceCents) +
+                                    if (acc.pendingCents != 0L) " · encours ${Money.format(acc.pendingCents)}" else "",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        MonthSwitcher(month, { vm.month.value = it })
                     }
                 },
                 navigationIcon = {
@@ -222,6 +232,8 @@ fun TransactionsScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
+            MonthBar(month) { vm.month.value = it }
+          }
         },
         floatingActionButton = {
             FloatingActionButton(
