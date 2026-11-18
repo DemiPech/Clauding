@@ -50,6 +50,11 @@ import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.Segmented
 import net.demipech.budget.ui.components.Selector
 import net.demipech.budget.ui.repository
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Switch
+import java.time.YearMonth
+import net.demipech.budget.domain.Estimation
+import net.demipech.budget.data.OperationDetails
 import net.demipech.budget.ui.theme.amountColor
 import net.demipech.budget.ui.theme.expenseColor
 import java.time.LocalDate
@@ -62,6 +67,14 @@ class ForecastViewModel(repo: BudgetRepository) : ViewModel() {
         repo.accountsWithBalance().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val scheduled: StateFlow<List<ScheduledDetails>> =
         repo.scheduled().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** 12 mois terminés et mois en cours : pour estimer les dépenses courantes de chaque compte. */
+    val history: StateFlow<List<OperationDetails>> =
+        YearMonth.from(today).let { m -> repo.operationsBetween(m.minusMonths(12).atDay(1), m.minusMonths(1).atEndOfMonth()) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val currentMonth: StateFlow<List<OperationDetails>> =
+        YearMonth.from(today).let { m -> repo.operationsBetween(m.atDay(1), m.atEndOfMonth()) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val debits: StateFlow<List<DeferredDebitTotal>> =
         repo.deferredDebits(today.plusDays(1), today.plusDays(MAX_DAYS.toLong()))
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -78,6 +91,9 @@ fun ForecastScreen(onBack: () -> Unit) {
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val scheduled by vm.scheduled.collectAsStateWithLifecycle()
     val debits by vm.debits.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
+    val currentMonth by vm.currentMonth.collectAsStateWithLifecycle()
+    var withVariable by rememberSaveable { mutableStateOf(true) }
     var accountId by rememberSaveable { mutableStateOf<Long?>(null) }
     var days by rememberSaveable { mutableStateOf(90) }
 
@@ -94,8 +110,21 @@ fun ForecastScreen(onBack: () -> Unit) {
                 .map { Movement(it.debitDate, "💳 Débit différé", it.accountName, -it.cents) }
             (planned + cards).sortedBy { it.date }
         }
+        // Dépenses courantes (non planifiées) estimées par compte : moyenne des 6 derniers mois terminés.
+        val variableByAccount = remember(history, currentMonth, list) {
+            val months = Estimation.window(history, YearMonth.from(today), 6)
+            list.associate { a ->
+                val id = a.account.id
+                val monthly = Estimation.estimate(history.filter { it.operation.accountId == id }, months).variableCents
+                val spent = currentMonth.filter {
+                    it.operation.accountId == id && Estimation.counted(it) && !Estimation.isFixed(it)
+                }.sumOf { it.operation.amountCents }
+                id to (monthly to spent)
+            }
+        }
+        val variableMonthly = variableByAccount.filterKeys { accountId == null || it == accountId }.values.sumOf { it.first }
         // Simulation compte par compte, pour appliquer les compléments depuis les comptes de secours.
-        val points = remember(list, scheduled, debits, accountId, days) {
+        val points = remember(list, scheduled, debits, accountId, days, withVariable, variableByAccount) {
             val moves = Forecast.upcoming(scheduled, today, end).flatMap { u ->
                 val s = u.details.scheduled
                 val target = s.toAccountId
@@ -110,7 +139,12 @@ fun ForecastScreen(onBack: () -> Unit) {
                         listOf(PlannedMove(u.date, s.accountId, -s.amountCents, coverable = !card))
                     }
                 }
-            } + debits.filter { !it.debitDate.isAfter(end) }.map { PlannedMove(it.debitDate, it.accountId, -it.cents) }
+            } + debits.filter { !it.debitDate.isAfter(end) }.map { PlannedMove(it.debitDate, it.accountId, -it.cents) } +
+                if (withVariable) {
+                    variableByAccount.flatMap { (id, values) ->
+                        Estimation.variableMoves(id, values.first, values.second, today, end)
+                    }
+                } else emptyList()
             val series = Fallback.simulate(
                 start = list.associate { it.account.id to it.balanceCents },
                 moves = moves,
@@ -164,6 +198,22 @@ fun ForecastScreen(onBack: () -> Unit) {
                             Text(Money.format(last), style = MaterialTheme.typography.titleMedium, color = amountColor(last))
                         }
                     }
+                    Row(
+                        Modifier.fillMaxWidth().clickable { withVariable = !withVariable },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Dépenses courantes estimées", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (variableMonthly > 0) "≈ ${Money.format(variableMonthly)} par mois (courses, sorties…), " +
+                                    "réparties jour par jour ; moyenne des 6 derniers mois."
+                                else "Pas encore assez d'historique pour les estimer.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = withVariable, onCheckedChange = { withVariable = it })
+                    }
                     BalanceChart(points, Modifier.fillMaxWidth().height(180.dp))
                     if (firstNegative != null) {
                         Text(
@@ -174,8 +224,9 @@ fun ForecastScreen(onBack: () -> Unit) {
                         )
                     }
                     Text(
-                        "Compte les opérations planifiées, virements, débits différés et compléments " +
-                            "automatiques depuis les comptes de secours ; pas les dépenses courantes non planifiées.",
+                        "Compte les opérations planifiées, virements, débits différés, compléments automatiques " +
+                            "depuis les comptes de secours" +
+                            if (withVariable) " et les dépenses courantes estimées." else " ; pas les dépenses courantes.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

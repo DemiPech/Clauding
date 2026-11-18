@@ -79,17 +79,25 @@ Quatre onglets :
   80 %, rouge au-delà de 100 % ; les budgets les plus entamés sont sur l'accueil.
 - **Solde prévisionnel** (Plus, ou « Afficher plus » sous le solde réel) : courbe du solde jour
   par jour sur 30 jours à 1 an, pour tous les comptes ou un seul, avec les opérations
-  planifiées, virements et débits différés à venir ; le point le plus bas et une alerte si le
+  planifiées, virements et débits différés à venir, et (interrupteur, activé par défaut) les
+  **dépenses courantes estimées** de chaque compte (moyenne des 6 derniers mois, réparties jour
+  par jour ; pour le mois en cours, seulement ce qui reste après ce qui a déjà été dépensé) ; le point le plus bas et une alerte si le
   solde passe sous zéro, puis la liste des mouvements prévus.
 - **Stats sur la durée** : « Ce mois » (donut, budgets, détail d'une catégorie par
   sous-catégorie en la touchant), « 12 mois » (barres revenus / dépenses par mois, moyennes
   mensuelles, épargne, tableau mois par mois) ou « Estimation » :
-  - dépenses estimées par mois = moyenne des 3, 6 ou 12 derniers mois **terminés** (le mois en
-    cours n'est pas compté, ni les mois d'avant la première opération), globale et par
-    catégorie, sans les dépenses sans catégorie ni les virements ;
-  - pour chaque catégorie : moyenne par mois, dépensé ce mois-ci, budget s'il y en a un, nombre
-    de mois avec des dépenses si elle est occasionnelle ; la toucher détaille ses sous-catégories ;
-  - le mois en cours comparé à l'estimation totale ;
+  - dépenses estimées par mois = **moyenne ou médiane** (au choix ; la médiane ignore un mois
+    exceptionnel) des 3, 6 ou 12 derniers mois **terminés** (le mois en cours n'est pas compté,
+    ni les mois d'avant la première opération), globale et par catégorie, sans les dépenses sans
+    catégorie ni les virements ;
+  - séparées en **fixes** (créées par une opération planifiée : loyer, abonnements…) et
+    **courantes** (saisies à la main) ;
+  - pour chaque catégorie : estimation par mois, part fixe, dépensé ce mois-ci, budget s'il y en
+    a un, nombre de mois avec des dépenses si elle est occasionnelle, et **tendance** (« ↗ +18 % »
+    quand les 3 derniers mois s'écartent d'au moins 10 % de la période) ; la toucher détaille
+    ses sous-catégories ;
+  - **fin de mois prévue** : déjà dépensé + planifié encore à venir ce mois-ci + dépenses
+    courantes habituelles au prorata des jours restants ;
   - « Créer les budgets manquants » : un budget pour chaque catégorie qui n'en a pas, égal à sa
     moyenne arrondie aux 5 € supérieurs.
 - **Recherche et filtres** (loupe de l'onglet Opérations) : texte libre (libellé, catégorie,

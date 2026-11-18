@@ -145,7 +145,10 @@ object Estimates {
     }
 }
 
-/** Dépense mensuelle moyenne d'une catégorie principale. */
+/** Comment résumer les mois passés : moyenne, ou médiane (insensible aux mois exceptionnels). */
+enum class EstimateMethod { MEAN, MEDIAN }
+
+/** Dépense mensuelle estimée d'une catégorie principale. */
 data class CategoryAverage(
     val categoryId: Long,
     val name: String,
@@ -154,17 +157,29 @@ data class CategoryAverage(
     val averageCents: Long,
     /** Nombre de mois (sur la période) où la catégorie a eu des dépenses. */
     val activeMonths: Int,
+    /** Part venant des opérations planifiées (loyer, abonnements…). */
+    val fixedCents: Long = 0,
+    val variableCents: Long = 0,
+    /** Évolution des 3 derniers mois par rapport à toute la période, en %, null si non calculable. */
+    val trendPercent: Int? = null,
 )
 
-/** Estimation des dépenses d'un mois, d'après la moyenne des mois passés. */
+/** Estimation des dépenses d'un mois, d'après les mois passés. */
 data class MonthlyEstimate(
     /** Mois réellement pris en compte (terminés, depuis le premier mois avec des données). */
     val months: List<YearMonth>,
     val totalCents: Long,
     val categories: List<CategoryAverage>,
+    /** Dépenses issues d'opérations planifiées. */
+    val fixedCents: Long = 0,
+    /** Dépenses courantes (saisies à la main). */
+    val variableCents: Long = 0,
 )
 
 object Estimation {
+    /** Nombre de mois récents comparés à la période pour la tendance. */
+    const val RECENT = 3
+
     /**
      * Les [count] derniers mois terminés avant [current], en ne gardant que ceux à partir
      * du premier mois où il y a des opérations (on ne divise pas par des mois vides
@@ -176,31 +191,111 @@ object Estimation {
         return candidates.filter { !it.isBefore(first) }
     }
 
+    /** Dépenses prises en compte : catégorisées, hors virements. */
+    fun counted(op: OperationDetails): Boolean =
+        op.operation.kind == Kind.EXPENSE && !op.operation.isTransfer && op.rootCategoryId != null
+
+    /** Dépense issue d'une opération planifiée (fixe), sinon courante (variable). */
+    fun isFixed(op: OperationDetails): Boolean = op.operation.scheduledId != null
+
+    /** Résume une série de totaux mensuels (un par mois, zéros compris). */
+    fun summarize(values: List<Long>, method: EstimateMethod): Long {
+        if (values.isEmpty()) return 0
+        return when (method) {
+            EstimateMethod.MEAN -> (values.sum() * 2 + values.size) / (values.size * 2)
+            EstimateMethod.MEDIAN -> {
+                val sorted = values.sorted()
+                val mid = sorted.size / 2
+                if (sorted.size % 2 == 1) sorted[mid] else (sorted[mid - 1] + sorted[mid] + 1) / 2
+            }
+        }
+    }
+
+    /** Total de chaque mois de [months] pour les opérations retenues par [filter]. */
+    private fun series(ops: List<OperationDetails>, months: List<YearMonth>, filter: (OperationDetails) -> Boolean): List<Long> {
+        val byMonth = ops.filter(filter).groupBy { YearMonth.from(it.operation.date) }
+        return months.map { m -> byMonth[m].orEmpty().sumOf { it.operation.amountCents } }
+    }
+
     /**
-     * Moyenne mensuelle des dépenses sur [months], globale et par catégorie principale,
-     * sans les dépenses sans catégorie ni les virements. Arrondie au centime.
+     * Dépenses mensuelles estimées sur [months], globales et par catégorie principale,
+     * sans les dépenses sans catégorie ni les virements. Le total est fixes + variables.
      */
-    fun estimate(operations: List<OperationDetails>, months: List<YearMonth>): MonthlyEstimate {
+    fun estimate(
+        operations: List<OperationDetails>,
+        months: List<YearMonth>,
+        method: EstimateMethod = EstimateMethod.MEAN,
+    ): MonthlyEstimate {
         if (months.isEmpty()) return MonthlyEstimate(months, 0, emptyList())
         val set = months.toSet()
-        val expenses = operations.filter {
-            it.operation.kind == Kind.EXPENSE && !it.operation.isTransfer && it.rootCategoryId != null &&
-                YearMonth.from(it.operation.date) in set
-        }
-        val n = months.size
-        fun avg(total: Long) = (total * 2 + n) / (n * 2)
+        val expenses = operations.filter { counted(it) && YearMonth.from(it.operation.date) in set }
+        val recent = months.takeLast(RECENT)
         val categories = expenses.groupBy { it.rootCategoryId!! }.map { (id, ops) ->
             val first = ops.first()
+            val value = summarize(series(ops, months) { true }, method)
+            val trend = if (months.size > RECENT && value > 0) {
+                val recentValue = summarize(series(ops, recent) { true }, method)
+                ((recentValue - value) * 100 / value).toInt()
+            } else null
             CategoryAverage(
                 categoryId = id,
                 name = first.categoryName.orEmpty(),
                 emoji = first.categoryEmoji.orEmpty(),
                 color = first.categoryColor,
-                averageCents = avg(ops.sumOf { it.operation.amountCents }),
+                averageCents = value,
                 activeMonths = ops.map { YearMonth.from(it.operation.date) }.distinct().size,
+                fixedCents = summarize(series(ops, months, ::isFixed), method),
+                variableCents = summarize(series(ops, months) { !isFixed(it) }, method),
+                trendPercent = trend,
             )
         }.sortedByDescending { it.averageCents }
-        return MonthlyEstimate(months, avg(expenses.sumOf { it.operation.amountCents }), categories)
+        val fixed = summarize(series(expenses, months, ::isFixed), method)
+        val variable = summarize(series(expenses, months) { !isFixed(it) }, method)
+        return MonthlyEstimate(months, fixed + variable, categories, fixed, variable)
+    }
+
+    /**
+     * Dépenses prévues pour tout le mois de [today] : ce qui est déjà dépensé, les
+     * dépenses planifiées encore à venir ce mois-ci, et les dépenses courantes
+     * habituelles pour les jours restants (estimation au prorata).
+     */
+    fun endOfMonth(spentCents: Long, pendingPlannedCents: Long, variableEstimateCents: Long, today: LocalDate): Long {
+        val length = today.lengthOfMonth()
+        val remainingDays = length - today.dayOfMonth
+        return spentCents + pendingPlannedCents + variableEstimateCents * remainingDays / length
+    }
+
+    /**
+     * Dépenses courantes estimées réparties jour par jour sur un compte, du lendemain de
+     * [today] à [end] : pour le mois en cours, ce qui reste de l'estimation après ce qui a
+     * déjà été dépensé ; ensuite, l'estimation mensuelle entière, répartie sur le mois.
+     */
+    fun variableMoves(
+        accountId: Long,
+        monthlyCents: Long,
+        spentThisMonthCents: Long,
+        today: LocalDate,
+        end: LocalDate,
+    ): List<PlannedMove> {
+        if (monthlyCents <= 0) return emptyList()
+        val moves = mutableListOf<PlannedMove>()
+        var month = YearMonth.from(today)
+        while (!month.atDay(1).isAfter(end)) {
+            val firstDay = if (month == YearMonth.from(today)) today.plusDays(1) else month.atDay(1)
+            val budget = if (month == YearMonth.from(today)) (monthlyCents - spentThisMonthCents).coerceAtLeast(0) else monthlyCents
+            val days = generateSequence(firstDay) { it.plusDays(1) }
+                .takeWhile { YearMonth.from(it) == month && !it.isAfter(end) }.toList()
+            val spanDays = if (firstDay.isAfter(month.atEndOfMonth())) 0 else month.lengthOfMonth() - firstDay.dayOfMonth + 1
+            if (spanDays > 0 && budget > 0) {
+                // Répartition au centime près : chaque jour reçoit sa part cumulée arrondie.
+                days.forEachIndexed { i, day ->
+                    val share = budget * (i + 1) / spanDays - budget * i / spanDays
+                    if (share > 0) moves += PlannedMove(day, accountId, -share)
+                }
+            }
+            month = month.plusMonths(1)
+        }
+        return moves
     }
 
     /** Montant de budget proposé à partir d'une moyenne : arrondi aux 5 € supérieurs. */

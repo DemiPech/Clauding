@@ -27,8 +27,11 @@ import androidx.compose.ui.unit.dp
 import net.demipech.budget.data.Budget
 import net.demipech.budget.data.Kind
 import net.demipech.budget.data.OperationDetails
+import net.demipech.budget.data.ScheduledDetails
+import net.demipech.budget.data.isTransfer
 import net.demipech.budget.domain.Analytics
 import net.demipech.budget.domain.CategoryAverage
+import net.demipech.budget.domain.EstimateMethod
 import net.demipech.budget.domain.Estimation
 import net.demipech.budget.domain.Forecast
 import net.demipech.budget.domain.Money
@@ -38,30 +41,43 @@ import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.Segmented
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.theme.expenseColor
+import net.demipech.budget.ui.theme.incomeColor
+import java.time.LocalDate
 import java.time.YearMonth
 
 /**
- * Mode « Estimation » : dépenses moyennes par mois sur les derniers mois terminés,
- * globales et par catégorie (sans les dépenses sans catégorie ni les virements).
+ * Mode « Estimation » : dépenses par mois (moyenne ou médiane des derniers mois terminés),
+ * globales et par catégorie, fixes / courantes, tendances et fin de mois prévue
+ * (sans les dépenses sans catégorie ni les virements).
  */
 fun LazyListScope.estimateItems(
     history: List<OperationDetails>,
     currentOps: List<OperationDetails>,
+    scheduled: List<ScheduledDetails>,
     windowSize: Int,
     onWindowSize: (Int) -> Unit,
+    method: EstimateMethod,
+    onMethod: (EstimateMethod) -> Unit,
     budgets: List<Budget>,
     expanded: Long?,
     onToggle: (Long?) -> Unit,
     onCreateBudgets: (Map<Long, Long>) -> Unit,
 ) {
-    val current = YearMonth.now()
+    val today = LocalDate.now()
+    val current = YearMonth.from(today)
     val months = Estimation.window(history, current, windowSize)
-    val estimate = Estimation.estimate(history, months)
-    val spentNow = Forecast.breakdown(currentOps, Kind.EXPENSE).filter { it.categoryId != null }
-        .associate { it.categoryId!! to it.cents }
+    val estimate = Estimation.estimate(history, months, method)
+    val spentOps = currentOps.filter { Estimation.counted(it) }
+    val spentNow = spentOps.groupBy { it.rootCategoryId!! }.mapValues { (_, ops) -> ops.sumOf { it.operation.amountCents } }
+    val spentTotal = spentOps.sumOf { it.operation.amountCents }
+    val pendingPlanned = Forecast.upcoming(scheduled, today, current.atEndOfMonth())
+        .filter { !it.details.scheduled.isTransfer && it.details.scheduled.kind == Kind.EXPENSE && it.details.scheduled.categoryId != null }
+        .sumOf { it.details.scheduled.amountCents }
+    val projected = Estimation.endOfMonth(spentTotal, pendingPlanned, estimate.variableCents, today)
     val budgetOf = budgets.associate { it.categoryId to it.amountCents }
     val missing = estimate.categories.filter { it.categoryId !in budgetOf && it.averageCents > 0 }
         .associate { it.categoryId to Estimation.suggestedBudget(it.averageCents) }
+    val methodLabel = if (method == EstimateMethod.MEAN) "Moyenne" else "Médiane"
 
     item(key = "estimate-header") {
         Column {
@@ -70,6 +86,7 @@ fun LazyListScope.estimateItems(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Segmented(listOf(3, 6, 12), windowSize, { "$it mois" }, onWindowSize)
+                Segmented(EstimateMethod.entries, method, { if (it == EstimateMethod.MEAN) "Moyenne" else "Médiane" }, onMethod)
                 if (months.isEmpty()) {
                     Text(
                         "Pas encore de mois terminé avec des opérations : l'estimation apparaîtra le mois prochain.",
@@ -79,14 +96,31 @@ fun LazyListScope.estimateItems(
                     Overline("Dépenses estimées par mois")
                     Text(Money.format(estimate.totalCents), style = MaterialTheme.typography.headlineMedium, color = expenseColor())
                     Text(
-                        "Moyenne " + (if (months.size == 1) "de ${months.first().label()}" else
+                        "Fixes (planifiées) ${Money.format(estimate.fixedCents)} · courantes ${Money.format(estimate.variableCents)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "$methodLabel " + (if (months.size == 1) "de ${months.first().label()}" else
                             "de ${months.first().label()} à ${months.last().label()} (${months.size} mois)") +
-                            ", hors dépenses sans catégorie et virements.",
+                            ", hors dépenses sans catégorie et virements." +
+                            if (method == EstimateMethod.MEDIAN) " La médiane ignore les mois exceptionnels." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Overline("${current.label()} jusqu'ici")
-                    BudgetProgress(spentNow.values.sum(), estimate.totalCents)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Overline("${current.label()} : fin de mois prévue")
+                    Text(
+                        "≈ ${Money.format(projected)}",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (projected > estimate.totalCents) expenseColor() else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        "Déjà dépensé ${Money.format(spentTotal)} + planifié à venir ${Money.format(pendingPlanned)} " +
+                            "+ dépenses courantes habituelles pour les jours restants.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    BudgetProgress(spentTotal, estimate.totalCents)
                     if (missing.isNotEmpty()) {
                         OutlinedButton(onClick = { onCreateBudgets(missing) }, modifier = Modifier.fillMaxWidth()) {
                             Text("Créer les budgets manquants (${missing.size})")
@@ -138,6 +172,7 @@ private fun AverageRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(category.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TrendChip(category.trendPercent)
                     Text("${Money.format(category.averageCents)} / mois", style = MaterialTheme.typography.bodyLarge)
                 }
                 Box(
@@ -150,6 +185,7 @@ private fun AverageRow(
                     )
                 }
                 val notes = buildList {
+                    if (category.fixedCents > 0) add("fixes ${Money.format(category.fixedCents)}")
                     if (category.activeMonths < monthsCount) add("dépenses ${category.activeMonths} mois sur $monthsCount")
                     add("ce mois-ci ${Money.format(spentNow)}")
                     if (budget != null) add("budget ${Money.format(budget)}")
@@ -171,4 +207,17 @@ private fun AverageRow(
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
+}
+
+/** « ↗ +18 % » si les 3 derniers mois s'écartent d'au moins 10 % de la période. */
+@Composable
+private fun TrendChip(percent: Int?) {
+    if (percent == null || kotlin.math.abs(percent) < 10) return
+    val up = percent > 0
+    Text(
+        (if (up) "↗ +" else "↘ ") + "$percent %",
+        style = MaterialTheme.typography.labelMedium,
+        color = if (up) expenseColor() else incomeColor(),
+        modifier = Modifier.padding(end = 8.dp),
+    )
 }

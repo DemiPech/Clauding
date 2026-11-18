@@ -61,6 +61,8 @@ import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.Segmented
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.repository
+import net.demipech.budget.domain.EstimateMethod
+import net.demipech.budget.data.ScheduledDetails
 import net.demipech.budget.ui.components.ConfirmDialog
 import kotlinx.coroutines.launch
 import net.demipech.budget.ui.theme.amountColor
@@ -84,6 +86,9 @@ class StatsViewModel(private val repo: BudgetRepository) : ViewModel() {
     val currentMonth: StateFlow<List<OperationDetails>> =
         repo.operationsBetween(now.atDay(1), now.atEndOfMonth())
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val scheduled: StateFlow<List<ScheduledDetails>> =
+        repo.scheduled().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Crée les budgets proposés (catégorie → montant mensuel). */
     fun createBudgets(amounts: Map<Long, Long>) = viewModelScope.launch {
@@ -118,6 +123,8 @@ fun StatsScreen(onBudgets: () -> Unit) {
     /** 0 = ce mois, 1 = 12 derniers mois, 2 = estimation. */
     var mode by rememberSaveable { mutableStateOf(0) }
     var windowSize by rememberSaveable { mutableStateOf(6) }
+    var method by rememberSaveable { mutableStateOf(EstimateMethod.MEAN) }
+    val scheduled by vm.scheduled.collectAsStateWithLifecycle()
     var proposed by remember { mutableStateOf<Map<Long, Long>?>(null) }
     val history by vm.history.collectAsStateWithLifecycle()
     val currentMonth by vm.currentMonth.collectAsStateWithLifecycle()
@@ -146,7 +153,7 @@ fun StatsScreen(onBudgets: () -> Unit) {
             }
             if (mode == 2) {
                 estimateItems(
-                    history, currentMonth, windowSize, { windowSize = it }, budgets, expanded,
+                    history, currentMonth, scheduled, windowSize, { windowSize = it }, method, { method = it }, budgets, expanded,
                     { expanded = if (expanded == it) -2L else it },
                     { proposed = it },
                 )
