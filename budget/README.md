@@ -82,8 +82,16 @@ Quatre onglets :
   planifiées, virements et débits différés à venir ; le point le plus bas et une alerte si le
   solde passe sous zéro, puis la liste des mouvements prévus.
 - **Stats sur la durée** : « Ce mois » (donut, budgets, détail d'une catégorie par
-  sous-catégorie en la touchant) ou « 12 derniers mois » (barres revenus / dépenses par mois,
-  moyennes mensuelles, épargne, tableau mois par mois).
+  sous-catégorie en la touchant), « 12 mois » (barres revenus / dépenses par mois, moyennes
+  mensuelles, épargne, tableau mois par mois) ou « Estimation » :
+  - dépenses estimées par mois = moyenne des 3, 6 ou 12 derniers mois **terminés** (le mois en
+    cours n'est pas compté, ni les mois d'avant la première opération), globale et par
+    catégorie, sans les dépenses sans catégorie ni les virements ;
+  - pour chaque catégorie : moyenne par mois, dépensé ce mois-ci, budget s'il y en a un, nombre
+    de mois avec des dépenses si elle est occasionnelle ; la toucher détaille ses sous-catégories ;
+  - le mois en cours comparé à l'estimation totale ;
+  - « Créer les budgets manquants » : un budget pour chaque catégorie qui n'en a pas, égal à sa
+    moyenne arrondie aux 5 € supérieurs.
 - **Recherche et filtres** (loupe de l'onglet Opérations) : texte libre (libellé, catégorie,
   compte, montant, sans tenir compte des accents), période, type, compte, catégorie, montant
   min / max ; nombre de résultats et totaux.
@@ -176,7 +184,8 @@ app/src/main/java/net/demipech/budget/
   domain/BusinessDays.kt          jours ouvrés et fériés français (testé)
   domain/Installments.kt          répartition d'un paiement en plusieurs fois (testé)
   domain/DeferredDebit.kt         date de débit d'une carte à débit différé (testé)
-  domain/Analytics.kt             totaux mensuels, budgets, projection, recherche (testé)
+  domain/Analytics.kt             totaux mensuels, budgets, projection, recherche,
+                                  estimation mensuelle (testé)
   domain/Forecast.kt              échéances à venir, répartition par catégorie (testé)
   domain/Money.kt                 saisie et affichage des montants (testé)
   ui/                             navigation, thème, composants, un dossier par écran

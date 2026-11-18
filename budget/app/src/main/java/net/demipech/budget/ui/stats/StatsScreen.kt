@@ -61,6 +61,8 @@ import net.demipech.budget.ui.components.Overline
 import net.demipech.budget.ui.components.Segmented
 import net.demipech.budget.ui.components.label
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.components.ConfirmDialog
+import kotlinx.coroutines.launch
 import net.demipech.budget.ui.theme.amountColor
 import net.demipech.budget.ui.theme.expenseColor
 import net.demipech.budget.ui.theme.incomeColor
@@ -70,7 +72,24 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class StatsViewModel(repo: BudgetRepository) : ViewModel() {
+class StatsViewModel(private val repo: BudgetRepository) : ViewModel() {
+    private val now = YearMonth.now()
+
+    /** Les 12 mois terminés avant le mois en cours (mode « Estimation »). */
+    val history: StateFlow<List<OperationDetails>> =
+        repo.operationsBetween(now.minusMonths(12).atDay(1), now.minusMonths(1).atEndOfMonth())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Le mois en cours, pour comparer à l'estimation. */
+    val currentMonth: StateFlow<List<OperationDetails>> =
+        repo.operationsBetween(now.atDay(1), now.atEndOfMonth())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Crée les budgets proposés (catégorie → montant mensuel). */
+    fun createBudgets(amounts: Map<Long, Long>) = viewModelScope.launch {
+        amounts.forEach { (categoryId, cents) -> repo.setBudget(categoryId, cents) }
+    }
+
     val month = MutableStateFlow(YearMonth.now())
     val operations: StateFlow<List<OperationDetails>?> =
         month.flatMapLatest { m -> repo.operationsBetween(m.atDay(1), m.atEndOfMonth()) }
@@ -96,7 +115,12 @@ fun StatsScreen(onBudgets: () -> Unit) {
     val operations by vm.operations.collectAsStateWithLifecycle()
     val year by vm.year.collectAsStateWithLifecycle()
     val budgets by vm.budgets.collectAsStateWithLifecycle()
-    var yearly by rememberSaveable { mutableStateOf(false) }
+    /** 0 = ce mois, 1 = 12 derniers mois, 2 = estimation. */
+    var mode by rememberSaveable { mutableStateOf(0) }
+    var windowSize by rememberSaveable { mutableStateOf(6) }
+    var proposed by remember { mutableStateOf<Map<Long, Long>?>(null) }
+    val history by vm.history.collectAsStateWithLifecycle()
+    val currentMonth by vm.currentMonth.collectAsStateWithLifecycle()
     var kind by rememberSaveable { mutableStateOf(Kind.EXPENSE) }
     var expanded by remember { mutableStateOf<Long?>(-2L) }
 
@@ -116,16 +140,36 @@ fun StatsScreen(onBudgets: () -> Unit) {
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Segmented(
-                    listOf(false, true), yearly, { if (it) "12 derniers mois" else "Ce mois" }, { yearly = it },
+                    listOf(0, 1, 2), mode, { listOf("Ce mois", "12 mois", "Estimation")[it] }, { mode = it },
                     Modifier.background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            if (yearly) {
+            if (mode == 2) {
+                estimateItems(
+                    history, currentMonth, windowSize, { windowSize = it }, budgets, expanded,
+                    { expanded = if (expanded == it) -2L else it },
+                    { proposed = it },
+                )
+            } else if (mode == 1) {
                 yearItems(year, month)
             } else {
                 monthItems(list, kind, { kind = it }, budgets, expanded, { expanded = if (expanded == it) -2L else it })
             }
         }
+    }
+
+    proposed?.let { amounts ->
+        ConfirmDialog(
+            title = "Créer ${amounts.size} budget" + (if (amounts.size > 1) "s" else "") + " ?",
+            text = "Chaque catégorie sans budget reçoit sa moyenne mensuelle, arrondie aux 5 € supérieurs " +
+                "(total ${Money.format(amounts.values.sum())} par mois). Vous pourrez les ajuster dans Budgets.",
+            confirmLabel = "Créer",
+            onConfirm = {
+                vm.createBudgets(amounts)
+                proposed = null
+            },
+            onDismiss = { proposed = null },
+        )
     }
 }
 

@@ -144,3 +144,65 @@ object Estimates {
         return (sample.sum() * 2 + sample.size) / (sample.size * 2)
     }
 }
+
+/** Dépense mensuelle moyenne d'une catégorie principale. */
+data class CategoryAverage(
+    val categoryId: Long,
+    val name: String,
+    val emoji: String,
+    val color: Long?,
+    val averageCents: Long,
+    /** Nombre de mois (sur la période) où la catégorie a eu des dépenses. */
+    val activeMonths: Int,
+)
+
+/** Estimation des dépenses d'un mois, d'après la moyenne des mois passés. */
+data class MonthlyEstimate(
+    /** Mois réellement pris en compte (terminés, depuis le premier mois avec des données). */
+    val months: List<YearMonth>,
+    val totalCents: Long,
+    val categories: List<CategoryAverage>,
+)
+
+object Estimation {
+    /**
+     * Les [count] derniers mois terminés avant [current], en ne gardant que ceux à partir
+     * du premier mois où il y a des opérations (on ne divise pas par des mois vides
+     * d'avant l'usage de l'app).
+     */
+    fun window(operations: List<OperationDetails>, current: YearMonth, count: Int): List<YearMonth> {
+        val candidates = (count downTo 1).map { current.minusMonths(it.toLong()) }
+        val first = operations.minOfOrNull { YearMonth.from(it.operation.date) } ?: return emptyList()
+        return candidates.filter { !it.isBefore(first) }
+    }
+
+    /**
+     * Moyenne mensuelle des dépenses sur [months], globale et par catégorie principale,
+     * sans les dépenses sans catégorie ni les virements. Arrondie au centime.
+     */
+    fun estimate(operations: List<OperationDetails>, months: List<YearMonth>): MonthlyEstimate {
+        if (months.isEmpty()) return MonthlyEstimate(months, 0, emptyList())
+        val set = months.toSet()
+        val expenses = operations.filter {
+            it.operation.kind == Kind.EXPENSE && !it.operation.isTransfer && it.rootCategoryId != null &&
+                YearMonth.from(it.operation.date) in set
+        }
+        val n = months.size
+        fun avg(total: Long) = (total * 2 + n) / (n * 2)
+        val categories = expenses.groupBy { it.rootCategoryId!! }.map { (id, ops) ->
+            val first = ops.first()
+            CategoryAverage(
+                categoryId = id,
+                name = first.categoryName.orEmpty(),
+                emoji = first.categoryEmoji.orEmpty(),
+                color = first.categoryColor,
+                averageCents = avg(ops.sumOf { it.operation.amountCents }),
+                activeMonths = ops.map { YearMonth.from(it.operation.date) }.distinct().size,
+            )
+        }.sortedByDescending { it.averageCents }
+        return MonthlyEstimate(months, avg(expenses.sumOf { it.operation.amountCents }), categories)
+    }
+
+    /** Montant de budget proposé à partir d'une moyenne : arrondi aux 5 € supérieurs. */
+    fun suggestedBudget(averageCents: Long): Long = ((averageCents + 499) / 500) * 500
+}
