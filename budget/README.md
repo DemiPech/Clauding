@@ -140,14 +140,18 @@ Quatre onglets :
   L'estimation devient la **moyenne des 3 derniers montants confirmés**, et sert aux échéances
   suivantes et au solde prévisionnel. Modifier l'opération depuis son formulaire la confirme
   aussi.
-- **Compte de secours** (réglage du compte) : « Si le solde ne suffit pas pour un paiement
-  planifié, compléter depuis » un autre compte. À l'échéance d'une dépense planifiée, l'app
-  regarde le solde du compte à cette date : s'il ne suffit pas, la dépense est enregistrée en
-  entier et le manque arrive par un virement automatique « Complément automatique · … » depuis
-  le compte de secours (paiement de 20 € avec 15 € de solde : 15 € pris sur le compte, 5 € sur
-  le secours ; solde à zéro ou négatif : tout vient du secours). Le solde prévisionnel simule
-  ces compléments. Non appliqué aux dépenses en débit différé (débitées plus tard) ni aux
-  virements planifiés.
+- **Compte de secours** (réglage du compte) : « Si le solde ne suffit pas pour une dépense,
+  compléter depuis » un autre compte. Pour chaque dépense du compte, **saisie ou planifiée**,
+  l'app regarde le solde à la date de la dépense (sans elle) : s'il ne suffit pas, la dépense
+  est enregistrée en entier et le manque arrive par un virement automatique « Complément
+  automatique · … » depuis le compte de secours (paiement de 20 € avec 15 € de solde : 15 € pris
+  sur le compte, 5 € sur le secours ; solde à zéro ou négatif : tout vient du secours).
+  - Le complément est lié à sa dépense : modifier la dépense le recalcule, la supprimer le
+    supprime.
+  - « Compléter les dépenses existantes » (réglage du compte) rattrape les dépenses saisies
+    avant d'activer le secours, depuis la date choisie, dans l'ordre des dates.
+  - Le solde prévisionnel simule ces compléments. Non appliqué aux dépenses en débit différé
+    (débitées plus tard) ni aux virements.
 - **Carte à débit différé** (réglage du compte, crayon sur la page du compte) : jour d'arrêté
   des dépenses (ex. le 20, 31 = fin de mois) et jour de débit (dernier jour du mois, dernier
   jour ouvré, ou un jour fixe). Arrêté le 20, débit le dernier jour : une dépense du 13/11 est
@@ -216,9 +220,9 @@ gradle testDebugUnitTest   # tests unitaires
 gradle assembleDebug       # APK de debug
 ```
 
-La base est en version 10. Les migrations de `BudgetDatabase` gardent les données d'une
+La base est en version 11. Les migrations de `BudgetDatabase` gardent les données d'une
 installation existante : 1 → 2 ajoute la couleur et l'icône des comptes, l'emoji et la
-catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage ; 7 → 8 les budgets ; 8 → 9 le compte de secours ; 9 → 10 les montants variables.
+catégorie parente des catégories ; 2 → 3 ajoute les règles de date des planifications ; 3 → 4 les paiements en plusieurs fois ; 4 → 5 le débit différé ; 5 → 6 les virements ; 6 → 7 le pointage ; 7 → 8 les budgets ; 8 → 9 le compte de secours ; 9 → 10 les montants variables ; 10 → 11 le lien dépense / complément automatique.
 
 ## Pistes
 

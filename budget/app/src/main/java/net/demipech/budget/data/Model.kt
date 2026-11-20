@@ -58,8 +58,8 @@ data class Account(
     /** Jour du mois pour DebitDay.DAY_OF_MONTH. */
     val debitDayOfMonth: Int = 5,
     /**
-     * Compte de secours : quand le solde ne suffit pas pour une dépense planifiée,
-     * le manque est viré automatiquement depuis ce compte.
+     * Compte de secours : quand le solde ne suffit pas pour une dépense (saisie ou
+     * planifiée), le manque est viré automatiquement depuis ce compte.
      */
     val fallbackAccountId: Long? = null,
 )
@@ -212,6 +212,11 @@ data class Operation(
     val status: ClearStatus = ClearStatus.NONE,
     /** Montant estimé d'une échéance à montant variable, en attente du vrai montant. */
     val toConfirm: Boolean = false,
+    /**
+     * Complément automatique depuis le compte de secours : les deux côtés du virement
+     * portent l'id de la dépense qu'ils complètent (recalculé ou supprimé avec elle).
+     */
+    val coverFor: Long? = null,
 )
 
 val Operation.isLocked: Boolean get() = status == ClearStatus.RECONCILED

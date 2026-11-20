@@ -290,7 +290,7 @@ object Estimation {
                 // Répartition au centime près : chaque jour reçoit sa part cumulée arrondie.
                 days.forEachIndexed { i, day ->
                     val share = budget * (i + 1) / spanDays - budget * i / spanDays
-                    if (share > 0) moves += PlannedMove(day, accountId, -share)
+                    if (share > 0) moves += PlannedMove(day, accountId, -share, coverable = true)
                 }
             }
             month = month.plusMonths(1)

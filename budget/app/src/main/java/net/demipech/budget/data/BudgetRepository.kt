@@ -155,9 +155,46 @@ class BudgetRepository(private val db: BudgetDatabase) {
     suspend fun operation(id: Long): Operation? = operations.get(id)
     suspend fun save(operation: Operation): Long {
         val op = withDebitDate(operation, accounts.get(operation.accountId))
-        val id = if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+        val id = db.withTransaction {
+            val id = if (op.id == 0L) operations.insert(op) else op.id.also { operations.update(op) }
+            cover(op.copy(id = id))
+            id
+        }
         op.scheduledId?.let { refreshEstimate(it) }
         return id
+    }
+
+    /**
+     * Compte de secours : (re)calcule le complément d'une dépense déjà enregistrée. Si le
+     * solde du compte à sa date, sans elle, ne la couvre pas, le manque arrive par un
+     * virement automatique lié à la dépense. À appeler dans une transaction.
+     */
+    private suspend fun cover(op: Operation, accountsById: Map<Long, Account>? = null) {
+        operations.deleteCoverOf(op.id)
+        if (op.kind != Kind.EXPENSE || op.transferId != null || op.debitDate != op.date) return
+        val account = accountsById?.get(op.accountId) ?: accounts.get(op.accountId) ?: return
+        val backup = account.fallbackAccountId?.takeIf { it != op.accountId } ?: return
+        val exists = accountsById?.containsKey(backup) ?: (accounts.get(backup) != null)
+        if (!exists) return
+        val balanceWithout = accounts.balanceAt(op.accountId, op.date) + op.amountCents
+        val missing = Fallback.shortfall(balanceWithout, op.amountCents)
+        if (missing > 0) {
+            writeTransfer(
+                emptyList(), backup, op.accountId, missing, op.date,
+                "Complément automatique · " + op.note.ifBlank { "dépense" }, scheduledId = null, coverFor = op.id,
+            )
+        }
+    }
+
+    /**
+     * Rattrapage : recalcule, dans l'ordre des dates, le complément de chaque dépense du
+     * compte depuis [from]. Renvoie le nombre de dépenses complétées.
+     */
+    suspend fun coverExisting(accountId: Long, from: LocalDate): Int = db.withTransaction {
+        operations.expensesSince(accountId, from).count { op ->
+            cover(op)
+            operations.getCoverCount(op.id) > 0
+        }
     }
 
     // Montants variables
@@ -166,7 +203,9 @@ class BudgetRepository(private val db: BudgetDatabase) {
     /** Fixe le vrai montant d'une opération estimée et met à jour l'estimation suivante. */
     suspend fun confirmAmount(operation: Operation, amountCents: Long) {
         db.withTransaction {
-            operations.update(operation.copy(amountCents = amountCents, toConfirm = false))
+            val confirmed = operation.copy(amountCents = amountCents, toConfirm = false)
+            operations.update(confirmed)
+            cover(confirmed)
             operation.scheduledId?.let { refreshEstimate(it) }
         }
     }
@@ -215,6 +254,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
         date: LocalDate,
         note: String,
         scheduledId: Long?,
+        coverFor: Long? = null,
     ): Long {
         val out = legs.find { it.kind == Kind.EXPENSE }
         val inn = legs.find { it.kind == Kind.INCOME }
@@ -222,6 +262,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
             id = out?.id ?: 0, accountId = fromAccountId, categoryId = null, kind = Kind.EXPENSE,
             amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
             transferId = out?.transferId, status = out?.status ?: ClearStatus.NONE,
+            coverFor = coverFor ?: out?.coverFor,
         )
         val outId = if (out == null) operations.insert(outOp) else out.id.also { operations.update(outOp) }
         val transferId = out?.transferId ?: outId
@@ -230,6 +271,7 @@ class BudgetRepository(private val db: BudgetDatabase) {
             id = inn?.id ?: 0, accountId = toAccountId, categoryId = null, kind = Kind.INCOME,
             amountCents = amountCents, date = date, note = note, scheduledId = scheduledId,
             transferId = transferId, status = inn?.status ?: ClearStatus.NONE,
+            coverFor = coverFor ?: inn?.coverFor,
         )
         if (inn == null) operations.insert(inOp) else operations.update(inOp)
         return transferId
@@ -242,8 +284,13 @@ class BudgetRepository(private val db: BudgetDatabase) {
     fun deferredDebits(from: LocalDate, to: LocalDate, accountId: Long? = null): Flow<List<DeferredDebitTotal>> =
         operations.observeDeferredDebits(from, to, accountId)
     suspend fun delete(operation: Operation, undoable: Boolean = true) {
-        if (undoable) undoable("Opération supprimée") { operations.delete(operation) }
-        else operations.delete(operation)
+        val remove: suspend () -> Unit = {
+            db.withTransaction {
+                operations.deleteCoverOf(operation.id)
+                operations.delete(operation)
+            }
+        }
+        if (undoable) undoable("Opération supprimée") { remove() } else remove()
     }
 
     // Planifications
@@ -329,17 +376,8 @@ class BudgetRepository(private val db: BudgetDatabase) {
                     account,
                 )
                 // Compte de secours : si le solde ne suffit pas, le manque arrive par virement.
-                val backup = account?.fallbackAccountId?.takeIf { it != item.accountId && it in accountsById }
-                if (backup != null && op.kind == Kind.EXPENSE && op.debitDate == op.date) {
-                    val missing = Fallback.shortfall(accounts.balanceAt(item.accountId, date), op.amountCents)
-                    if (missing > 0) {
-                        writeTransfer(
-                            emptyList(), backup, item.accountId, missing, date,
-                            "Complément automatique · " + item.note.ifBlank { "paiement planifié" }, scheduledId = null,
-                        )
-                    }
-                }
-                operations.insert(op)
+                val id = operations.insert(op)
+                cover(op.copy(id = id), accountsById)
             }
             due.groupingBy { it.first }.eachCount().forEach { (item, count) ->
                 scheduled.update(item.copy(generatedCount = item.generatedCount + count))

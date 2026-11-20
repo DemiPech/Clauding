@@ -85,7 +85,7 @@ object BackupJson {
         put("kind", o.kind.name); put("amountCents", o.amountCents); put("date", o.date.toString())
         put("note", o.note); put("scheduledId", o.scheduledId ?: JSONObject.NULL); put("deferred", o.deferred)
         put("debitDate", o.debitDate.toString()); put("transferId", o.transferId ?: JSONObject.NULL)
-        put("status", o.status.name); put("toConfirm", o.toConfirm)
+        put("status", o.status.name); put("toConfirm", o.toConfirm); put("coverFor", o.coverFor ?: JSONObject.NULL)
     }
 
     // Lecture
@@ -164,6 +164,7 @@ object BackupJson {
             transferId = j.longOrNull("transferId"),
             status = j.enum("status", ClearStatus.NONE),
             toConfirm = j.optBoolean("toConfirm", false),
+            coverFor = j.longOrNull("coverFor"),
         )
     }
 }

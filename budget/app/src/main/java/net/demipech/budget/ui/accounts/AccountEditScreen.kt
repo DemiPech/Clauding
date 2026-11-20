@@ -47,6 +47,10 @@ import net.demipech.budget.ui.components.EmojiPicker
 import net.demipech.budget.ui.components.ConfirmDialog
 import net.demipech.budget.ui.components.FormTopBar
 import net.demipech.budget.ui.repository
+import net.demipech.budget.ui.components.DateField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
@@ -119,6 +123,12 @@ class AccountEditViewModel(private val repo: BudgetRepository, private val id: L
         onDone()
     }
 
+    /** Rattrape le complément des dépenses déjà saisies depuis [from]. */
+    fun coverExisting(from: LocalDate, onResult: (Int) -> Unit) = viewModelScope.launch {
+        val accountId = id ?: return@launch
+        onResult(repo.coverExisting(accountId, from))
+    }
+
     fun delete(onDone: () -> Unit) = viewModelScope.launch {
         original?.let { repo.delete(it) }
         onDone()
@@ -131,6 +141,8 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
     val vm = viewModel(key = "account-$id") { AccountEditViewModel(repo, id) }
     var confirmDelete by remember { mutableStateOf(false) }
     val accounts by vm.accounts.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var coverFrom by remember { mutableStateOf(YearMonth.now().atDay(1)) }
 
     Scaffold(
         topBar = {
@@ -171,7 +183,7 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
             if (others.isNotEmpty()) {
                 Text("Compte de secours", style = MaterialTheme.typography.titleSmall)
                 Selector(
-                    label = "Si le solde ne suffit pas pour un paiement planifié",
+                    label = "Si le solde ne suffit pas pour une dépense",
                     options = listOf<Account?>(null) + others,
                     selected = others.find { it.id == vm.fallbackAccountId },
                     optionLabel = { it?.let { a -> "Compléter depuis ${a.icon} ${a.name}" } ?: "Ne rien faire (le solde peut devenir négatif)" },
@@ -180,12 +192,34 @@ fun AccountEditScreen(id: Long?, onDone: () -> Unit, onDeleted: () -> Unit) {
                 )
                 others.find { it.id == vm.fallbackAccountId }?.let { backup ->
                     Text(
-                        "À l'échéance d'une dépense planifiée, le manque est viré automatiquement depuis " +
+                        "Pour chaque dépense (saisie ou planifiée), le manque est viré automatiquement depuis " +
                             "${backup.name}. Exemple : paiement de 20 € avec 15 € sur ce compte → 15 € pris ici, " +
                             "5 € virés depuis ${backup.name}. Avec un solde à zéro, tout vient de ${backup.name}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (id != null && backup.id == accounts.find { it.id == id }?.fallbackAccountId) {
+                        // Rattrapage des dépenses saisies avant (ou sans) le compte de secours.
+                        DateField("Compléter les dépenses depuis le", coverFrom, { coverFrom = it })
+                        OutlinedButton(
+                            onClick = {
+                                vm.coverExisting(coverFrom) { count ->
+                                    Toast.makeText(
+                                        context,
+                                        if (count == 0) "Aucune dépense à compléter." else "$count dépense(s) complétée(s) depuis ${backup.name}.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Compléter les dépenses existantes") }
+                    } else if (id != null) {
+                        Text(
+                            "Enregistrez le compte pour pouvoir compléter les dépenses déjà saisies.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 HorizontalDivider()
             }

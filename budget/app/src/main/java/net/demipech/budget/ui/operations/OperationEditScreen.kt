@@ -351,6 +351,15 @@ fun OperationEditScreen(
                 accountList.find { it.id == vm.accountId }?.takeIf { it.deferredDebit && vm.kind == Kind.EXPENSE }?.let { account ->
                     DeferredSwitch(vm.deferred, { vm.deferred = it }, DeferredDebit.debitDate(vm.date, account))
                 }
+                val account = accountList.find { it.id == vm.accountId }
+                val backup = accountList.find { it.id == account?.fallbackAccountId }
+                if (account != null && backup != null && vm.kind == Kind.EXPENSE && !(account.deferredDebit && vm.deferred)) {
+                    Text(
+                        "Si le solde de ${account.name} ne suffit pas, le manque sera viré depuis ${backup.name}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             DateField("Date", vm.date, { vm.date = it })
             Button(onClick = { vm.save(onDone) }, enabled = vm.canSave && !vm.isLocked, modifier = Modifier.fillMaxWidth()) {

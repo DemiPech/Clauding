@@ -192,6 +192,23 @@ interface OperationDao {
     @Query("SELECT * FROM operations WHERE accountId = :accountId")
     suspend fun getByAccount(accountId: Long): List<Operation>
 
+    /** Supprime le complément automatique (les deux côtés) d'une dépense. */
+    @Query("DELETE FROM operations WHERE coverFor = :operationId")
+    suspend fun deleteCoverOf(operationId: Long)
+
+    @Query("SELECT COUNT(*) FROM operations WHERE coverFor = :operationId")
+    suspend fun getCoverCount(operationId: Long): Int
+
+    /** Dépenses d'un compte à partir d'une date, dans l'ordre (rattrapage des compléments). */
+    @Query(
+        """
+        SELECT * FROM operations
+        WHERE accountId = :accountId AND date >= :from AND kind = 'EXPENSE' AND transferId IS NULL
+        ORDER BY date, id
+        """
+    )
+    suspend fun expensesSince(accountId: Long, from: LocalDate): List<Operation>
+
     @Query("SELECT * FROM operations")
     suspend fun getAll(): List<Operation>
 
